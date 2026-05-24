@@ -944,8 +944,9 @@ function renderTruckInvTech(pg){
   var addPanel = available.length > 0
     ? "<div class='card' style='padding:14px;margin-bottom:16px;'>"
       +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Add Product to Truck</label>"
-      +"<div style='display:flex;gap:8px;'>"
-      +"<select class='inp' id='ti-add-prod' style='flex:1;'><option value=''>Select product...</option>"+addOpts+"</select>"
+      +"<div style='display:flex;gap:8px;margin-bottom:8px;'>"
+      +"<select class='inp' id='ti-add-prod' style='flex:2;'><option value=''>Select product...</option>"+addOpts+"</select>"
+      +"<input type='number' class='inp' id='ti-add-qty' style='width:70px;' placeholder='Qty' min='0' value='0'>"
       +"<button class='btn bp' style='padding:10px 14px;font-size:13px;' data-a='ti-add-prod'>Add</button>"
       +"</div></div>"
     : "";
@@ -967,9 +968,11 @@ function tiAddProd(){
   if(!sel||!sel.value) return;
   var prod = S.products.find(function(p){ return p.id===sel.value; });
   if(!prod) return;
+  var qtyInp = document.getElementById("ti-add-qty");
+  var qty = qtyInp ? (parseInt(qtyInp.value)||0) : 0;
   var techName = S.currentUser ? S.currentUser.name : S.checkTech;
   if(!S.truckInventories[techName]) S.truckInventories[techName]={truck:"",products:[],lastSubmit:null};
-  S.truckInventories[techName].products.push({id:prod.id,name:prod.name,unit:prod.unit,qty:0,prevQty:0});
+  S.truckInventories[techName].products.push({id:prod.id,name:prod.name,unit:prod.unit,qty:qty,prevQty:0});
   save(); renderTruckInv();
 }
 
