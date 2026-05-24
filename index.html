@@ -100,6 +100,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-inventory" class="pg"></div>
     <div id="pg-orders" class="pg"></div>
     <div id="pg-checkout" class="pg"></div>
+    <div id="pg-truckinv" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
   </div>
 </div>
@@ -177,6 +178,7 @@ const S = {
   trucks:["Truck 1","Truck 2","Truck 3","Truck 4","Truck 5","Truck 6","Truck 7","Truck 8","Truck 9"],
   techs:[], techEmails:[], cats:DEFAULT_CATS,
   inspections:[], products:[], checkouts:[], orders:[],
+  truckInventories:{}, // {techName: {truck, products:[{id,name,unit,qty,prevQty}], lastSubmit}}
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
   ordersFilter:"Pending", settingsTab:"access",
@@ -186,9 +188,9 @@ const S = {
 
 function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
-function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders"].forEach(k=>lsSet("hub:"+k,S[k]));}
+function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders","truckInventories"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
-  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders","truckInventories"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
   if(!S.products||!S.products.length) S.products=JSON.parse(JSON.stringify(SEED));
   if(!S.managers||!S.managers.length) S.managers=[
     {id:"mgr1",name:"John Kluttz",email:"john.kluttz@fox-marketingservices.com",pin:"",tempPin:"1234",isTemp:true},
@@ -485,6 +487,9 @@ function handleAction(a,v,el,e){
   if(a==="add-tech-account") { addTechAccount(); return; }
   if(a==="del-tech-account") { delTechAccount(parseInt(v)); return; }
   if(a==="reset-tech-pin") { resetTechPin(parseInt(v)); return; }
+  if(a==="ti-add-prod") { tiAddProd(); return; }
+  if(a==="ti-remove-prod") { tiRemoveProd(v); return; }
+  if(a==="ti-submit") { tiSubmit(); return; }
   if(a==="save-mgr-name") { S.managerName=document.getElementById("mgr-name-inp").value||S.managerName; save(); alert("Saved!"); return; }
   if(a==="add-truck") { const inp=document.getElementById("new-truck-inp"); if(inp&&inp.value.trim()){S.trucks.push(inp.value.trim());save();render();} return; }
   if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();render();} return; }
@@ -517,6 +522,7 @@ function render(){
   else if(S.tab==="inventory") renderInv();
   else if(S.tab==="orders") renderOrders();
   else if(S.tab==="checkout") renderCheckout();
+  else if(S.tab==="truckinv") renderTruckInv();
   else if(S.tab==="settings") renderSettings();
 }
 
@@ -841,6 +847,200 @@ async function sendLowEmail(low){
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// ─── Truck Inventory ──────────────────────────────────────────────────────────
+function renderTruckInv(){
+  var pg = document.getElementById("pg-truckinv");
+  if(S.role === "manager") {
+    renderTruckInvManager(pg);
+  } else {
+    renderTruckInvTech(pg);
+  }
+}
+
+function renderTruckInvManager(pg){
+  var techNames = Object.keys(S.truckInventories);
+  if(techNames.length === 0){
+    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>Truck Inventories</h2>"
+      +"<div style='text-align:center;color:#475569;padding:40px;'>"
+      +"<div style='font-size:36px;margin-bottom:12px;'>&#x1F69A;</div>"
+      +"<p>No truck inventories submitted yet.</p>"
+      +"<p style='font-size:13px;margin-top:8px;'>Techs submit their first inventory from the My Truck tab.</p></div>";
+    return;
+  }
+
+  var cards = techNames.map(function(techName){
+    var inv = S.truckInventories[techName];
+    var lastDate = inv.lastSubmit ? fd(inv.lastSubmit) : "Never";
+    var daysSince = inv.lastSubmit ? Math.floor((Date.now()-new Date(inv.lastSubmit).getTime())/(1000*60*60*24)) : 999;
+    var stale = daysSince > 8;
+    var variances = (inv.products||[]).filter(function(p){ return p.prevQty>0 && p.qty < p.prevQty*0.5; });
+
+    var prodRows = (inv.products||[]).map(function(p){
+      var change = p.prevQty !== undefined ? p.qty - p.prevQty : null;
+      var isVar = p.prevQty > 0 && p.qty < p.prevQty * 0.5;
+      var changeHtml = change !== null
+        ? "<span style='font-size:12px;color:"+(change<0?"#ef4444":change>0?"#22c55e":"#475569")+";'>"+(change>0?"+":"")+change+"</span>"
+        : "";
+      return "<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0a1628;'>"
+        +"<span style='font-size:13px;"+(isVar?"color:#f97316;font-weight:600;":"")+"'>"+esc(p.name)+"</span>"
+        +"<div style='display:flex;align-items:center;gap:10px;'>"+changeHtml
+        +"<span style='font-family:monospace;font-weight:700;color:"+(isVar?"#f97316":"#e2e8f0")+";'>"+p.qty+" "+esc(p.unit)+"</span>"
+        +"</div></div>";
+    }).join("");
+
+    var badges = (stale ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#431407;color:#fb923c;'>Overdue</span>" : "")
+      + (variances.length>0 ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#1c0a00;color:#f97316;'>"+variances.length+" variance"+(variances.length>1?"s":"")+"</span>" : "");
+
+    return "<div class='card' style='margin-bottom:12px;"+(variances.length>0?"border-color:#c2410c30;":"")+"'>"
+      +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;'>"
+      +"<div><div style='font-weight:700;font-size:16px;'>"+esc(techName)+"</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(inv.truck||"")+" &bull; Last count: "+lastDate+"</div></div>"
+      +"<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px;'>"+badges+"</div></div>"
+      +"<div>"+(prodRows||"<div style='color:#475569;font-size:13px;'>No products recorded.</div>")+"</div></div>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>Truck Inventories</h2>"
+    +"<span style='font-size:12px;color:#475569;'>"+techNames.length+" truck"+(techNames.length!==1?"s":"")+"</span></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Weekly counts submitted by technicians. Variances flagged when a product drops more than 50% from the previous week.</p>"
+    +cards;
+}
+
+function renderTruckInvTech(pg){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!techName){ pg.innerHTML="<div style='text-align:center;color:#475569;padding:40px;'>Please log in to manage your truck inventory.</div>"; return; }
+  var inv = S.truckInventories[techName] || {truck:"", products:[], lastSubmit:null};
+  var isNew = !inv.lastSubmit;
+
+  if(!inv.truck){
+    var techIdx = S.techs.indexOf(techName);
+    if(techIdx >= 0 && techIdx < S.trucks.length) inv.truck = S.trucks[techIdx];
+  }
+
+  var prodRows = (inv.products||[]).map(function(p, i){
+    return "<div class='card' style='display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:12px 14px;'>"
+      +"<div style='flex:1;'><div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
+      +"<div style='font-size:12px;color:#64748b;'>"+esc(p.unit)+"</div></div>"
+      +"<input type='number' class='inp' style='width:80px;text-align:center;font-size:16px;font-weight:700;padding:8px;' value='"+p.qty+"' min='0' id='ti-qty-"+i+"'>"
+      +"<button class='btn bd' style='padding:5px 9px;font-size:12px;' data-a='ti-remove-prod' data-v='"+i+"'>X</button></div>";
+  }).join("");
+
+  var existing = (inv.products||[]).map(function(p){ return p.id; });
+  var available = S.products.filter(function(p){ return !existing.includes(p.id); });
+  var addOpts = available.map(function(p){ return "<option value='"+p.id+"'>"+esc(p.name)+" ("+esc(p.unit)+")</option>"; }).join("");
+
+  var truckSel = inv.truck ? "" :
+    "<div style='margin-bottom:14px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>My Truck</label>"
+    +"<select class='inp' id='ti-truck-select'><option value=''>Select your truck...</option>"
+    +S.trucks.map(function(t){ return "<option value='"+esc(t)+"'"+(inv.truck===t?" selected":"")+">"+esc(t)+"</option>"; }).join("")
+    +"</select></div>";
+
+  var lastLine = inv.lastSubmit
+    ? "<p style='color:#64748b;font-size:12px;margin-bottom:16px;'>Last submitted: "+fd(inv.lastSubmit)+"</p>"
+    : "<p style='color:#f59e0b;font-size:12px;margin-bottom:16px;'>First time setup &mdash; add all products you currently carry on your truck.</p>";
+
+  var emptyMsg = prodRows ? prodRows : "<div style='text-align:center;color:#475569;padding:20px;border:1px dashed #1e3a5f;border-radius:10px;margin-bottom:14px;'>No products added yet. Add products below.</div>";
+
+  var addPanel = available.length > 0
+    ? "<div class='card' style='padding:14px;margin-bottom:16px;'>"
+      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Add Product to Truck</label>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<select class='inp' id='ti-add-prod' style='flex:1;'><option value=''>Select product...</option>"+addOpts+"</select>"
+      +"<button class='btn bp' style='padding:10px 14px;font-size:13px;' data-a='ti-add-prod'>Add</button>"
+      +"</div></div>"
+    : "";
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>My Truck Inventory</h2></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:4px;'>"+esc(techName)+" &bull; "+esc(inv.truck||"No truck assigned")+"</p>"
+    +lastLine+truckSel
+    +"<div id='ti-prod-list' style='margin-bottom:14px;'>"+emptyMsg+"</div>"
+    +addPanel
+    +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;' data-a='ti-submit'>"
+    +(isNew?"Submit Initial Inventory":"Submit Weekly Count")+"</button>"
+    +"<p style='color:#475569;font-size:12px;text-align:center;margin-top:8px;'>Update the quantities above to match what is currently on your truck, then tap submit.</p>";
+}
+
+// Action handlers for truck inventory
+function tiAddProd(){
+  var sel = document.getElementById("ti-add-prod");
+  if(!sel||!sel.value) return;
+  var prod = S.products.find(function(p){ return p.id===sel.value; });
+  if(!prod) return;
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!S.truckInventories[techName]) S.truckInventories[techName]={truck:"",products:[],lastSubmit:null};
+  S.truckInventories[techName].products.push({id:prod.id,name:prod.name,unit:prod.unit,qty:0,prevQty:0});
+  save(); renderTruckInv();
+}
+
+function tiRemoveProd(idx){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!S.truckInventories[techName]) return;
+  S.truckInventories[techName].products.splice(parseInt(idx),1);
+  save(); renderTruckInv();
+}
+
+async function tiSubmit(){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!techName){ alert("Could not identify technician."); return; }
+
+  // Get truck selection
+  var truckSel = document.getElementById("ti-truck-select");
+  var truck = truckSel ? truckSel.value : (S.truckInventories[techName]||{}).truck||"";
+  if(!truck){ alert("Please select your truck first."); return; }
+
+  if(!S.truckInventories[techName]) S.truckInventories[techName]={truck:"",products:[],lastSubmit:null};
+  var inv = S.truckInventories[techName];
+  inv.truck = truck;
+
+  // Read current qty values from inputs
+  var variances = [];
+  (inv.products||[]).forEach(function(p, i){
+    var inp = document.getElementById("ti-qty-"+i);
+    if(inp){
+      var newQty = parseInt(inp.value)||0;
+      var prev = p.qty;
+      // Check variance - more than 50% drop
+      if(prev > 0 && newQty < prev * 0.5){
+        variances.push({name:p.name, prev:prev, current:newQty, unit:p.unit, drop:Math.round((1-(newQty/prev))*100)});
+      }
+      p.prevQty = prev;
+      p.qty = newQty;
+    }
+  });
+
+  inv.lastSubmit = new Date().toISOString();
+  save();
+  renderTruckInv();
+
+  // Log to sheet
+  var rows = (inv.products||[]).map(function(p){
+    return [new Date().toLocaleDateString("en-US"), techName, truck, p.name, p.unit, p.qty, p.prevQty||0, p.qty-(p.prevQty||0)];
+  });
+  try {
+    await gs("logTruckInventoryServer", {rows:rows, headers:["Date","Technician","Truck","Product","Unit","Qty","Prev Qty","Change"]});
+  } catch(e){ console.warn("Sheet log:", e); }
+
+  // Send variance email if needed
+  if(variances.length > 0){
+    var varList = variances.map(function(v){ return "  - "+v.name+": was "+v.prev+" "+v.unit+", now "+v.current+" "+v.unit+" ("+v.drop+"% drop)"; }).join("\n");
+    var emailBody = "Truck Inventory Variance Alert - Fox Pest Control Willamette Valley\n\n"
+      +"Technician: "+techName+"\nTruck: "+truck+"\nDate: "+new Date().toLocaleDateString("en-US")+"\n\n"
+      +"The following products dropped more than 50% from last week:\n"+varList
+      +"\n\nPlease review with the technician.\n\nAutomated notification from Fox Admin Hub.";
+    try {
+      await gs("sendEmailServer", {
+        to: MGMT.join(","),
+        subject: "[Fox Pest Control] Truck Inventory Variance - "+techName+" - "+variances.length+" item"+(variances.length>1?"s":""),
+        body: emailBody
+      });
+    } catch(e){ console.warn("Email:", e); }
+    alert("Inventory submitted! Note: "+variances.length+" variance"+(variances.length>1?"s were":"was")+" detected and reported to management.");
+  } else {
+    alert("Inventory submitted successfully!");
+  }
+}
+
 function renderSettings(){
   const tab=S.settingsTab;
   const tabs=[{id:"access",l:"Access"},{id:"trucks",l:"Trucks"},{id:"techs",l:"Technicians"},{id:"cats",l:"Inspection"},{id:"prods",l:"Products"},{id:"me",l:"My Name"}];
