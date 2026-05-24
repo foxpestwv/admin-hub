@@ -774,6 +774,24 @@ async function submitCheckout(){
   const valid=S.checkItems.filter(i=>i.productId&&parseInt(i.qty)>0);
   if(!valid.length){alert("Please add at least one product with a quantity.");return;}
   const isM=S.role==="manager";
+
+  // For techs: check truck inventory
+  if(!isM){
+    const truckInv=(S.truckInventories[tech]||{}).products||[];
+    const hasOnTruck=valid.filter(function(item){
+      const t=truckInv.find(function(t){return t.id===item.productId;});
+      return t&&t.qty>0;
+    });
+    if(hasOnTruck.length>0){
+      const names=hasOnTruck.map(function(item){
+        const p=S.products.find(function(p){return p.id===item.productId;});
+        const t=truckInv.find(function(t){return t.id===item.productId;});
+        return (p?p.name:"Product")+": "+t.qty+" "+t.unit+" on your truck";
+      }).join("\n");
+      const proceed=confirm("Your truck inventory shows you already have:\n\n"+names+"\n\nDo you still want to request these items?");
+      if(!proceed) return;
+    }
+  }
   for(const item of valid){
     const prod=S.products.find(p=>p.id===item.productId); if(!prod) continue;
     const te=S.techEmails.find(t=>t.name===tech);
