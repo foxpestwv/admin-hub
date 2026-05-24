@@ -421,6 +421,12 @@ document.addEventListener("change",function(e){
   }
   if(t.id==="insp-truck") S.inspData.truck=t.value;
   if(t.id==="insp-filter"){S.inspListFilter=t.value;render();}
+  // Show/hide "Other" reason text input
+  if(t.id && t.id.startsWith("adj-reason-") && !t.id.includes("other")){
+    const pid = t.id.replace("adj-reason-","");
+    const otherInp = document.getElementById("adj-reason-other-"+pid);
+    if(otherInp) otherInp.style.display = t.value==="Other" ? "block" : "none";
+  }
   if(t.dataset.prodid&&t.dataset.prodfield){
     const p=S.products.find(x=>x.id===t.dataset.prodid);
     if(p) p[t.dataset.prodfield]=t.dataset.prodfield==="unit"?t.value:(parseInt(t.value)||0);
@@ -464,9 +470,8 @@ function handleAction(a,v,el,e){
   if(a==="add-photo") { document.getElementById("photo-file").click(); return; }
   if(a==="del-photo") { S.inspData.photos.splice(parseInt(v),1); render(); return; }
   if(a==="inv-view") { S.invView=v; render(); return; }
-  if(a==="open-restock") { S._restockId=v; S._adjId=null; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
-  if(a==="close-panel") { S._restockId=null; S._adjId=null; render(); return; }
+  if(a==="close-panel") { S._adjId=null; render(); return; }
   if(a==="do-restock") { doRestock(v); return; }
   if(a==="do-adj") { doAdj(v); return; }
   if(a==="sync") { syncFromSheet(); return; }
@@ -697,7 +702,7 @@ function renderInv(){
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-weight:600;font-size:14px;">${esc(p.name)}</span>${isLow?`<span class="tag-low">LOW</span>`:""}</div><div style="color:#475569;font-size:12px;margin-top:2px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
         <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
-        <div style="display:flex;gap:5px;"><button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-restock" data-v="${p.id}">+Stock</button><button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Edit</button><button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button></div>
+        <div style="display:flex;gap:5px;"><button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button><button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button></div>
       </div>${panel}</div>`;
   }).join("");
   const addPanel = S._showAddProd ?
@@ -731,22 +736,25 @@ function checkoutHistory(){
     ${checkouts.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No checkouts yet.</div>`:checkouts.slice(0,50).map(c=>`<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><div style="flex:1;"><div style="font-weight:600;font-size:13px;">${esc(c.product)}</div><div style="color:#475569;font-size:12px;">${esc(c.tech)} - ${fd(c.date)}</div></div><div style="text-align:right;"><div style="font-weight:700;color:#ef4444;font-size:14px;">-${c.qty}</div><div style="color:#475569;font-size:11px;">${esc(c.unit)}</div></div></div>`).join("")}`;
 }
 
-async function doRestock(id){
-  const amt=parseInt(document.getElementById("rst-"+id)?.value);
-  if(!amt||amt<=0){alert("Enter a valid amount.");return;}
-  const reason=document.getElementById("rst-reason-"+id)?.value||"Restock received";
-  const p=S.products.find(x=>x.id===id); if(!p) return;
-  const old=p.qty; p.qty+=amt; S._restockId=null; save(); render();
-  try { await gs("updateQtyServer",{row:p.row,qty:p.qty}); await gs("logAdjustmentServer",{product:p.name,unit:p.unit,oldQty:old,newQty:p.qty,manager:S.managerName,reason}); } catch(e){}
-}
+
 
 async function doAdj(id){
   const val=parseInt(document.getElementById("adj-"+id)?.value);
   if(isNaN(val)){alert("Enter a valid quantity.");return;}
-  const reason=document.getElementById("adj-reason-"+id)?.value||"Manual adjustment";
+  const sel=document.getElementById("adj-reason-"+id);
+  const otherInp=document.getElementById("adj-reason-other-"+id);
+  let reason=(sel?sel.value:"Adjustment");
+  if(reason==="Other") reason=(otherInp&&otherInp.value.trim())?otherInp.value.trim():"Other";
   const p=S.products.find(x=>x.id===id); if(!p) return;
-  const old=p.qty; p.qty=Math.max(0,val); S._adjId=null; save(); render();
-  try { await gs("updateQtyServer",{row:p.row,qty:p.qty}); await gs("logAdjustmentServer",{product:p.name,unit:p.unit,oldQty:old,newQty:p.qty,manager:S.managerName,reason}); } catch(e){}
+  const old=p.qty;
+  const newQty=Math.max(0,val);
+  p.qty=newQty; S._adjId=null;
+  save();
+  try {
+    await gs("updateQtyServer",{row:p.row,qty:newQty});
+    await gs("logAdjustmentServer",{product:p.name,unit:p.unit,oldQty:old,newQty:newQty,manager:S.managerName,reason:reason});
+  } catch(e){ console.warn("Adj sheet write:",e); }
+  render();
 }
 
 // ─── Checkout / Request ───────────────────────────────────────────────────────
@@ -908,13 +916,12 @@ async function removeProd(id){
       S.products = S.products.filter(function(x){return x.id!==id;});
       S._restockId=null; S._adjId=null;
       save(); renderInv();
-      alert(p.name+" removed from sheet and app successfully.");
     } else {
-      alert("Could not remove from sheet. Please try again.");
+      alert("Could not remove from sheet. Please sync and try again.");
     }
   } catch(e){
     console.warn("Remove from sheet:",e);
-    alert("Error removing from sheet: "+e.message+". Product not removed.");
+    alert("Error: "+e.message);
   }
 }
 
