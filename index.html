@@ -407,6 +407,8 @@ function login(role){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
   syncFromSheet();
+  // Save accounts to sheet on every login to keep sheet in sync
+  saveAccountsToSheet();
 }
 function logout(){
   S.role=null; S.currentUser=null; S.checkTech=""; pin="";
