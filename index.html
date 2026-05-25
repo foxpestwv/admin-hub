@@ -272,13 +272,16 @@ async function loadAccountsFromSheet(){
   try {
     const result = await gs("getAccountsServer", null);
     if(result && result.managers && result.managers.length){
-      // Merge sheet managers with local - preserve any local-only ones
       S.managers = result.managers;
       lsSet("hub:managers", S.managers);
     }
     if(result && result.techAccounts && result.techAccounts.length){
       S.techAccounts = result.techAccounts;
       lsSet("hub:techAccounts", S.techAccounts);
+    }
+    // Re-render if currently on settings page so truck assignments show correctly
+    if(S.role && S.tab === "settings"){
+      renderSettings();
     }
   } catch(e){ console.warn("Load accounts:", e.message); }
 }
@@ -603,6 +606,7 @@ function handleAction(a,v,el,e){
   if(a==="submit-checkout") { submitCheckout(); return; }
   if(a==="checkout-reset") { S.checkDone=false; S.checkItems=[{id:uid(),productId:"",qty:"",notes:""}]; S.checkTech=""; render(); return; }
   if(a==="order-filter") { S.ordersFilter=v; render(); return; }
+  if(a==="refresh-orders") { refreshOrders(); return; }
   if(a==="order-action") { const [id,type]=v.split("|"); S.editOrderId=id; S.editOrderType=type; render(); return; }
   if(a==="order-action-cancel") { S.editOrderId=null; render(); return; }
   if(a==="approve-order") { confirmApprove(v); return; }
@@ -655,7 +659,7 @@ function render(){
   if(S.tab==="dashboard") renderDash();
   else if(S.tab==="inspect") renderInspect();
   else if(S.tab==="inventory") renderInv();
-  else if(S.tab==="orders") renderOrders();
+  else if(S.tab==="orders") refreshOrders();
   else if(S.tab==="checkout") renderCheckout();
   else if(S.tab==="truckinv") renderTruckInv();
   else if(S.tab==="settings") renderSettings();
@@ -952,27 +956,73 @@ async function submitCheckout(){
       return;
     }
   }
-  for(const item of valid){
-    const prod=S.products.find(p=>p.id===item.productId); if(!prod) continue;
-    const te=S.techEmails.find(t=>t.name===tech);
-    if(isM){
+  const te=S.techEmails.find(t=>t.name===tech);
+  const techEmail=te?te.email:"";
+  const date=new Date().toISOString();
+
+  if(isM){
+    // Manager checkout - process each item, update inventory, log to sheet
+    const low=[];
+    for(const item of valid){
+      const prod=S.products.find(p=>p.id===item.productId); if(!prod) continue;
       const newQty=Math.max(0,prod.qty-parseInt(item.qty));
       prod.qty=newQty;
-      const rec={id:uid(),date:new Date().toISOString(),tech,techEmail:te?.email||"",product:prod.name,qty:parseInt(item.qty),unit:prod.unit,notes:item.notes||""};
+      const rec={id:uid(),date,tech,techEmail,product:prod.name,qty:parseInt(item.qty),unit:prod.unit,notes:item.notes||""};
       S.checkouts.unshift(rec);
       try { await gs("updateQtyServer",{row:prod.row,qty:newQty}); await gs("logCheckoutServer",rec); } catch(e){}
-      const low=S.products.filter(p=>p.qty<=p.lowAt);
-      if(low.length) sendLowEmail(low);
-    } else {
-      const order={id:"ORD-"+Date.now(),date:new Date().toISOString(),tech,techEmail:te?.email||"",product:prod.name,productId:prod.id,requestedQty:parseInt(item.qty),unit:prod.unit,notes:item.notes||"",status:"Pending"};
+      if(prod.qty<=prod.lowAt) low.push(prod);
+    }
+    if(low.length) sendLowEmail(low);
+  } else {
+    // Tech request - bundle ALL items into ONE order with ONE email
+    const orderId="ORD-"+Date.now();
+    const itemLines=valid.map(function(item){
+      const prod=S.products.find(p=>p.id===item.productId);
+      return prod?(prod.name+" x "+item.qty+" "+prod.unit+(item.notes?" ("+item.notes+")":"")):item.productId;
+    });
+
+    // Add each product as separate order record in sheet/app (for individual approval)
+    // but send only ONE combined email
+    const orders=[];
+    for(const item of valid){
+      const prod=S.products.find(p=>p.id===item.productId); if(!prod) continue;
+      const order={id:orderId+"-"+prod.id,date,tech,techEmail,product:prod.name,productId:prod.id,
+        requestedQty:parseInt(item.qty),unit:prod.unit,notes:item.notes||"",status:"Pending"};
       S.orders.unshift(order);
-      try { await gs("addPendingOrderServer",order); await gs("sendEmailServer",{to:getMGMT().join(","),subject:"[Fox Pest Control] Product Request - "+order.tech+" - "+order.product,body:"Product Request\n\nTechnician: "+order.tech+"\nProduct: "+order.product+"\nQty: "+order.requestedQty+" "+order.unit+(order.notes?"\nNotes: "+order.notes:"")+"\n\nLog in to Admin Hub to approve or deny.\nOrder ID: "+order.id}); } catch(e){}
+      orders.push(order);
+      try { await gs("addPendingOrderServer",order); } catch(e){}
+    }
+
+    // Send ONE combined email for all items
+    if(orders.length>0){
+      const itemList=itemLines.join("\n  - ");
+      const body="Product Request - Fox Pest Control Willamette Valley\n\n"
+        +"Technician: "+tech+"\n"
+        +"Date: "+new Date(date).toLocaleDateString("en-US")+"\n\n"
+        +"Items Requested:\n  - "+itemList+"\n\n"
+        +"Log in to the Admin Hub to approve or deny each item.\n\n"
+        +"Automated notification from Fox Admin Hub.";
+      try { await gs("sendEmailServer",{to:getMGMT().join(","),
+        subject:"[Fox Pest Control] Product Request - "+tech+" ("+orders.length+" item"+(orders.length>1?"s":"")+")",
+        body:body}); } catch(e){}
     }
   }
   save(); S.checkDone=true; render();
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
+async function refreshOrders(){
+  try {
+    const result = await gs("getPendingOrdersServer", null);
+    if(result && result.orders){
+      // Merge sheet orders with local - sheet is source of truth
+      S.orders = result.orders;
+      lsSet("hub:orders", S.orders);
+    }
+  } catch(e){ console.warn("Refresh orders:", e.message); }
+  renderOrders();
+}
+
 function renderOrders(){
   const {orders,products}=S;
   const filter=S.ordersFilter;
@@ -993,7 +1043,7 @@ function renderOrders(){
         <span class="sbdg" style="background:${osc(order.status)}22;color:${osc(order.status)};white-space:nowrap;">${order.status}</span>
       </div>${panel}</div>`;
   }).join("");
-  document.getElementById("pg-orders").innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div><h2 style="font-size:20px;font-weight:700;">Product Orders</h2>${pend>0?`<p style="color:#f59e0b;font-size:13px;margin-top:2px;">${pend} pending approval</p>`:""}</div></div><div style="display:flex;gap:6px;margin-bottom:16px;">${fbtns}</div>${filtered.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No ${filter.toLowerCase()} orders.</div>`:cards}`;
+  document.getElementById("pg-orders").innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;"><div><h2 style="font-size:20px;font-weight:700;">Product Orders</h2>${pend>0?`<p style="color:#f59e0b;font-size:13px;margin-top:2px;">${pend} pending approval</p>`:""}</div><button class="btn bg" style="font-size:11px;padding:5px 10px;" data-a="refresh-orders">Refresh</button></div><div style="display:flex;gap:6px;margin-bottom:16px;">${fbtns}</div>${filtered.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No ${filter.toLowerCase()} orders.</div>`:cards}`;
 }
 
 async function confirmApprove(orderId){
