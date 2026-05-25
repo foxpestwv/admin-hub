@@ -1013,7 +1013,7 @@ async function submitCheckout(){
 // ─── Orders ───────────────────────────────────────────────────────────────────
 async function refreshOrders(){
   try {
-    const result = await gs("getPendingOrdersServer", null);
+    const result = await gs("getPendingServer", null);
     if(result && result.orders){
       // Merge sheet orders with local - sheet is source of truth
       S.orders = result.orders;
