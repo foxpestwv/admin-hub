@@ -708,6 +708,13 @@ function handleAction(a,v,el,e){
   if(a==="print-restock") { showPrintDialog("restock"); return; }
   if(a==="print-submit") { doPrint(); return; }
   if(a==="print-cancel") { document.getElementById("print-modal").remove(); return; }
+  if(a==="restock-cancel-order") {
+    if(confirm("Cancel this restock order? It will be marked as Cancelled.")){
+      var ord = S.restockOrders.find(function(o){ return o.id===v; });
+      if(ord){ ord.status="Cancelled"; save(); renderRestock(); }
+    }
+    return;
+  }
   if(a==="restock-archive") {
     S.restockOrders.forEach(function(o){ if(o.status==="Received") o.archived=true; });
     save(); renderRestock(); return;
@@ -1788,14 +1795,23 @@ async function restockSendEmail(){
   S._restockNotes = notes;
   const selectedItems = [];
 
+  var missingQty = [];
   lowStock.forEach(function(p){
     const cb = document.getElementById("rs-"+p.id);
     if(cb&&cb.checked){
       const qtyInp = document.getElementById("rs-qty-"+p.id);
       const qty = parseInt(qtyInp?qtyInp.value:"")||0;
-      selectedItems.push({id:p.id,name:p.name,unit:p.unit,qtyOrdered:qty,onHand:p.qty});
+      if(qty <= 0){
+        missingQty.push(p.name);
+      } else {
+        selectedItems.push({id:p.id,name:p.name,unit:p.unit,qtyOrdered:qty,onHand:p.qty});
+      }
     }
   });
+  if(missingQty.length > 0){
+    const proceed = confirm("The following checked items have no order quantity entered:\n\n- "+missingQty.join("\n- ")+"\n\nThey will be skipped. Continue?");
+    if(!proceed) return;
+  }
   (S._restockExtras||[]).forEach(function(e){
     selectedItems.push({id:e.id,name:e.name,unit:e.unit,qtyOrdered:e.qty,onHand:e.onHand||0});
   });
@@ -1833,7 +1849,7 @@ async function restockSendEmail(){
 
   try {
     await gs("sendEmailServer",{
-      to:"rockey.martin@fox-marketingservices.com",
+      to:"rockey.martin@fox-marketingservices.com,john.kluttz@fox-marketingservices.com",
       subject:"[Fox Pest Control] Restock Request - "+selectedItems.length+" item"+(selectedItems.length>1?"s":"")+" - "+S.managerName,
       body:body
     });
