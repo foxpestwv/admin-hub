@@ -1739,13 +1739,16 @@ function renderRestockReceive(pg){
     +pending.map(function(o){
       var sc2 = o.status==="Partial"?"#f59e0b":o.status==="Backordered"?"#f97316":"#3b82f6";
       var itemSummary = o.items.map(function(i){ return esc(i.name)+" x "+i.qtyOrdered; }).join(", ");
-      return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='restock-open-receive' data-v='"+o.id+"'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+      return "<div class='card' style='margin-bottom:10px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;cursor:pointer;' data-a='restock-open-receive' data-v='"+o.id+"'>"
         +"<div style='font-weight:700;font-size:15px;'>Order "+o.id.slice(-6)+"</div>"
         +"<span class='sbdg' style='background:"+sc2+"22;color:"+sc2+";'>"+o.status+"</span>"
         +"</div>"
         +"<div style='color:#64748b;font-size:12px;'>"+fd(o.date)+"</div>"
-        +"<div style='color:#94a3b8;font-size:12px;margin-top:4px;'>"+itemSummary+"</div>"
+        +"<div style='color:#94a3b8;font-size:12px;margin-top:4px;margin-bottom:10px;'>"+itemSummary+"</div>"
+        +(o.status==="Pending"||o.status==="Backordered"
+          ?"<button class='btn bd' style='width:100%;padding:8px;font-size:13px;' data-a='restock-cancel-order' data-v='"+o.id+"'>Cancel This Order</button>"
+          :"")
         +"</div>";
     }).join("");
 }
