@@ -1801,14 +1801,15 @@ async function restockSendEmail(){
   var missingQty = [];
   lowStock.forEach(function(p){
     const cb = document.getElementById("rs-"+p.id);
-    if(cb&&cb.checked){
-      const qtyInp = document.getElementById("rs-qty-"+p.id);
-      const qty = parseInt(qtyInp?qtyInp.value:"")||0;
-      if(qty <= 0){
-        missingQty.push(p.name);
-      } else {
-        selectedItems.push({id:p.id,name:p.name,unit:p.unit,qtyOrdered:qty,onHand:p.qty});
-      }
+    // Only include if checkbox exists AND is checked
+    if(!cb) return;
+    if(!cb.checked) return; // explicitly unchecked - skip entirely
+    const qtyInp = document.getElementById("rs-qty-"+p.id);
+    const qty = parseInt(qtyInp?qtyInp.value:"")||0;
+    if(qty <= 0){
+      missingQty.push(p.name);
+    } else {
+      selectedItems.push({id:p.id,name:p.name,unit:p.unit,qtyOrdered:qty,onHand:p.qty});
     }
   });
   if(missingQty.length > 0){
