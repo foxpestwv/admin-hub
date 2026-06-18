@@ -776,6 +776,7 @@ function handleAction(a,v,el,e){
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
+  if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
   if(a==="add-cat") { const l=prompt("Category name:"); if(!l)return; const sc2=parseInt(prompt("Scale (3,5,10):"))||10; S.cats.push({id:uid(),label:l.trim(),scale:sc2,items:[]}); save(); render(); return; }
   if(a==="del-cat") { if(confirm("Remove category?")){S.cats=S.cats.filter(c=>c.id!==v);save();render();} return; }
   if(a==="add-cat-item") { const l=prompt("Item label:"); if(!l)return; const hc=confirm("Include comment field?"); const c=S.cats.find(x=>x.id===v); if(c){c.items.push({id:uid(),label:l.trim(),hc});save();render();} return; }
