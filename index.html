@@ -720,7 +720,7 @@ function handleAction(a,v,el,e){
   if(a==="logout") { logout(); return; }
   if(a==="tab") { S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return; }
   if(a==="insp-view") { S.inspView=v; render(); return; }
-  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
+  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
   if(a==="insp-next") { S.inspStep++; render(); return; }
   if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
   if(a==="insp-save") { saveInsp(); return; }
