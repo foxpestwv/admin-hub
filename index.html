@@ -927,6 +927,9 @@ function inspForm(){
         input = "<select class='inp' id='insp-field-"+f.id+"'>"+S.trucks.map(function(t){return "<option value='"+esc(t)+"'"+(inspData.truck===t?" selected":"")+">"+esc(t)+"</option>";}).join("")+"</select>";
       } else if(f.type==="textarea"){
         input = "<textarea class='inp' rows='3' id='insp-field-"+f.id+"' placeholder='"+esc(f.placeholder||"")+"'>"+esc(val)+"</textarea>";
+      } else if(f.type==="select"){
+        var selOpts3=(f.selectOptions||[]).map(function(o){return "<option value='"+esc(o)+"'"+(val===o?" selected":"")+">"+esc(o)+"</option>";}).join("");
+        input = "<select class='inp' id='insp-field-"+f.id+"'><option value=''>-- Select --</option>"+selOpts3+"</select>";
       } else {
         input = "<input type='"+f.type+"' class='inp' id='insp-field-"+f.id+"' value='"+esc(val)+"' placeholder='"+esc(f.placeholder||"")+"'>";
       }
