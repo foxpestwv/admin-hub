@@ -685,6 +685,7 @@ document.addEventListener("change",function(e){
     if(item2){
       if(t.dataset.photofield==="requiresPhoto") item2.requiresPhoto=t.checked;
       if(t.dataset.photofield==="maxPhotos") item2.maxPhotos=parseInt(t.value)||1;
+      if(t.dataset.photofield==="inputType") item2.inputType=t.value;
       save();
       clearTimeout(window._catSaveTimer);
       window._catSaveTimer = setTimeout(function(){ saveAccountsToSheet(); }, 1000);
@@ -933,7 +934,17 @@ function inspForm(){
     const items=cat.items.map(item=>{
       const key=cat.id+":"+item.id;
       const val=inspData.scores[key];
-      const btns=item.noScore?"":Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
+      const inputType=item.inputType||"score";
+      var btns="";
+      if(inputType==="score"){
+        btns=Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
+      } else if(inputType==="text"){
+        btns=`<input type="text" class="inp" style="font-size:13px;padding:7px 10px;" placeholder="Enter text..." value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`;
+      } else if(inputType==="textarea"){
+        btns=`<textarea class="inp" rows="2" style="font-size:13px;padding:7px 10px;" placeholder="Enter notes..." data-commentkey="${key}">${esc(inspData.comments[key]||"")}</textarea>`;
+      } else if(inputType==="number"){
+        btns=`<input type="number" class="inp" style="font-size:15px;padding:7px 10px;width:120px;" placeholder="0" value="${inspData.scores[key]!==undefined?inspData.scores[key]:""}" data-key="${key}" data-type="score">`;
+      }
       const noteType2=item.noteType||"text";
       const comment=item.hc?(noteType2==="textarea"?`<textarea class="inp" rows="2" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" data-commentkey="${key}">${esc(inspData.comments[key]||"")}</textarea>`:`<input type="${noteType2}" class="inp" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`):"";
       // Per-item photo
@@ -2380,7 +2391,17 @@ function renderCatSettings(){
               <input class="inp" style="flex:1;padding:4px 8px;font-size:12px;background:transparent;border:none;" value="${esc(item.label)}" data-catid="${cat.id}" data-itemid="${item.id}">
               <button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 2px;" data-a="del-cat-item" data-v="${cat.id}|${item.id}">x</button>
             </div>
-            <div style="display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;">
+                Entry:
+                <select style="padding:3px 6px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;" data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="inputType">
+                  <option value="score"${(!item.inputType||item.inputType==="score")?" selected":""}>Score</option>
+                  <option value="text"${item.inputType==="text"?" selected":""}>Text</option>
+                  <option value="textarea"${item.inputType==="textarea"?" selected":""}>Textarea</option>
+                  <option value="number"${item.inputType==="number"?" selected":""}>Number</option>
+                  <option value="none"${item.inputType==="none"?" selected":""}>No Entry</option>
+                </select>
+              </label>
               <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;">
                 <input type="checkbox" ${item.requiresPhoto?"checked":""} data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="requiresPhoto" style="width:14px;height:14px;accent-color:#2563eb;">
                 📷 Photo
