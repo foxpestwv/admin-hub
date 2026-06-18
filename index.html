@@ -1056,7 +1056,8 @@ async function saveInsp(){
   const catH=S.cats.flatMap(c=>c.items.map(i=>c.label+": "+i.label+" (/"+c.scale+")"));
   const headers=["Date","Truck","Inspector","Mileage","Overall %",...catH];
   const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
-  const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
+  const customVals=S.inspFields.filter(function(f){return f.enabled!==false&&f.id!=="truck";}).map(function(f){return rec[f.id]||inspData[f.id]||"";});
+  const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,...customVals,pct,...catS];
   try { await gs("logInspectionServer",{headers,row}); } catch(e){}
 }
 
