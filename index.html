@@ -230,9 +230,9 @@ const S = {
 
 function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
-function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
+function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
-  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
   if(!S.products||!S.products.length) S.products=JSON.parse(JSON.stringify(SEED));
   if(!S.managers||!S.managers.length) S.managers=[
     {id:"mgr1",name:"John Kluttz",email:"john.kluttz@fox-marketingservices.com",pin:"",tempPin:"1234",isTemp:true}
@@ -303,6 +303,10 @@ async function loadAccountsFromSheet(){
       S.cats = result.cats;
       lsSet("hub:cats", S.cats);
     }
+    if(result && result.inspFields && result.inspFields.length){
+      S.inspFields = result.inspFields;
+      lsSet("hub:inspFields", S.inspFields);
+    }
     // Re-render if currently on settings page so truck assignments show correctly
     if(S.role && S.tab === "settings"){
       renderSettings();
@@ -312,7 +316,7 @@ async function loadAccountsFromSheet(){
 
 async function saveAccountsToSheet(){
   try {
-    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks, cats: S.cats});
+    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks, cats: S.cats, inspFields: S.inspFields});
   } catch(e){ console.warn("Save accounts:", e.message); }
 }
 
@@ -652,6 +656,19 @@ document.addEventListener("change",function(e){
   if(t.id==="mgr-name-inp") S.managerName=t.value;
   if(t.id==="pin-mgr-inp") S._pinMgr=t.value;
   if(t.id==="pin-tech-inp") S._pinTech=t.value;
+  // Inspection detail field settings
+  if(t.dataset.fieldidx!==undefined&&t.dataset.fieldprop){
+    var fi3=parseInt(t.dataset.fieldidx);
+    var prop=t.dataset.fieldprop;
+    if(S.inspFields[fi3]!==undefined){
+      if(prop==="enabled"||prop==="required") S.inspFields[fi3][prop]=t.checked;
+      else S.inspFields[fi3][prop]=t.value;
+      save();
+      clearTimeout(window._fieldSaveTimer);
+      window._fieldSaveTimer=setTimeout(function(){saveAccountsToSheet();},1000);
+    }
+    return;
+  }
   // Photo settings in inspection item editor
   if(t.dataset.catid&&t.dataset.itemid&&t.dataset.photofield){
     var cat2=S.cats.find(function(c){return c.id===t.dataset.catid;});
@@ -777,6 +794,8 @@ function handleAction(a,v,el,e){
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
   if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
+  if(a==="add-insp-field") { S.inspFields.push({id:"custom_"+Date.now(),label:"New Field",type:"text",required:false,enabled:true,placeholder:""}); save(); saveAccountsToSheet(); render(); return; }
+  if(a==="del-insp-field") { var fi2=parseInt(v); if(confirm("Remove this field?")){S.inspFields.splice(fi2,1);save();saveAccountsToSheet();render();} return; }
   if(a==="add-cat") { const l=prompt("Category name:"); if(!l)return; const sc2=parseInt(prompt("Scale (3,5,10):"))||10; S.cats.push({id:uid(),label:l.trim(),scale:sc2,items:[]}); save(); render(); return; }
   if(a==="del-cat") { if(confirm("Remove category?")){S.cats=S.cats.filter(c=>c.id!==v);save();render();} return; }
   if(a==="add-cat-item") { const l=prompt("Item label:"); if(!l)return; const hc=confirm("Include comment field?"); const c=S.cats.find(x=>x.id===v); if(c){c.items.push({id:uid(),label:l.trim(),hc});save();render();} return; }
@@ -887,15 +906,20 @@ function inspForm(){
   const prog=`<div class="pb"><div class="pf" style="width:${(step/(steps.length-1))*100}%"></div></div><div style="display:flex;justify-content:space-between;margin-bottom:16px;"><span style="font-size:12px;color:#475569;">Step ${step+1} of ${steps.length}</span><span style="font-size:12px;color:#475569;">${esc(steps[step])}</span></div>`;
   let body="";
   if(isInfo){
-    body=`<h2 style="font-size:17px;font-weight:700;margin-bottom:18px;">Inspection Details</h2>
-      <div style="margin-bottom:14px;"><label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Vehicle</label>
-        <select class="inp" id="insp-truck">${S.trucks.map(t=>`<option value="${esc(t)}"${inspData.truck===t?" selected":""}>${esc(t)}</option>`).join("")}</select></div>
-      <div style="margin-bottom:14px;"><label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Current Mileage</label>
-        <input type="number" class="inp" id="insp-mileage" value="${esc(inspData.mileage)}" placeholder="e.g. 87432"></div>
-      <div style="margin-bottom:14px;"><label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Inspector Name</label>
-        <input type="text" class="inp" id="insp-inspector" value="${esc(inspData.inspector)}" placeholder="Your name"></div>
-      <div style="margin-bottom:14px;"><label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:5px;">Notes</label>
-        <textarea class="inp" rows="3" id="insp-notes" placeholder="Overall observations...">${esc(inspData.notes)}</textarea></div>`;
+    var fieldHtml = S.inspFields.filter(function(f){return f.enabled!==false;}).map(function(f){
+      var val = inspData[f.id]||"";
+      var req = f.required ? "<span style='color:#ef4444;margin-left:3px;'>*</span>" : "";
+      var input = "";
+      if(f.id==="truck"){
+        input = "<select class='inp' id='insp-field-"+f.id+"'>"+S.trucks.map(function(t){return "<option value='"+esc(t)+"'"+(inspData.truck===t?" selected":"")+">"+esc(t)+"</option>";}).join("")+"</select>";
+      } else if(f.type==="textarea"){
+        input = "<textarea class='inp' rows='3' id='insp-field-"+f.id+"' placeholder='"+esc(f.placeholder||"")+"'>"+esc(val)+"</textarea>";
+      } else {
+        input = "<input type='"+f.type+"' class='inp' id='insp-field-"+f.id+"' value='"+esc(val)+"' placeholder='"+esc(f.placeholder||"")+"'>";
+      }
+      return "<div style='margin-bottom:14px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:5px;'>"+esc(f.label)+req+"</label>"+input+"</div>";
+    }).join("");
+    body=`<h2 style="font-size:17px;font-weight:700;margin-bottom:18px;">Inspection Details</h2>${fieldHtml}`;
   } else if(cat){
     const items=cat.items.map(item=>{
       const key=cat.id+":"+item.id;
@@ -2365,7 +2389,32 @@ function renderCatSettings(){
     </div>`:""}
   </div>`).join("");
 
-  return `<div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bp" style="flex:1;font-size:13px;" data-a="add-cat">+ Add Category</button><button class="btn bg" style="font-size:12px;padding:6px 12px;" data-a="save-cats-to-sheet">&#x1F4BE; Sync to All Devices</button></div>
+  // Build inspection details fields editor
+  var fieldTypes = ["text","number","textarea","select"];
+  var detailsHtml = "<div class='card' style='margin-bottom:16px;'>"
+    +"<div style='font-size:13px;font-weight:700;margin-bottom:12px;'>Inspection Details Fields</div>"
+    +"<p style='color:#475569;font-size:12px;margin-bottom:12px;'>Customize the fields shown on the first page of the inspection form. Required fields must be filled before proceeding.</p>"
+    +S.inspFields.map(function(f,fi){
+      return "<div style='background:#0a1628;border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid #1e3a5f;'>"
+        +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+        +"<input class='inp' style='flex:1;padding:5px 8px;font-size:13px;' value='"+esc(f.label)+"' data-fieldidx='"+fi+"' data-fieldprop='label' placeholder='Field label'>"
+        +"<select class='inp' style='width:100px;padding:5px 8px;font-size:12px;' data-fieldidx='"+fi+"' data-fieldprop='type'>"
+        +fieldTypes.map(function(t){return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>";}).join("")
+        +"</select>"
+        +(f.id!=="truck"?"<button class='btn bd' style='padding:4px 8px;font-size:12px;' data-a='del-insp-field' data-v='"+fi+"'>X</button>":"")
+        +"</div>"
+        +"<input class='inp' style='width:100%;padding:5px 8px;font-size:12px;margin-bottom:6px;' value='"+esc(f.placeholder||"")+"' data-fieldidx='"+fi+"' data-fieldprop='placeholder' placeholder='Placeholder text (optional)'>"
+        +"<div style='display:flex;gap:16px;'>"
+        +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;'>"
+        +"<input type='checkbox' "+(f.enabled!==false?"checked":"")+" data-fieldidx='"+fi+"' data-fieldprop='enabled' style='accent-color:#2563eb;'> Enabled</label>"
+        +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;'>"
+        +"<input type='checkbox' "+(f.required?"checked":"")+" data-fieldidx='"+fi+"' data-fieldprop='required' style='accent-color:#ef4444;'> <span style='color:#ef4444;'>Required *</span></label>"
+        +"</div></div>";
+    }).join("")
+    +"<button class='btn bg' style='width:100%;margin-top:4px;font-size:13px;' data-a='add-insp-field'>+ Add Custom Field</button>"
+    +"</div>";
+
+  return detailsHtml+`<div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bp" style="flex:1;font-size:13px;" data-a="add-cat">+ Add Category</button><button class="btn bg" style="font-size:12px;padding:6px 12px;" data-a="save-cats-to-sheet">&#x1F4BE; Sync to All Devices</button></div>
     <p style="color:#475569;font-size:12px;margin-bottom:10px;">&#x2630; Drag categories and items to reorder them.</p>
     <div id="cat-list">${rows}</div>`;
 }
