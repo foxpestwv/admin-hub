@@ -671,7 +671,8 @@ document.addEventListener("change",function(e){
     var prop=t.dataset.fieldprop;
     if(S.inspFields[fi3]!==undefined){
       if(prop==="enabled"||prop==="required") S.inspFields[fi3][prop]=t.checked;
-      else S.inspFields[fi3][prop]=t.value;
+      else if(prop==="selectOptions") S.inspFields[fi3][prop]=t.value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
+else S.inspFields[fi3][prop]=t.value;
       save();
       clearTimeout(window._fieldSaveTimer);
       window._fieldSaveTimer=setTimeout(function(){saveAccountsToSheet();},1000);
