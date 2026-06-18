@@ -299,6 +299,10 @@ async function loadAccountsFromSheet(){
       S.trucks = result.trucks;
       lsSet("hub:trucks", S.trucks);
     }
+    if(result && result.cats && result.cats.length){
+      S.cats = result.cats;
+      lsSet("hub:cats", S.cats);
+    }
     // Re-render if currently on settings page so truck assignments show correctly
     if(S.role && S.tab === "settings"){
       renderSettings();
@@ -308,7 +312,7 @@ async function loadAccountsFromSheet(){
 
 async function saveAccountsToSheet(){
   try {
-    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks});
+    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks, cats: S.cats});
   } catch(e){ console.warn("Save accounts:", e.message); }
 }
 
@@ -656,6 +660,8 @@ document.addEventListener("change",function(e){
       if(t.dataset.photofield==="requiresPhoto") item2.requiresPhoto=t.checked;
       if(t.dataset.photofield==="maxPhotos") item2.maxPhotos=parseInt(t.value)||1;
       save();
+      clearTimeout(window._catSaveTimer);
+      window._catSaveTimer = setTimeout(function(){ saveAccountsToSheet(); }, 1000);
     }
     return;
   }
