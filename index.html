@@ -2284,25 +2284,106 @@ function renderSettings(){
 
 function renderCatSettings(){
   const open=S.openCat;
-  const rows=S.cats.map(cat=>`<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden;"><div style="padding:12px 14px;background:#0a1628;display:flex;align-items:center;gap:8px;cursor:pointer;" data-a="toggle-cat" data-v="${cat.id}"><div style="flex:1;"><span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span><span style="font-size:11px;color:#475569;margin-left:8px;">1-${cat.scale} - ${cat.items.length} items</span></div><span style="color:#64748b;">${open===cat.id?"&#x25B2;":"&#x25BC;"}</span></div>${open===cat.id?`<div style="padding:14px;"><div style="display:flex;gap:8px;margin-bottom:12px;"><input class="inp" style="flex:1;padding:6px 10px;font-size:13px;" value="${esc(cat.label)}" data-catid="${cat.id}" data-catfield="label"><select class="inp" style="width:80px;padding:6px 8px;font-size:13px;" data-catid="${cat.id}" data-catfield="scale">${[3,5,10].map(n=>`<option value="${n}"${cat.scale===n?" selected":""}>1-${n}</option>`).join("")}</select></div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">${cat.items.map(item=>`<div style="background:#0a1628;border-radius:7px;padding:8px 10px;border:1px solid #1e3a5f;margin-bottom:4px;">
-  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-    <input class="inp" style="flex:1;padding:4px 8px;font-size:12px;background:transparent;border:none;" value="${esc(item.label)}" data-catid="${cat.id}" data-itemid="${item.id}">
-    <button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 2px;" data-a="del-cat-item" data-v="${cat.id}|${item.id}">x</button>
-  </div>
-  <div style="display:flex;align-items:center;gap:14px;">
-    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;">
-      <input type="checkbox" ${item.requiresPhoto?"checked":""} data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="requiresPhoto" style="width:14px;height:14px;accent-color:#2563eb;">
-      📷 Photo
-    </label>
-    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;">
-      Max:
-      <input type="number" style="width:46px;padding:3px 6px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;text-align:center;" value="${item.maxPhotos||1}" min="1" max="10" data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="maxPhotos">
-    </label>
-  </div>
-</div>`).join("")}</div><div style="display:flex;gap:8px;"><button class="btn bg" style="flex:1;font-size:12px;padding:7px;" data-a="add-cat-item" data-v="${cat.id}">+ Add Item</button><button class="btn bd" style="font-size:12px;padding:7px 12px;" data-a="del-cat" data-v="${cat.id}">Remove</button></div></div>`:""}
+  const rows=S.cats.map((cat,ci)=>`<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden;" draggable="true" data-dragtype="cat" data-dragidx="${ci}">
+    <div style="padding:12px 14px;background:#0a1628;display:flex;align-items:center;gap:8px;">
+      <span style="color:#475569;cursor:grab;font-size:18px;padding-right:4px;" title="Drag to reorder">&#x2630;</span>
+      <div style="flex:1;cursor:pointer;" data-a="toggle-cat" data-v="${cat.id}">
+        <span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span>
+        <span style="font-size:11px;color:#475569;margin-left:8px;">1-${cat.scale} &bull; ${cat.items.length} items</span>
+      </div>
+      <span style="color:#64748b;cursor:pointer;" data-a="toggle-cat" data-v="${cat.id}">${open===cat.id?"&#x25B2;":"&#x25BC;"}</span>
+    </div>
+    ${open===cat.id?`<div style="padding:14px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input class="inp" style="flex:1;padding:6px 10px;font-size:13px;" value="${esc(cat.label)}" data-catid="${cat.id}" data-catfield="label">
+        <select class="inp" style="width:80px;padding:6px 8px;font-size:13px;" data-catid="${cat.id}" data-catfield="scale">
+          ${[3,5,10].map(n=>`<option value="${n}"${cat.scale===n?" selected":""}>1-${n}</option>`).join("")}
+        </select>
+      </div>
+      <div id="items-${cat.id}" style="margin-bottom:10px;">
+        ${cat.items.map((item,ii)=>`<div style="background:#0a1628;border-radius:7px;padding:8px 10px;border:1px solid #1e3a5f;margin-bottom:4px;display:flex;gap:6px;align-items:flex-start;" draggable="true" data-dragtype="item" data-dragcatid="${cat.id}" data-dragidx="${ii}">
+          <span style="color:#475569;cursor:grab;font-size:16px;padding-top:4px;" title="Drag to reorder">&#x2630;</span>
+          <div style="flex:1;">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+              <input class="inp" style="flex:1;padding:4px 8px;font-size:12px;background:transparent;border:none;" value="${esc(item.label)}" data-catid="${cat.id}" data-itemid="${item.id}">
+              <button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 2px;" data-a="del-cat-item" data-v="${cat.id}|${item.id}">x</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;">
+                <input type="checkbox" ${item.requiresPhoto?"checked":""} data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="requiresPhoto" style="width:14px;height:14px;accent-color:#2563eb;">
+                📷 Photo
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;">
+                Max: <input type="number" style="width:46px;padding:3px 6px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;text-align:center;" value="${item.maxPhotos||1}" min="1" max="10" data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="maxPhotos">
+              </label>
+            </div>
+          </div>
+        </div>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn bg" style="flex:1;font-size:12px;padding:7px;" data-a="add-cat-item" data-v="${cat.id}">+ Add Item</button>
+        <button class="btn bd" style="font-size:12px;padding:7px 12px;" data-a="del-cat" data-v="${cat.id}">Remove</button>
+      </div>
+    </div>`:""}
   </div>`).join("");
-  return `<button class="btn bp" style="width:100%;margin-bottom:14px;font-size:13px;" data-a="add-cat">+ Add Category</button>${rows}`;
+
+  return `<button class="btn bp" style="width:100%;margin-bottom:14px;font-size:13px;" data-a="add-cat">+ Add Category</button>
+    <p style="color:#475569;font-size:12px;margin-bottom:10px;">&#x2630; Drag categories and items to reorder them.</p>
+    <div id="cat-list">${rows}</div>`;
 }
+
+// ─── Drag and Drop for Inspection Categories and Items ─────────────────────────
+(function(){
+  var dragType=null, dragIdx=null, dragCatId=null;
+
+  document.addEventListener("dragstart", function(e){
+    var el = e.target;
+    while(el && !el.dataset.dragtype) el=el.parentElement;
+    if(!el) return;
+    dragType = el.dataset.dragtype;
+    dragIdx = parseInt(el.dataset.dragidx);
+    dragCatId = el.dataset.dragcatid||null;
+    e.dataTransfer.effectAllowed="move";
+    setTimeout(function(){ el.style.opacity="0.4"; }, 0);
+  });
+
+  document.addEventListener("dragend", function(e){
+    var el = e.target;
+    while(el && !el.dataset.dragtype) el=el.parentElement;
+    if(el) el.style.opacity="1";
+  });
+
+  document.addEventListener("dragover", function(e){
+    e.preventDefault();
+    e.dataTransfer.dropEffect="move";
+  });
+
+  document.addEventListener("drop", function(e){
+    e.preventDefault();
+    var el = e.target;
+    while(el && !el.dataset.dragtype) el=el.parentElement;
+    if(!el) return;
+    var dropType = el.dataset.dragtype;
+    var dropIdx = parseInt(el.dataset.dragidx);
+    var dropCatId = el.dataset.dragcatid||null;
+
+    if(dragType==="cat" && dropType==="cat" && dragIdx!==dropIdx){
+      // Reorder categories
+      var moved = S.cats.splice(dragIdx,1)[0];
+      S.cats.splice(dropIdx,0,moved);
+      save(); renderSettings();
+    } else if(dragType==="item" && dropType==="item" && dragCatId===dropCatId && dragIdx!==dropIdx){
+      // Reorder items within same category
+      var cat = S.cats.find(function(c){return c.id===dragCatId;});
+      if(cat){
+        var movedItem = cat.items.splice(dragIdx,1)[0];
+        cat.items.splice(dropIdx,0,movedItem);
+        save(); renderSettings();
+      }
+    }
+    dragType=null; dragIdx=null; dragCatId=null;
+  });
+})();
 
 async function sendLoginEmail(role, idx){
   const acct = role==="manager" ? S.managers[idx] : S.techAccounts[idx];
