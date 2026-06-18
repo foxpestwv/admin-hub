@@ -675,6 +675,7 @@ document.addEventListener("change",function(e){
       save();
       clearTimeout(window._fieldSaveTimer);
       window._fieldSaveTimer=setTimeout(function(){saveAccountsToSheet();},1000);
+            if(prop==="type") render();
     }
     return;
   }
