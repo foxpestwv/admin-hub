@@ -763,7 +763,9 @@ function handleAction(a,v,el,e){
   if(a==="ti-submit") { tiSubmit(); return; }
   if(a==="save-mgr-name") { S.managerName=document.getElementById("mgr-name-inp").value||S.managerName; save(); alert("Saved!"); return; }
   if(a==="add-truck") { const inp=document.getElementById("new-truck-inp"); if(inp&&inp.value.trim()){S.trucks.push(inp.value.trim());save();render();} return; }
-  if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();render();} return; }
+  if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();saveAccountsToSheet();render();} return; }
+  if(a==="truck-up") { var tui=parseInt(v); if(tui>0){var tutmp=S.trucks[tui-1];S.trucks[tui-1]=S.trucks[tui];S.trucks[tui]=tutmp;save();saveAccountsToSheet();render();} return; }
+  if(a==="truck-down") { var tdi=parseInt(v); if(tdi<S.trucks.length-1){var tdtmp=S.trucks[tdi+1];S.trucks[tdi+1]=S.trucks[tdi];S.trucks[tdi]=tdtmp;save();saveAccountsToSheet();render();} return; }
   if(a==="add-tech") { const inp=document.getElementById("new-tech-inp"); if(inp&&inp.value.trim()){S.techs.push(inp.value.trim());save();render();} return; }
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
