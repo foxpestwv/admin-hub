@@ -2442,6 +2442,7 @@ function renderCatSettings(){
         +"<select class='inp' style='width:100px;padding:5px 8px;font-size:12px;' data-fieldidx='"+fi+"' data-fieldprop='type'>"
         +fieldTypes.map(function(t){return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>";}).join("")
         +"</select>"
+        +(f.type==="select"?"<div style='margin-top:6px;'><div style='font-size:11px;color:#64748b;margin-bottom:4px;'>Options (one per line):</div><textarea style='width:100%;padding:5px 8px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;resize:vertical;min-height:60px;' data-fieldidx='"+fi+"' data-fieldprop='selectOptions' placeholder='Option 1\nOption 2\nOption 3'>"+((f.selectOptions||[]).join("\n"))+"</textarea></div>":"")
         +(f.id!=="truck"?"<button class='btn bd' style='padding:4px 8px;font-size:12px;' data-a='del-insp-field' data-v='"+fi+"'>X</button>":"")
         +"</div>"
         +"<input class='inp' style='width:100%;padding:5px 8px;font-size:12px;margin-bottom:6px;' value='"+esc(f.placeholder||"")+"' data-fieldidx='"+fi+"' data-fieldprop='placeholder' placeholder='Placeholder text (optional)'>"
