@@ -219,6 +219,7 @@ const S = {
   techs:[], techEmails:[], cats:DEFAULT_CATS,
   inspections:[], products:[], checkouts:[], orders:[],
   truckInventories:{}, // {techName: {truck, products:[{id,name,unit,qty,prevQty}], lastSubmit}}
+  sheetTruckData:{}, // loaded from sheet for manager view
   restockOrders:[], // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
@@ -310,7 +311,7 @@ async function saveAccountsToSheet(){
 async function syncFromSheet(){
   badge("syncing");
   try {
-    const [pr,tc,ro,insp] = await Promise.all([gs("getProductsServer",null),gs("getTechsServer",null),gs("getRestockOrdersServer",null),gs("getInspectionsServer",null)]);
+    const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",null),gs("getTechsServer",null),gs("getRestockOrdersServer",null),gs("getInspectionsServer",null),gs("getTruckInventoryServer",null)]);
     if(pr&&pr.products&&pr.products.length){
       // Preserve local truckWarnAbove values when syncing
       pr.products.forEach(function(p){
@@ -349,6 +350,9 @@ async function syncFromSheet(){
     if(insp&&insp.inspections&&insp.inspections.length){
       S.inspections=insp.inspections;
       lsSet("hub:inspections",S.inspections);
+    }
+    if(ti&&ti.trucks){
+      S.sheetTruckData=ti.trucks;
     }
     badge("done");
   } catch(e){ console.warn("Sync:",e.message); badge("err"); }
@@ -640,6 +644,17 @@ document.addEventListener("change",function(e){
   if(t.id==="mgr-name-inp") S.managerName=t.value;
   if(t.id==="pin-mgr-inp") S._pinMgr=t.value;
   if(t.id==="pin-tech-inp") S._pinTech=t.value;
+  // Photo settings in inspection item editor
+  if(t.dataset.catid&&t.dataset.itemid&&t.dataset.photofield){
+    var cat2=S.cats.find(function(c){return c.id===t.dataset.catid;});
+    var item2=cat2?cat2.items.find(function(i){return i.id===t.dataset.itemid;}):null;
+    if(item2){
+      if(t.dataset.photofield==="requiresPhoto") item2.requiresPhoto=t.checked;
+      if(t.dataset.photofield==="maxPhotos") item2.maxPhotos=parseInt(t.value)||1;
+      save();
+    }
+    return;
+  }
   if(t.dataset.catid&&t.dataset.catfield){
     const c=S.cats.find(x=>x.id===t.dataset.catid);
     if(c){c[t.dataset.catfield]=t.dataset.catfield==="scale"?parseInt(t.value):t.value;}
@@ -665,7 +680,7 @@ function handleAction(a,v,el,e){
   if(a==="logout") { logout(); return; }
   if(a==="tab") { S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return; }
   if(a==="insp-view") { S.inspView=v; render(); return; }
-  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[]}; render(); return; }
+  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
   if(a==="insp-next") { S.inspStep++; render(); return; }
   if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
   if(a==="insp-save") { saveInsp(); return; }
@@ -674,6 +689,12 @@ function handleAction(a,v,el,e){
   if(a==="score") { const [ci,ii,n]=v.split("|"); const k=ci+":"+ii; const cur=S.inspData.scores[k]; if(cur===parseInt(n))delete S.inspData.scores[k]; else S.inspData.scores[k]=parseInt(n); render(); return; }
   if(a==="add-photo") { document.getElementById("photo-file").click(); return; }
   if(a==="del-photo") { S.inspData.photos.splice(parseInt(v),1); render(); return; }
+  if(a==="del-item-photo") {
+    var pp=v.split("|"); var pkey=pp[0]+"|"+pp[1]; var pidx=parseInt(pp[2]);
+    var ikey=pp[0]+":"+pp[1];
+    if(S.inspData.itemPhotos&&S.inspData.itemPhotos[ikey]) S.inspData.itemPhotos[ikey].splice(pidx,1);
+    render(); return;
+  }
   if(a==="inv-view") { S.invView=v; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="close-panel") { S._adjId=null; render(); return; }
@@ -742,6 +763,7 @@ function handleAction(a,v,el,e){
   if(a==="add-tech") { const inp=document.getElementById("new-tech-inp"); if(inp&&inp.value.trim()){S.techs.push(inp.value.trim());save();render();} return; }
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
+  if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
   if(a==="add-cat") { const l=prompt("Category name:"); if(!l)return; const sc2=parseInt(prompt("Scale (3,5,10):"))||10; S.cats.push({id:uid(),label:l.trim(),scale:sc2,items:[]}); save(); render(); return; }
   if(a==="del-cat") { if(confirm("Remove category?")){S.cats=S.cats.filter(c=>c.id!==v);save();render();} return; }
   if(a==="add-cat-item") { const l=prompt("Item label:"); if(!l)return; const hc=confirm("Include comment field?"); const c=S.cats.find(x=>x.id===v); if(c){c.items.push({id:uid(),label:l.trim(),hc});save();render();} return; }
@@ -910,6 +932,32 @@ function calcPct(){
   let e=0,p=0;
   S.cats.forEach(c=>c.items.forEach(item=>{p+=c.scale;const s=S.inspData.scores[c.id+":"+item.id];if(s!==undefined)e+=s;}));
   return p>0?Math.round((e/p)*100):0;
+}
+
+function captureItemPhoto(input){
+  var key = input.getAttribute("data-itemkey");
+  var file = input.files[0];
+  if(!file||!key) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var canvas = document.createElement("canvas");
+      var maxSize = 1024;
+      var w=img.width, h=img.height;
+      if(w>h){ if(w>maxSize){h=h*maxSize/w;w=maxSize;} }
+      else { if(h>maxSize){w=w*maxSize/h;h=maxSize;} }
+      canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      var dataUrl = canvas.toDataURL("image/jpeg",0.75);
+      if(!S.inspData.itemPhotos) S.inspData.itemPhotos={};
+      if(!S.inspData.itemPhotos[key]) S.inspData.itemPhotos[key]=[];
+      S.inspData.itemPhotos[key].push(dataUrl);
+      render();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 async function saveInsp(){
@@ -2236,7 +2284,22 @@ function renderSettings(){
 
 function renderCatSettings(){
   const open=S.openCat;
-  const rows=S.cats.map(cat=>`<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden;"><div style="padding:12px 14px;background:#0a1628;display:flex;align-items:center;gap:8px;cursor:pointer;" data-a="toggle-cat" data-v="${cat.id}"><div style="flex:1;"><span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span><span style="font-size:11px;color:#475569;margin-left:8px;">1-${cat.scale} - ${cat.items.length} items</span></div><span style="color:#64748b;">${open===cat.id?"&#x25B2;":"&#x25BC;"}</span></div>${open===cat.id?`<div style="padding:14px;"><div style="display:flex;gap:8px;margin-bottom:12px;"><input class="inp" style="flex:1;padding:6px 10px;font-size:13px;" value="${esc(cat.label)}" data-catid="${cat.id}" data-catfield="label"><select class="inp" style="width:80px;padding:6px 8px;font-size:13px;" data-catid="${cat.id}" data-catfield="scale">${[3,5,10].map(n=>`<option value="${n}"${cat.scale===n?" selected":""}>1-${n}</option>`).join("")}</select></div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">${cat.items.map(item=>`<div style="display:flex;gap:6px;align-items:center;background:#0a1628;border-radius:7px;padding:7px 10px;border:1px solid #1e3a5f;"><input class="inp" style="flex:1;padding:4px 8px;font-size:12px;background:transparent;border:none;" value="${esc(item.label)}" data-catid="${cat.id}" data-itemid="${item.id}"><button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 2px;" data-a="del-cat-item" data-v="${cat.id}|${item.id}">x</button></div>`).join("")}</div><div style="display:flex;gap:8px;"><button class="btn bg" style="flex:1;font-size:12px;padding:7px;" data-a="add-cat-item" data-v="${cat.id}">+ Add Item</button><button class="btn bd" style="font-size:12px;padding:7px 12px;" data-a="del-cat" data-v="${cat.id}">Remove</button></div></div>`:""}
+  const rows=S.cats.map(cat=>`<div class="card" style="margin-bottom:8px;padding:0;overflow:hidden;"><div style="padding:12px 14px;background:#0a1628;display:flex;align-items:center;gap:8px;cursor:pointer;" data-a="toggle-cat" data-v="${cat.id}"><div style="flex:1;"><span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span><span style="font-size:11px;color:#475569;margin-left:8px;">1-${cat.scale} - ${cat.items.length} items</span></div><span style="color:#64748b;">${open===cat.id?"&#x25B2;":"&#x25BC;"}</span></div>${open===cat.id?`<div style="padding:14px;"><div style="display:flex;gap:8px;margin-bottom:12px;"><input class="inp" style="flex:1;padding:6px 10px;font-size:13px;" value="${esc(cat.label)}" data-catid="${cat.id}" data-catfield="label"><select class="inp" style="width:80px;padding:6px 8px;font-size:13px;" data-catid="${cat.id}" data-catfield="scale">${[3,5,10].map(n=>`<option value="${n}"${cat.scale===n?" selected":""}>1-${n}</option>`).join("")}</select></div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">${cat.items.map(item=>`<div style="background:#0a1628;border-radius:7px;padding:8px 10px;border:1px solid #1e3a5f;margin-bottom:4px;">
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+    <input class="inp" style="flex:1;padding:4px 8px;font-size:12px;background:transparent;border:none;" value="${esc(item.label)}" data-catid="${cat.id}" data-itemid="${item.id}">
+    <button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 2px;" data-a="del-cat-item" data-v="${cat.id}|${item.id}">x</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;">
+      <input type="checkbox" ${item.requiresPhoto?"checked":""} data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="requiresPhoto" style="width:14px;height:14px;accent-color:#2563eb;">
+      📷 Photo
+    </label>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;">
+      Max:
+      <input type="number" style="width:46px;padding:3px 6px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;text-align:center;" value="${item.maxPhotos||1}" min="1" max="10" data-catid="${cat.id}" data-itemid="${item.id}" data-photofield="maxPhotos">
+    </label>
+  </div>
+</div>`).join("")}</div><div style="display:flex;gap:8px;"><button class="btn bg" style="flex:1;font-size:12px;padding:7px;" data-a="add-cat-item" data-v="${cat.id}">+ Add Item</button><button class="btn bd" style="font-size:12px;padding:7px 12px;" data-a="del-cat" data-v="${cat.id}">Remove</button></div></div>`:""}
   </div>`).join("");
   return `<button class="btn bp" style="width:100%;margin-bottom:14px;font-size:13px;" data-a="add-cat">+ Add Category</button>${rows}`;
 }
