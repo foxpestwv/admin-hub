@@ -295,6 +295,10 @@ async function loadAccountsFromSheet(){
       S.techAccounts = result.techAccounts;
       lsSet("hub:techAccounts", S.techAccounts);
     }
+    if(result && result.trucks && result.trucks.length){
+      S.trucks = result.trucks;
+      lsSet("hub:trucks", S.trucks);
+    }
     // Re-render if currently on settings page so truck assignments show correctly
     if(S.role && S.tab === "settings"){
       renderSettings();
@@ -304,7 +308,7 @@ async function loadAccountsFromSheet(){
 
 async function saveAccountsToSheet(){
   try {
-    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts});
+    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks});
   } catch(e){ console.warn("Save accounts:", e.message); }
 }
 
