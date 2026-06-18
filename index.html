@@ -238,6 +238,15 @@ function load(){
     {id:"mgr1",name:"John Kluttz",email:"john.kluttz@fox-marketingservices.com",pin:"",tempPin:"1234",isTemp:true}
   ];
   if(!S.techAccounts) S.techAccounts=[];
+  if(!S.inspFields||!S.inspFields.length) S.inspFields=[
+    {id:"truck",label:"Vehicle",type:"select",required:true,enabled:true,placeholder:""},
+    {id:"mileage",label:"Current Mileage",type:"number",required:false,enabled:true,placeholder:"e.g. 87432"},
+    {id:"inspector",label:"Inspector Name",type:"text",required:false,enabled:true,placeholder:"Your name"},
+    {id:"notes",label:"Notes",type:"textarea",required:false,enabled:true,placeholder:"Overall observations..."}
+  ];
+  if(!S.restockOrders) S.restockOrders=[];
+  if(!S.truckInventories) S.truckInventories={};
+  if(!S.sheetTruckData) S.sheetTruckData={};
 }
 
 // ─── Apps Script Bridge ──────────────────────────────────────────────────────
@@ -2414,6 +2423,12 @@ function renderCatSettings(){
     +"<button class='btn bg' style='width:100%;margin-top:4px;font-size:13px;' data-a='add-insp-field'>+ Add Custom Field</button>"
     +"</div>";
 
+  if(!S.inspFields||!S.inspFields.length) S.inspFields=[
+    {id:"truck",label:"Vehicle",type:"select",required:true,enabled:true,placeholder:""},
+    {id:"mileage",label:"Current Mileage",type:"number",required:false,enabled:true,placeholder:"e.g. 87432"},
+    {id:"inspector",label:"Inspector Name",type:"text",required:false,enabled:true,placeholder:"Your name"},
+    {id:"notes",label:"Notes",type:"textarea",required:false,enabled:true,placeholder:"Overall observations..."}
+  ];
   return detailsHtml+`<div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bp" style="flex:1;font-size:13px;" data-a="add-cat">+ Add Category</button><button class="btn bg" style="font-size:12px;padding:6px 12px;" data-a="save-cats-to-sheet">&#x1F4BE; Sync to All Devices</button></div>
     <p style="color:#475569;font-size:12px;margin-bottom:10px;">&#x2630; Drag categories and items to reorder them.</p>
     <div id="cat-list">${rows}</div>`;
