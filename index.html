@@ -903,19 +903,25 @@ function inspForm(){
       const btns=Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
       const comment=item.hc?`<input type="text" class="inp" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Comment (optional)" value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`:"";
       // Per-item photo
-      const itemPhotos=(inspData.itemPhotos&&inspData.itemPhotos[key])||[];
-      const maxP=item.maxPhotos||1;
-      const reqP=item.requiresPhoto||false;
-      const showPhoto=reqP||(item.maxPhotos&&item.maxPhotos>0);
-      const thumbs=itemPhotos.map(function(p,pi){ return "<div style=\"position:relative;display:inline-block;margin:3px;\"><img src=\""+p+"\" style=\"width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #1e3a5f;\"><button style=\"position:absolute;top:-4px;right:-4px;background:#ef4444;border:none;border-radius:50%;width:18px;height:18px;color:white;font-size:10px;cursor:pointer;line-height:18px;text-align:center;\" data-a=\"del-item-photo\" data-v=\""+key+"|"+pi+"\">x</button></div>"; }).join("");
-      const photoBtn=showPhoto?(itemPhotos.length<maxP?"<label style=\"display:inline-flex;align-items:center;gap:5px;background:#0f1f38;border:1px solid "+(reqP&&itemPhotos.length===0?"#f59e0b":"#1e3a5f")+";border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px;color:"+(reqP&&itemPhotos.length===0?"#f59e0b":"#94a3b8")+";margin-top:6px;\">\u{1F4F7} "+(reqP&&itemPhotos.length===0?"Recommended":"Add Photo")+" ("+itemPhotos.length+"/"+maxP+")<input type=\"file\" accept=\"image/*\" capture=\"environment\" style=\"display:none;\" data-itemkey=\""+key+"\" onchange=\"captureItemPhoto(this)\"></label>":"<div style=\"font-size:12px;color:#22c55e;margin-top:6px;\">\u2713 "+itemPhotos.length+"/"+maxP+" photos</div>"):"";
-      const photoSection=showPhoto?"<div style=\"margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;\">"+thumbs+photoBtn+"</div>":"";
-      return `<div style="background:#0a1628;border-radius:9px;padding:14px;border:1px solid #1e3a5f;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <span style="font-weight:500;font-size:14px;">${esc(item.label)}</span>
-          <span style="font-family:monospace;font-size:15px;font-weight:700;color:${val===undefined?"#334155":sc((val/cat.scale)*100)}">${val===undefined?"--":val+"/"+cat.scale}</span>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;">${btns}</div>${comment}"+photoSection+"</div>`;
+      var itemPhotos2=(inspData.itemPhotos&&inspData.itemPhotos[key])||[];
+      var maxP2=item.maxPhotos||1;
+      var reqP2=item.requiresPhoto||false;
+      var showPhoto2=reqP2||(item.maxPhotos&&item.maxPhotos>0);
+      var photoHTML2="";
+      if(showPhoto2){
+        var thumbHTML="";
+        for(var pi2=0;pi2<itemPhotos2.length;pi2++){
+          thumbHTML+="<div style='position:relative;display:inline-block;margin:3px;'><img src='"+itemPhotos2[pi2]+"' style='width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #1e3a5f;'><button style='position:absolute;top:-4px;right:-4px;background:#ef4444;border:none;border-radius:50%;width:18px;height:18px;color:white;font-size:10px;cursor:pointer;line-height:18px;text-align:center;' data-a='del-item-photo' data-v='"+key+"|"+pi2+"'>x</button></div>";
+        }
+        var addBtn2="";
+        if(itemPhotos2.length<maxP2){
+          addBtn2="<label style='display:inline-flex;align-items:center;gap:5px;background:#0f1f38;border:1px solid "+(reqP2&&itemPhotos2.length===0?"#f59e0b":"#1e3a5f")+";border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px;color:"+(reqP2&&itemPhotos2.length===0?"#f59e0b":"#94a3b8")+";margin-top:6px;'>"+(reqP2&&itemPhotos2.length===0?"&#x1F4F7; Recommended":"&#x1F4F7; Add Photo")+" ("+itemPhotos2.length+"/"+maxP2+")<input type='file' accept='image/*' capture='environment' style='display:none;' data-itemkey='"+key+"' onchange='captureItemPhoto(this)'></label>";
+        } else {
+          addBtn2="<div style='font-size:12px;color:#22c55e;margin-top:6px;'>&#x2713; "+itemPhotos2.length+"/"+maxP2+" photos</div>";
+        }
+        photoHTML2="<div style='margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;'>"+thumbHTML+addBtn2+"</div>";
+      }
+      return `<div style="background:#0a1628;border-radius:9px;padding:14px;border:1px solid #1e3a5f;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:500;font-size:14px;">${esc(item.label)}${reqP2?" &#x1F4F7;":""}</span><span style="font-family:monospace;font-size:15px;font-weight:700;color:${val===undefined?"#334155":sc((val/cat.scale)*100)}">${val===undefined?"--":val+"/"+cat.scale}</span></div><div style="display:flex;gap:5px;flex-wrap:wrap;">${btns}</div>${comment}${photoHTML2}</div>`;
     }).join("");
     body=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;"><h2 style="font-size:17px;font-weight:700;">${esc(cat.label)}</h2><span style="background:#0d1f3c;color:#93c5fd;padding:3px 10px;border-radius:6px;font-size:12px;">Out of ${cat.scale}</span></div><div style="display:flex;flex-direction:column;gap:14px;">${items}</div>`;
   } else {
