@@ -2351,7 +2351,7 @@ function renderCatSettings(){
     </div>`:""}
   </div>`).join("");
 
-  return `<button class="btn bp" style="width:100%;margin-bottom:14px;font-size:13px;" data-a="add-cat">+ Add Category</button>
+  return `<div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bp" style="flex:1;font-size:13px;" data-a="add-cat">+ Add Category</button><button class="btn bg" style="font-size:12px;padding:6px 12px;" data-a="save-cats-to-sheet">&#x1F4BE; Sync to All Devices</button></div>
     <p style="color:#475569;font-size:12px;margin-bottom:10px;">&#x2630; Drag categories and items to reorder them.</p>
     <div id="cat-list">${rows}</div>`;
 }
