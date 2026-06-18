@@ -933,8 +933,9 @@ function inspForm(){
     const items=cat.items.map(item=>{
       const key=cat.id+":"+item.id;
       const val=inspData.scores[key];
-      const btns=Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
-      const comment=item.hc?`<input type="text" class="inp" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Comment (optional)" value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`:"";
+      const btns=item.noScore?"":Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
+      const noteType2=item.noteType||"text";
+      const comment=item.hc?(noteType2==="textarea"?`<textarea class="inp" rows="2" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" data-commentkey="${key}">${esc(inspData.comments[key]||"")}</textarea>`:`<input type="${noteType2}" class="inp" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`):"";
       // Per-item photo
       var itemPhotos2=(inspData.itemPhotos&&inspData.itemPhotos[key])||[];
       var maxP2=item.maxPhotos||1;
