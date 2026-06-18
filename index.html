@@ -1052,6 +1052,7 @@ async function saveInsp(){
   const rec={id:uid(),date:new Date().toISOString(),...S.inspData,pct};
   S.inspections.unshift(rec);
   S.inspView="home"; save(); render();
+  const customHeaders=S.inspFields.filter(function(f){return f.enabled!==false&&f.id!=="truck";}).map(function(f){return f.label;});
   const catH=S.cats.flatMap(c=>c.items.map(i=>c.label+": "+i.label+" (/"+c.scale+")"));
   const headers=["Date","Truck","Inspector","Mileage","Overall %",...catH];
   const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
