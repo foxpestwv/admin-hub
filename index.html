@@ -2445,9 +2445,36 @@ async function sigCreate(){
       r.onerror = rej;
       r.readAsDataURL(file);
     });
+    // Stamp manager signature onto PDF before sending to tech
+    var finalBase64 = base64;
+    var savedSig = localStorage.getItem("hub:mgrSig:"+S.managerName);
+    if(savedSig){
+      try {
+        const { PDFDocument, rgb } = PDFLib;
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+        const pdfDoc = await PDFDocument.load(bytes);
+        const pngBytes = await fetch(savedSig).then(function(r){return r.arrayBuffer();});
+        const pngImage = await pdfDoc.embedPng(pngBytes);
+        const pages = pdfDoc.getPages();
+        const lastPage = pages[pages.length-1];
+        const {width} = lastPage.getSize();
+        const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
+        lastPage.drawImage(pngImage, {x:width-sigW-40, y:90, width:sigW, height:sigH});
+        lastPage.drawText("Manager: "+S.managerName+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:82, size:8, color:rgb(0.35,0.37,0.4)});
+        const signedBytes = await pdfDoc.save();
+        let b64=""; const chunk=8192;
+        for(var j=0;j<signedBytes.length;j+=chunk){
+          b64+=String.fromCharCode.apply(null, signedBytes.subarray(j,j+chunk));
+        }
+        finalBase64 = btoa(b64);
+      } catch(e){ console.warn("Manager sig stamp failed:", e); }
+    }
+
     const result = await gs("createSignatureRequestServer", {
       techName: techName, techEmail: techEmail,
-      docName: file.name, pdfBase64: base64,
+      docName: file.name, pdfBase64: finalBase64,
       createdBy: S.managerName
     });
     if(result.ok){
