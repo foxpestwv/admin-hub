@@ -2303,7 +2303,6 @@ function doPrint(){
   setTimeout(function(){ printArea.innerHTML=""; }, 1000);
 }
 // ─── Signatures ───────────────────────────────────────────────────────────────
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 async function renderSignatures(){
   const pg = document.getElementById("pg-signatures");
@@ -2435,6 +2434,7 @@ async function sigOpen(id){
       +"</div>";
 
     // Render PDF preview
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const bin = atob(result.pdfBase64);
     const bytes = new Uint8Array(bin.length);
     for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
