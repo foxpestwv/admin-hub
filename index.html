@@ -2302,7 +2302,236 @@ function doPrint(){
   // Clear print area after printing
   setTimeout(function(){ printArea.innerHTML=""; }, 1000);
 }
+// ─── Signatures ───────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+async function renderSignatures(){
+  const pg = document.getElementById("pg-signatures");
+  pg.innerHTML = "<div style='text-align:center;color:#475569;padding:40px;'>Loading...</div>";
+  try {
+    const result = await gs("getSignatureRequestsServer", null);
+    S._sigRequests = result.requests || [];
+  } catch(e){ S._sigRequests = S._sigRequests || []; }
+
+  const isM = S.role === "manager";
+  const myName = S.currentUser ? S.currentUser.name : "";
+  const mine = S._sigRequests.filter(function(r){ return !isM && r.techName === myName; });
+  const all = S._sigRequests;
+  const list = isM ? all : mine;
+
+  function sigColor(status){ return status==="Signed"?"#22c55e":status==="Pending"?"#f59e0b":"#475569"; }
+
+  const cards = list.length === 0
+    ? "<div style='text-align:center;color:#475569;padding:40px;'>"+(isM?"No signature requests yet.":"No signature requests assigned to you.")+"</div>"
+    : list.map(function(r){
+        return "<div class='card' style='margin-bottom:10px;'>"
+          +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+          +"<div><div style='font-weight:700;font-size:15px;'>"+esc(r.docName)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(r.techName)+" &bull; "+esc(r.dateCreated)+"</div>"
+          +(r.status==="Signed"?"<div style='font-size:12px;color:#22c55e;margin-top:2px;'>Signed by "+esc(r.signedBy)+" &bull; "+esc(r.signedDate)+"</div>":"")
+          +"</div>"
+          +"<span class='sbdg' style='background:"+sigColor(r.status)+"22;color:"+sigColor(r.status)+";'>"+r.status+"</span>"
+          +"</div>"
+          +"<div style='display:flex;gap:8px;margin-top:8px;'>"
+          +(r.status==="Pending"&&!isM?"<button class='btn bp' style='flex:1;padding:10px;' data-a='sig-open' data-v='"+r.id+"'>Review &amp; Sign</button>":"")
+          +(r.status==="Signed"?"<button class='btn bg' style='flex:1;padding:10px;font-size:13px;' data-a='sig-download' data-v='"+r.id+"'>Download Signed PDF</button>":"")
+          +"</div>"
+          +"</div>";
+      }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>Signatures</h2>"
+    +(isM?"<button class='btn bp' style='padding:8px 14px;font-size:13px;' data-a='sig-new'>+ New Request</button>":"")
+    +"</div>"
+    +(isM?"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Upload a QA document and assign it to a tech for signature.</p>":"")
+    +cards;
+}
+
+async function sigNew(){
+  const pg = document.getElementById("pg-signatures");
+  const techOpts = S.techAccounts.map(function(t){
+    return "<option value='"+esc(t.name)+"|"+esc(t.email)+"'>"+esc(t.name)+"</option>";
+  }).join("");
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sig-cancel'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>New Signature Request</h2></div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Technician</label>"
+    +"<select class='inp' id='sig-tech-sel' style='margin-bottom:14px;'><option value=''>Select tech...</option>"+techOpts+"</select>"
+    +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Document (PDF)</label>"
+    +"<input type='file' id='sig-file-inp' accept='application/pdf' class='inp' style='margin-bottom:14px;'>"
+    +"<div id='sig-create-err' style='color:#ef4444;font-size:13px;margin-bottom:10px;min-height:16px;'></div>"
+    +"<button class='btn bp' style='width:100%;padding:13px;font-size:15px;' data-a='sig-create'>Send for Signature</button>"
+    +"</div>";
+}
+
+async function sigCreate(){
+  const errEl = document.getElementById("sig-create-err");
+  const techSel = document.getElementById("sig-tech-sel");
+  const fileInp = document.getElementById("sig-file-inp");
+  if(!techSel||!techSel.value){ errEl.textContent="Please select a technician."; return; }
+  if(!fileInp||!fileInp.files[0]){ errEl.textContent="Please select a PDF file."; return; }
+  const parts = techSel.value.split("|");
+  const techName = parts[0]; const techEmail = parts[1]||"";
+  const file = fileInp.files[0];
+  errEl.textContent="Uploading...";
+  const btn = document.querySelector("[data-a='sig-create']");
+  if(btn){ btn.disabled=true; btn.textContent="Sending..."; }
+  try {
+    const base64 = await new Promise(function(res,rej){
+      const r = new FileReader();
+      r.onload = function(){ res(r.result.split(",")[1]); };
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+    const result = await gs("createSignatureRequestServer", {
+      techName: techName, techEmail: techEmail,
+      docName: file.name, pdfBase64: base64,
+      createdBy: S.managerName
+    });
+    if(result.ok){
+      // Send notification email to tech
+      if(techEmail){
+        try {
+          await gs("sendEmailServer", {
+            to: techEmail,
+            subject: "[Fox Pest Control] Document requires your signature",
+            body: "Hi "+techName+",\n\nA document has been assigned to you for signature in the Fox Pest Admin Hub.\n\nDocument: "+file.name+"\nRequested by: "+S.managerName+"\n\nLog into the Admin Hub and go to the Signatures tab to review and sign.\n\nFox Pest Control - Willamette Valley"
+          });
+        } catch(e){}
+      }
+      errEl.textContent="";
+      await renderSignatures();
+    } else {
+      errEl.textContent = "Error: "+(result.error||"Unknown error");
+      if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
+    }
+  } catch(e){
+    errEl.textContent = "Error: "+e.message;
+    if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
+  }
+}
+
+async function sigOpen(id){
+  const pg = document.getElementById("pg-signatures");
+  pg.innerHTML = "<div style='text-align:center;color:#475569;padding:40px;'>Loading document...</div>";
+  try {
+    const result = await gs("getSignatureRequestServer", {id:id});
+    if(!result.ok){ pg.innerHTML="<div style='color:#ef4444;padding:20px;'>Error: "+esc(result.error)+"</div>"; return; }
+    S._currentSigId = id;
+    S._currentSigDoc = result.docName;
+    pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+      +"<button class='btn bg' data-a='sig-cancel'>Back</button>"
+      +"<h2 style='font-size:18px;font-weight:700;'>"+esc(result.docName)+"</h2></div>"
+      +"<div class='card' style='margin-bottom:14px;'>"
+      +"<div id='sig-pdf-preview' style='margin-bottom:14px;'></div>"
+      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Type your full name</label>"
+      +"<input type='text' class='inp' id='sig-name-inp' placeholder='Full name' style='margin-bottom:14px;'>"
+      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Sign below</label>"
+      +"<canvas id='sig-pad' style='width:100%;height:150px;border:1.5px solid #1e3a5f;border-radius:6px;background:#fff;touch-action:none;display:block;margin-bottom:8px;'></canvas>"
+      +"<button class='btn bg' style='width:100%;margin-bottom:14px;font-size:13px;' data-a='sig-clear'>Clear signature</button>"
+      +"<div id='sig-submit-err' style='color:#ef4444;font-size:13px;margin-bottom:10px;min-height:16px;'></div>"
+      +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;' data-a='sig-submit'>Sign and Submit</button>"
+      +"</div>";
+
+    // Render PDF preview
+    const bin = atob(result.pdfBase64);
+    const bytes = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const pdf = await pdfjsLib.getDocument({data:bytes}).promise;
+    const container = document.getElementById("sig-pdf-preview");
+    for(var p=1;p<=pdf.numPages;p++){
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({scale:1.2});
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      canvas.style.width="100%"; canvas.style.marginBottom="8px"; canvas.style.display="block";
+      canvas.style.border="1px solid #1e3a5f"; canvas.style.borderRadius="6px";
+      await page.render({canvasContext:canvas.getContext("2d"), viewport}).promise;
+      container.appendChild(canvas);
+    }
+
+    // Set up signature pad
+    const pad = document.getElementById("sig-pad");
+    const ctx = pad.getContext("2d");
+    const rect = pad.getBoundingClientRect();
+    pad.width = rect.width * 2; pad.height = rect.height * 2;
+    ctx.scale(2,2); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#1C1F22";
+    let drawing=false, lx=0, ly=0;
+    function getPos(e){ const r=pad.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return [t.clientX-r.left, t.clientY-r.top]; }
+    pad.onmousedown=function(e){ drawing=true; [lx,ly]=getPos(e); };
+    pad.onmousemove=function(e){ if(!drawing)return; const [x,y]=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke(); [lx,ly]=[x,y]; };
+    pad.onmouseup=function(){ drawing=false; };
+    pad.onmouseleave=function(){ drawing=false; };
+    pad.ontouchstart=function(e){ e.preventDefault(); drawing=true; [lx,ly]=getPos(e); };
+    pad.ontouchmove=function(e){ e.preventDefault(); if(!drawing)return; const [x,y]=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke(); [lx,ly]=[x,y]; };
+    pad.ontouchend=function(){ drawing=false; };
+    window._sigPad = pad;
+  } catch(e){
+    pg.innerHTML="<div style='color:#ef4444;padding:20px;'>Error loading document: "+esc(e.message)+"</div>";
+  }
+}
+
+async function sigSubmit(){
+  const errEl = document.getElementById("sig-submit-err");
+  const name = (document.getElementById("sig-name-inp")||{}).value||"";
+  if(!name.trim()){ errEl.textContent="Please type your full name."; return; }
+  const pad = window._sigPad;
+  if(!pad){ errEl.textContent="Signature pad not found."; return; }
+  const btn = document.querySelector("[data-a='sig-submit']");
+  if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
+  errEl.textContent="";
+  try {
+    // Fetch original PDF from server
+    const original = await gs("getSignatureRequestServer", {id:S._currentSigId});
+    const { PDFDocument, rgb } = PDFLib;
+    const bin = atob(original.pdfBase64);
+    const bytes = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const pdfDoc = await PDFDocument.load(bytes);
+    // Embed signature
+    const sigDataUrl = pad.toDataURL("image/png");
+    const pngBytes = await fetch(sigDataUrl).then(function(r){return r.arrayBuffer();});
+    const pngImage = await pdfDoc.embedPng(pngBytes);
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length-1];
+    const {width} = lastPage.getSize();
+    const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
+    lastPage.drawImage(pngImage, {x:width-sigW-40, y:40, width:sigW, height:sigH});
+    lastPage.drawText("Signed by "+name+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:32, size:8, color:rgb(0.35,0.37,0.4)});
+    // Save and encode
+    const signedBytes = await pdfDoc.save();
+    let b64=""; const chunk=8192;
+    for(var j=0;j<signedBytes.length;j+=chunk){
+      b64+=String.fromCharCode.apply(null, signedBytes.subarray(j,j+chunk));
+    }
+    b64=btoa(b64);
+    const result = await gs("submitSignatureServer", {id:S._currentSigId, signedPdfBase64:b64, signerName:name});
+    if(result.ok){
+      await renderSignatures();
+    } else {
+      errEl.textContent="Error: "+(result.error||"Unknown");
+      if(btn){ btn.disabled=false; btn.textContent="Sign and Submit"; }
+    }
+  } catch(e){
+    errEl.textContent="Error: "+e.message;
+    if(btn){ btn.disabled=false; btn.textContent="Sign and Submit"; }
+  }
+}
+
+async function sigDownload(id){
+  try {
+    const result = await gs("getSignedPdfServer", {id:id});
+    if(!result.ok){ alert("Could not retrieve signed PDF: "+(result.error||"")); return; }
+    const bin=atob(result.pdfBase64);
+    const bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const blob=new Blob([bytes],{type:"application/pdf"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=result.docName||"signed.pdf"; a.click();
+  } catch(e){ alert("Download error: "+e.message); }
+}
 function renderSettings(){
   const tab=S.settingsTab;
   const tabs=[{id:"access",l:"Access"},{id:"trucks",l:"Trucks"},{id:"techs",l:"Technicians"},{id:"cats",l:"Inspection"},{id:"prods",l:"Products"},{id:"me",l:"My Name"}];
