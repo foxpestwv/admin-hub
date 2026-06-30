@@ -2461,8 +2461,8 @@ async function sigCreate(){
         const lastPage = pages[pages.length-1];
         const {width} = lastPage.getSize();
         const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
-        lastPage.drawImage(pngImage, {x:width-sigW-40, y:90, width:sigW, height:sigH});
-        lastPage.drawText("Manager: "+S.managerName+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:82, size:8, color:rgb(0.35,0.37,0.4)});
+        lastPage.drawImage(pngImage, {x:width-sigW-40, y:60, width:sigW, height:sigH});
+        lastPage.drawText("Manager: "+S.managerName+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:52, size:8, color:rgb(0.35,0.37,0.4)});
         const signedBytes = await pdfDoc.save();
         let b64=""; const chunk=8192;
         for(var j=0;j<signedBytes.length;j+=chunk){
@@ -2588,8 +2588,8 @@ async function sigSubmit(){
     const lastPage = pages[pages.length-1];
     const {width} = lastPage.getSize();
     const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
-    lastPage.drawImage(pngImage, {x:width-sigW-40, y:112, width:sigW, height:sigH});
-    lastPage.drawText("Signed by "+name+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:104, size:8, color:rgb(0.35,0.37,0.4)});
+    lastPage.drawImage(pngImage, {x:40, y:60, width:sigW, height:sigH});
+    lastPage.drawText("Technician: "+name+"  "+new Date().toLocaleString(), {x:40, y:52, size:8, color:rgb(0.35,0.37,0.4)});
     // Save and encode
     const signedBytes = await pdfDoc.save();
     let b64=""; const chunk=8192;
