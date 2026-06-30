@@ -788,6 +788,13 @@ function handleAction(a,v,el,e){
     save(); renderRestock(); return;
   }
   if(a==="save-pins") { savePins(); return; }
+  if(a==="sig-new") { sigNew(); return; }
+  if(a==="sig-cancel") { renderSignatures(); return; }
+  if(a==="sig-create") { sigCreate(); return; }
+  if(a==="sig-open") { sigOpen(v); return; }
+  if(a==="sig-clear") { if(window._sigPad){ const c=window._sigPad; c.getContext("2d").clearRect(0,0,c.width,c.height); } return; }
+  if(a==="sig-submit") { sigSubmit(); return; }
+  if(a==="sig-download") { sigDownload(v); return; }
   if(a==="add-mgr") { addManager(); return; }
   if(a==="del-mgr") { delManager(parseInt(v)); return; }
   if(a==="reset-mgr-pin") { resetMgrPin(parseInt(v)); return; }
