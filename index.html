@@ -2588,8 +2588,8 @@ async function sigSubmit(){
     const lastPage = pages[pages.length-1];
     const {width} = lastPage.getSize();
     const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
-    lastPage.drawImage(pngImage, {x:width-sigW-40, y:40, width:sigW, height:sigH});
-    lastPage.drawText("Signed by "+name+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:32, size:8, color:rgb(0.35,0.37,0.4)});
+    lastPage.drawImage(pngImage, {x:width-sigW-40, y:112, width:sigW, height:sigH});
+    lastPage.drawText("Signed by "+name+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:104, size:8, color:rgb(0.35,0.37,0.4)});
     // Save and encode
     const signedBytes = await pdfDoc.save();
     let b64=""; const chunk=8192;
