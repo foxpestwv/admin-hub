@@ -3026,6 +3026,8 @@ tap("pk0","0"); tap("pkdel","del");
 
 var lo = document.getElementById("logout-btn");
 if(lo) lo.onclick = function(){ logout(); };
+var syncTop = document.getElementById("sync-top-btn");
+if(syncTop) syncTop.onclick = function(){ syncFromSheet(); };
 
 if(dbg) dbg.textContent = "Ready - tap a number";
 
