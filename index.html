@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Fox Admin Hub v2 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -129,7 +130,6 @@ input,textarea,select,button{font-family:inherit;}
       <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
     </div>
     <div id="nav"></div>
-    <button class="nb" id="sync-top-btn">&#x21BB;</button>
     <button class="nb" id="logout-btn">Exit</button>
   </div></div>
   <div id="wrap">
@@ -140,7 +140,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-checkout" class="pg"></div>
     <div id="pg-truckinv" class="pg"></div>
     <div id="pg-restock" class="pg"></div>
-    <div id="pg-signatures" class="pg"></div>
+    <div id="pg-analytics" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
   </div>
 </div>
@@ -222,6 +222,7 @@ const S = {
   inspections:[], products:[], checkouts:[], orders:[],
   truckInventories:{}, // {techName: {truck, products:[{id,name,unit,qty,prevQty}], lastSubmit}}
   sheetTruckData:{}, // loaded from sheet for manager view
+  analyticsTarget:45, // days of supply to target
   restockOrders:[], // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
@@ -586,7 +587,7 @@ function login(role){
           // Update nav badge and dashboard without full re-render
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
           // Re-render nav to update badge
-          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"settings",l:"Settings"}];
+          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"settings",l:"Settings"}];
           document.getElementById("nav").innerHTML=mgrTabs.map(function(t){
             return "<button class='nb"+(S.tab===t.id?" on":"")+"' data-a='tab' data-v='"+t.id+"'>"+t.l+(t.id==="orders"&&pending>0?"<span class='bdg'>"+pending+"</span>":"")+"</button>";
           }).join("")+"<button class='nb' id='logout-btn' style='color:#475569;'>Exit</button>";
@@ -673,12 +674,10 @@ document.addEventListener("change",function(e){
     var prop=t.dataset.fieldprop;
     if(S.inspFields[fi3]!==undefined){
       if(prop==="enabled"||prop==="required") S.inspFields[fi3][prop]=t.checked;
-      else if(prop==="selectOptions") S.inspFields[fi3][prop]=t.value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
-else S.inspFields[fi3][prop]=t.value;
+      else S.inspFields[fi3][prop]=t.value;
       save();
       clearTimeout(window._fieldSaveTimer);
       window._fieldSaveTimer=setTimeout(function(){saveAccountsToSheet();},1000);
-            if(prop==="type") render();
     }
     return;
   }
@@ -722,14 +721,8 @@ function handleAction(a,v,el,e){
   if(a==="logout") { logout(); return; }
   if(a==="tab") { S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return; }
   if(a==="insp-view") { S.inspView=v; render(); return; }
-  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
-  if(a==="insp-next") {
-  S.inspFields.filter(function(f){return f.enabled!==false;}).forEach(function(f){
-    var inp=document.getElementById("insp-field-"+f.id);
-    if(inp){ S.inspData[f.id]=inp.value; if(f.id==="truck") S.inspData.truck=inp.value; }
-  });
-  S.inspStep++; render(); return;
-}
+  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
+  if(a==="insp-next") { S.inspStep++; render(); return; }
   if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
   if(a==="insp-save") { saveInsp(); return; }
   if(a==="insp-detail") { S.detailInsp=S.inspections.find(r=>r.id===v); S.inspView="detail"; render(); return; }
@@ -784,35 +777,14 @@ function handleAction(a,v,el,e){
     }
     return;
   }
+  if(a==="analytics-refresh") { renderAnalytics(); return; }
+  if(a==="set-analytics-target") { S.analyticsTarget=parseInt(v); renderAnalytics(); return; }
+  if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="restock-archive") {
     S.restockOrders.forEach(function(o){ if(o.status==="Received") o.archived=true; });
     save(); renderRestock(); return;
   }
   if(a==="save-pins") { savePins(); return; }
-  if(a==="sig-new") { sigNew(); return; }
-  if(a==="sig-cancel") { renderSignatures(); return; }
-  if(a==="sig-create") { sigCreate(); return; }
-  if(a==="sig-open") { sigOpen(v); return; }
-  if(a==="sig-clear") { if(window._sigPad){ const c=window._sigPad; c.getContext("2d").clearRect(0,0,c.width,c.height); } return; }
-  if(a==="sig-submit") { sigSubmit(); return; }
-  if(a==="sig-download") { sigDownload(v); return; }
-  if(a==="sig-save-mysig"){ 
-    var pad=window._mgrSigPad; 
-    if(!pad){ alert("No signature pad found."); return; }
-    localStorage.setItem("hub:mgrSig:"+S.managerName, pad.toDataURL("image/png"));
-    renderSignatures();
-    return; 
-  }
-  if(a==="sig-clear-mysig"){ 
-    var pad=window._mgrSigPad; 
-    if(pad) pad.getContext("2d").clearRect(0,0,pad.width,pad.height); 
-    return; 
-  }
-  if(a==="sig-edit-mysig"){ 
-    localStorage.removeItem("hub:mgrSig:"+S.managerName); 
-    renderSignatures(); 
-    return; 
-  }
   if(a==="add-mgr") { addManager(); return; }
   if(a==="del-mgr") { delManager(parseInt(v)); return; }
   if(a==="reset-mgr-pin") { resetMgrPin(parseInt(v)); return; }
@@ -856,8 +828,8 @@ function setPage(id){
 
 function render(){
   // Nav
-  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"signatures",l:"Sigs"},{id:"settings",l:"Settings"}];
-  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"signatures",l:"Signatures"}];
+  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"settings",l:"Settings"}];
+  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"}];
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
   document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}</button>`).join("");
@@ -869,7 +841,7 @@ function render(){
   else if(S.tab==="checkout") renderCheckout();
   else if(S.tab==="truckinv") renderTruckInv();
   else if(S.tab==="restock") renderRestock();
-  else if(S.tab==="signatures") renderSignatures();
+  else if(S.tab==="analytics") renderAnalytics();
   else if(S.tab==="settings") renderSettings();
 }
 
@@ -960,9 +932,6 @@ function inspForm(){
         input = "<select class='inp' id='insp-field-"+f.id+"'>"+S.trucks.map(function(t){return "<option value='"+esc(t)+"'"+(inspData.truck===t?" selected":"")+">"+esc(t)+"</option>";}).join("")+"</select>";
       } else if(f.type==="textarea"){
         input = "<textarea class='inp' rows='3' id='insp-field-"+f.id+"' placeholder='"+esc(f.placeholder||"")+"'>"+esc(val)+"</textarea>";
-      } else if(f.type==="select"){
-        var selOpts3=(f.selectOptions||[]).map(function(o){return "<option value='"+esc(o)+"'"+(val===o?" selected":"")+">"+esc(o)+"</option>";}).join("");
-        input = "<select class='inp' id='insp-field-"+f.id+"'><option value=''>-- Select --</option>"+selOpts3+"</select>";
       } else {
         input = "<input type='"+f.type+"' class='inp' id='insp-field-"+f.id+"' value='"+esc(val)+"' placeholder='"+esc(f.placeholder||"")+"'>";
       }
@@ -1079,12 +1048,10 @@ async function saveInsp(){
   const rec={id:uid(),date:new Date().toISOString(),...S.inspData,pct};
   S.inspections.unshift(rec);
   S.inspView="home"; save(); render();
-  const customHeaders=S.inspFields.filter(function(f){return f.enabled!==false&&f.id!=="truck";}).map(function(f){return f.label;});
   const catH=S.cats.flatMap(c=>c.items.map(i=>c.label+": "+i.label+" (/"+c.scale+")"));
-  const headers=["Date","Truck",...customHeaders,"Overall %",...catH];
+  const headers=["Date","Truck","Inspector","Mileage","Overall %",...catH];
   const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
-  const customVals=S.inspFields.filter(function(f){return f.enabled!==false&&f.id!=="truck";}).map(function(f){return rec[f.id]||inspData[f.id]||"";});
-  const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,...customVals,pct,...catS];
+  const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
   try { await gs("logInspectionServer",{headers,row}); } catch(e){}
 }
 
@@ -2327,303 +2294,180 @@ function doPrint(){
   // Clear print area after printing
   setTimeout(function(){ printArea.innerHTML=""; }, 1000);
 }
-// ─── Signatures ───────────────────────────────────────────────────────────────
 
-async function renderSignatures(){
-  const pg = document.getElementById("pg-signatures");
-  pg.innerHTML = "<div style='text-align:center;color:#475569;padding:40px;'>Loading...</div>";
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+async function renderAnalytics(){
+  const pg = document.getElementById("pg-analytics");
+  if(!pg) return;
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Analytics</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Pulling usage data from your sheets...</p>"
+    +"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
+
   try {
-    const result = await gs("getSignatureRequestsServer", null);
-    S._sigRequests = result.requests || [];
-  } catch(e){ S._sigRequests = S._sigRequests || []; }
+    // Fetch adjustment log and order history from sheet
+    const [adjData, orderData] = await Promise.all([
+      gs("getAdjustmentLogServer", null),
+      gs("getOrderHistoryServer", null)
+    ]);
 
-  const isM = S.role === "manager";
-  const myName = S.currentUser ? S.currentUser.name : "";
-  const mine = S._sigRequests.filter(function(r){ return !isM && r.techName === myName; });
-  const all = S._sigRequests;
-  const list = isM ? all : mine;
+    const adjustments = adjData && adjData.rows ? adjData.rows : [];
+    const orders = orderData && orderData.rows ? orderData.rows : [];
 
-  function sigColor(status){ return status==="Signed"?"#22c55e":status==="Pending"?"#f59e0b":"#475569"; }
+    // Calculate usage per product from adjustment log
+    // Negative changes = usage, positive = restock
+    var usage = {}; // {productName: {totalUsed, restocked, lastUsed, useCount}}
+    var now = Date.now();
+    var thirtyDaysAgo = now - 30*24*60*60*1000;
+    var sixtyDaysAgo = now - 60*24*60*60*1000;
 
-  const cards = list.length === 0
-    ? "<div style='text-align:center;color:#475569;padding:40px;'>"+(isM?"No signature requests yet.":"No signature requests assigned to you.")+"</div>"
-    : list.map(function(r){
-        return "<div class='card' style='margin-bottom:10px;'>"
-          +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
-          +"<div><div style='font-weight:700;font-size:15px;'>"+esc(r.docName)+"</div>"
-          +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(r.techName)+" &bull; "+esc(r.dateCreated)+"</div>"
-          +(r.status==="Signed"?"<div style='font-size:12px;color:#22c55e;margin-top:2px;'>Signed by "+esc(r.signedBy)+" &bull; "+esc(r.signedDate)+"</div>":"")
-          +"</div>"
-          +"<span class='sbdg' style='background:"+sigColor(r.status)+"22;color:"+sigColor(r.status)+";'>"+r.status+"</span>"
-          +"</div>"
-          +"<div style='display:flex;gap:8px;margin-top:8px;'>"
-          +(r.status==="Pending"&&!isM?"<button class='btn bp' style='flex:1;padding:10px;' data-a='sig-open' data-v='"+r.id+"'>Review &amp; Sign</button>":"")
-          +(r.status==="Signed"?"<button class='btn bg' style='flex:1;padding:10px;font-size:13px;' data-a='sig-download' data-v='"+r.id+"'>Download Signed PDF</button>":"")
-          +"</div>"
-          +"</div>";
-      }).join("");
+    adjustments.forEach(function(row){
+      // row: Date, Product, Unit, OldQty, NewQty, Change, Manager, Reason
+      var dateStr = row[0];
+      var product = row[1];
+      var unit = row[2];
+      var change = parseFloat(row[5])||0;
+      var reason = String(row[7]||"");
+      if(!product) return;
 
-  var savedSig = localStorage.getItem("hub:mgrSig:"+S.managerName);
-  var sigPreview = isM ? ("<div class='card' style='margin-bottom:16px;'>"
-    +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;'>"
-    +"<div style='font-size:13px;font-weight:600;'>My Signature</div>"
-    +(savedSig?"<button class='btn bg' style='font-size:11px;padding:4px 10px;' data-a='sig-edit-mysig'>Update</button>":"")
-    +"</div>"
-    +(savedSig
-      ?"<img src='"+savedSig+"' style='max-width:220px;border:1px solid #1e3a5f;border-radius:6px;background:#fff;padding:4px;'>"
-      :"<p style='color:#f59e0b;font-size:13px;margin-bottom:10px;'>No signature saved yet. Draw yours below so it auto-stamps on documents you send.</p>"
-      +"<canvas id='mgr-sig-pad' style='width:100%;height:120px;border:1.5px solid #1e3a5f;border-radius:6px;background:#fff;touch-action:none;display:block;margin-bottom:8px;'></canvas>"
-      +"<div style='display:flex;gap:8px;'>"
-      +"<button class='btn bs' style='flex:2;padding:10px;font-size:13px;' data-a='sig-save-mysig'>Save My Signature</button>"
-      +"<button class='btn bg' style='flex:1;padding:10px;font-size:13px;' data-a='sig-clear-mysig'>Clear</button>"
-      +"</div>")
-    +"</div>") : "";
+      var rowDate = new Date(dateStr).getTime();
+      if(isNaN(rowDate)) return;
 
-  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
-    +"<h2 style='font-size:20px;font-weight:700;'>Signatures</h2>"
-    +(isM?"<button class='btn bp' style='padding:8px 14px;font-size:13px;' data-a='sig-new'>+ New Request</button>":"")
-    +"</div>"
-    +sigPreview
-    +(isM?"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Upload a QA document and assign it to a tech for signature.</p>":"")
-    +cards;
+      if(!usage[product]) usage[product]={name:product,unit:unit,totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
 
-  if(isM && !savedSig){
-    setTimeout(function(){
-      var pad = document.getElementById("mgr-sig-pad");
-      if(!pad) return;
-      var ctx = pad.getContext("2d");
-      var rect = pad.getBoundingClientRect();
-      pad.width = rect.width*2; pad.height = rect.height*2;
-      ctx.scale(2,2); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#1C1F22";
-      var drawing=false, lx=0, ly=0;
-      function getPos(e){ var r=pad.getBoundingClientRect(); var t=e.touches?e.touches[0]:e; return [t.clientX-r.left, t.clientY-r.top]; }
-      pad.onmousedown=function(e){ drawing=true; [lx,ly]=getPos(e); };
-      pad.onmousemove=function(e){ if(!drawing)return; var p=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p[0],p[1]); ctx.stroke(); lx=p[0]; ly=p[1]; };
-      pad.onmouseup=function(){ drawing=false; };
-      pad.onmouseleave=function(){ drawing=false; };
-      pad.ontouchstart=function(e){ e.preventDefault(); drawing=true; [lx,ly]=getPos(e); };
-      pad.ontouchmove=function(e){ e.preventDefault(); var p=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p[0],p[1]); ctx.stroke(); lx=p[0]; ly=p[1]; };
-      pad.ontouchend=function(){ drawing=false; };
-      window._mgrSigPad = pad;
-    }, 100);
-  }
-}
+      var isRestock = reason.toLowerCase().includes("restock");
 
-async function sigNew(){
-  const pg = document.getElementById("pg-signatures");
-  const techOpts = S.techAccounts.map(function(t){
-    return "<option value='"+esc(t.name)+"|"+esc(t.email)+"'>"+esc(t.name)+"</option>";
-  }).join("");
-  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
-    +"<button class='btn bg' data-a='sig-cancel'>Back</button>"
-    +"<h2 style='font-size:18px;font-weight:700;'>New Signature Request</h2></div>"
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Technician</label>"
-    +"<select class='inp' id='sig-tech-sel' style='margin-bottom:14px;'><option value=''>Select tech...</option>"+techOpts+"</select>"
-    +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Document (PDF)</label>"
-    +"<input type='file' id='sig-file-inp' accept='application/pdf' class='inp' style='margin-bottom:14px;'>"
-    +"<div id='sig-create-err' style='color:#ef4444;font-size:13px;margin-bottom:10px;min-height:16px;'></div>"
-    +"<button class='btn bp' style='width:100%;padding:13px;font-size:15px;' data-a='sig-create'>Send for Signature</button>"
-    +"</div>";
-}
-
-async function sigCreate(){
-  const errEl = document.getElementById("sig-create-err");
-  const techSel = document.getElementById("sig-tech-sel");
-  const fileInp = document.getElementById("sig-file-inp");
-  if(!techSel||!techSel.value){ errEl.textContent="Please select a technician."; return; }
-  if(!fileInp||!fileInp.files[0]){ errEl.textContent="Please select a PDF file."; return; }
-  const parts = techSel.value.split("|");
-  const techName = parts[0]; const techEmail = parts[1]||"";
-  const file = fileInp.files[0];
-  errEl.textContent="Uploading...";
-  const btn = document.querySelector("[data-a='sig-create']");
-  if(btn){ btn.disabled=true; btn.textContent="Sending..."; }
-  try {
-    const base64 = await new Promise(function(res,rej){
-      const r = new FileReader();
-      r.onload = function(){ res(r.result.split(",")[1]); };
-      r.onerror = rej;
-      r.readAsDataURL(file);
-    });
-    // Stamp manager signature onto PDF before sending to tech
-    var finalBase64 = base64;
-    var savedSig = localStorage.getItem("hub:mgrSig:"+S.managerName);
-    if(savedSig){
-      try {
-        const { PDFDocument, rgb } = PDFLib;
-        const bin = atob(base64);
-        const bytes = new Uint8Array(bin.length);
-        for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-        const pdfDoc = await PDFDocument.load(bytes);
-        const pngBytes = await fetch(savedSig).then(function(r){return r.arrayBuffer();});
-        const pngImage = await pdfDoc.embedPng(pngBytes);
-        const pages = pdfDoc.getPages();
-        const lastPage = pages[pages.length-1];
-        const {width} = lastPage.getSize();
-        const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
-        lastPage.drawImage(pngImage, {x:width-sigW-40, y:60, width:sigW, height:sigH});
-        lastPage.drawText("Manager: "+S.managerName+"  "+new Date().toLocaleString(), {x:width-sigW-40, y:52, size:8, color:rgb(0.35,0.37,0.4)});
-        const signedBytes = await pdfDoc.save();
-        let b64=""; const chunk=8192;
-        for(var j=0;j<signedBytes.length;j+=chunk){
-          b64+=String.fromCharCode.apply(null, signedBytes.subarray(j,j+chunk));
-        }
-        finalBase64 = btoa(b64);
-      } catch(e){ console.warn("Manager sig stamp failed:", e); }
-    }
-
-    const result = await gs("createSignatureRequestServer", {
-      techName: techName, techEmail: techEmail,
-      docName: file.name, pdfBase64: finalBase64,
-      createdBy: S.managerName
-    });
-    if(result.ok){
-      // Send notification email to tech
-      if(techEmail){
-        try {
-          await gs("sendEmailServer", {
-            to: techEmail,
-            subject: "[Fox Pest Control] Document requires your signature",
-            body: "Hi "+techName+",\n\nA document has been assigned to you for signature in the Fox Pest Admin Hub.\n\nDocument: "+file.name+"\nRequested by: "+S.managerName+"\n\nLog into the Admin Hub and go to the Signatures tab to review and sign.\n\nFox Pest Control - Willamette Valley"
-          });
-        } catch(e){}
+      if(rowDate >= thirtyDaysAgo){
+        if(isRestock && change>0) usage[product].restocked30+=change;
+        else if(change<0){ usage[product].totalUsed30+=Math.abs(change); usage[product].useCount++; }
       }
-      errEl.textContent="";
-      await renderSignatures();
-    } else {
-      errEl.textContent = "Error: "+(result.error||"Unknown error");
-      if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
-    }
-  } catch(e){
-    errEl.textContent = "Error: "+e.message;
-    if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
-  }
-}
+      if(rowDate >= sixtyDaysAgo && rowDate < thirtyDaysAgo){
+        if(!isRestock && change<0) usage[product].totalUsed60+=Math.abs(change);
+      }
+      if(!usage[product].lastDate || rowDate > new Date(usage[product].lastDate).getTime()){
+        usage[product].lastDate = dateStr;
+      }
+    });
 
-async function sigOpen(id){
-  const pg = document.getElementById("pg-signatures");
-  pg.innerHTML = "<div style='text-align:center;color:#475569;padding:40px;'>Loading document...</div>";
-  try {
-    const result = await gs("getSignatureRequestServer", {id:id});
-    if(!result.ok){ pg.innerHTML="<div style='color:#ef4444;padding:20px;'>Error: "+esc(result.error)+"</div>"; return; }
-    S._currentSigId = id;
-    S._currentSigDoc = result.docName;
-    pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
-      +"<button class='btn bg' data-a='sig-cancel'>Back</button>"
-      +"<h2 style='font-size:18px;font-weight:700;'>"+esc(result.docName)+"</h2></div>"
-      +"<div class='card' style='margin-bottom:14px;'>"
-      +"<div id='sig-pdf-preview' style='margin-bottom:14px;'></div>"
-      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Type your full name</label>"
-      +"<input type='text' class='inp' id='sig-name-inp' placeholder='Full name' style='margin-bottom:14px;'>"
-      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Sign below</label>"
-      +"<canvas id='sig-pad' style='width:100%;height:150px;border:1.5px solid #1e3a5f;border-radius:6px;background:#fff;touch-action:none;display:block;margin-bottom:8px;'></canvas>"
-      +"<button class='btn bg' style='width:100%;margin-bottom:14px;font-size:13px;' data-a='sig-clear'>Clear signature</button>"
-      +"<div id='sig-submit-err' style='color:#ef4444;font-size:13px;margin-bottom:10px;min-height:16px;'></div>"
-      +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;' data-a='sig-submit'>Sign and Submit</button>"
+    // Also count from approved orders
+    orders.forEach(function(row){
+      // row: Date, Tech, Product, Qty, Unit, Status, ApprovedBy
+      var dateStr = row[0];
+      var product = row[2];
+      var qty = parseFloat(row[3])||0;
+      var unit = row[4];
+      if(!product||!qty) return;
+      var rowDate = new Date(dateStr).getTime();
+      if(isNaN(rowDate)) return;
+      if(!usage[product]) usage[product]={name:product,unit:unit,totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
+      if(rowDate >= thirtyDaysAgo){ usage[product].totalUsed30+=qty; usage[product].useCount++; }
+      if(rowDate >= sixtyDaysAgo && rowDate < thirtyDaysAgo){ usage[product].totalUsed60+=qty; }
+    });
+
+    var products = S.products;
+    var usageArr = products.map(function(p){
+      var u = usage[p.name]||{totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
+      var dailyRate = u.totalUsed30/30;
+      var daysLeft = dailyRate>0 ? Math.round(p.qty/dailyRate) : null;
+      var trend = u.totalUsed30>u.totalUsed60?"up":u.totalUsed30<u.totalUsed60?"down":"flat";
+      var target2 = S.analyticsTarget||45;
+        var suggestedOrder = Math.max(0, Math.round((dailyRate*target2) - p.qty));
+      return {
+        name:p.name, unit:p.unit, qty:p.qty, lowAt:p.lowAt,
+        used30:u.totalUsed30, used60:u.totalUsed60,
+        dailyRate:dailyRate, daysLeft:daysLeft,
+        trend:trend, suggestedOrder:suggestedOrder,
+        useCount:u.useCount
+      };
+    }).filter(function(p){ return p.used30>0||p.used60>0||p.qty<=p.lowAt; })
+      .sort(function(a,b){ return b.used30-a.used30; });
+
+    // Period toggle
+    var period = S._analyticsPeriod||"30";
+
+    // Build health cards
+    var healthCards = usageArr.map(function(p){
+      var tgt = S.analyticsTarget||45;
+      var pct = p.dailyRate>0&&p.qty>0 ? Math.min(100,Math.round((p.daysLeft/tgt)*100)) : p.qty>p.lowAt?100:5;
+      var barColor = pct>50?"#22c55e":pct>25?"#f59e0b":"#ef4444";
+      var trendIcon = p.trend==="up"?"&#x2191;":p.trend==="down"?"&#x2193;":"&#x2192;";
+      var trendColor = p.trend==="up"?"#22c55e":p.trend==="down"?"#ef4444":"#64748b";
+      var daysText = p.daysLeft!==null ? p.daysLeft+" days" : "N/A";
+      var daysColor = p.daysLeft!==null&&p.daysLeft<14?"#ef4444":p.daysLeft!==null&&p.daysLeft<30?"#f59e0b":"#22c55e";
+      return "<div class='card' style='margin-bottom:10px;padding:14px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
+        +"<div style='display:flex;align-items:center;gap:12px;'>"
+        +"<span style='font-size:12px;color:"+trendColor+";font-weight:600;'>"+trendIcon+" vs last 30d</span>"
+        +"<span style='font-size:12px;font-weight:700;color:"+daysColor+";'>"+daysText+" left</span>"
+        +"</div></div>"
+        +"<div style='background:#0a1628;border-radius:4px;height:8px;margin-bottom:8px;'>"
+        +"<div style='background:"+barColor+";border-radius:4px;height:8px;width:"+pct+"%;transition:width .3s;'></div></div>"
+        +"<div style='display:flex;justify-content:space-between;font-size:12px;color:#64748b;'>"
+        +"<span>On hand: <b style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit)+"</b></span>"
+        +"<span>Used/30d: <b style='color:#e2e8f0;'>"+Math.round(p.used30)+" "+esc(p.unit)+"</b></span>"
+        +(p.suggestedOrder>0?"<span style='color:#f59e0b;font-weight:600;'>Order: "+p.suggestedOrder+" "+esc(p.unit)+"</span>":"<span style='color:#22c55e;'>&#x2713; Stocked</span>")
+        +"</div></div>";
+    }).join("");
+
+    // Build reorder table
+    var reorderItems = usageArr.filter(function(p){ return p.suggestedOrder>0; });
+    var reorderTable = reorderItems.length>0
+      ? "<div class='card' style='margin-bottom:16px;'>"
+        +"<div style='font-size:15px;font-weight:700;margin-bottom:12px;'>&#x1F4CB; Suggested Reorder</div>"
+        +"<p style='color:#475569;font-size:12px;margin-bottom:12px;'>Based on 30-day usage. Quantities to reach a 45-day supply.</p>"
+        +"<table style='width:100%;border-collapse:collapse;font-size:13px;'>"
+        +"<tr style='border-bottom:1px solid #1e3a5f;'><th style='text-align:left;padding:6px 4px;color:#64748b;'>Product</th><th style='text-align:center;padding:6px 4px;color:#64748b;'>On Hand</th><th style='text-align:center;padding:6px 4px;color:#64748b;'>30d Usage</th><th style='text-align:center;padding:6px 4px;color:#f59e0b;'>Suggest Order</th></tr>"
+        +reorderItems.map(function(p){
+          return "<tr style='border-bottom:1px solid #0a1628;'>"
+            +"<td style='padding:8px 4px;font-weight:600;'>"+esc(p.name)+"</td>"
+            +"<td style='padding:8px 4px;text-align:center;'>"+p.qty+" "+esc(p.unit)+"</td>"
+            +"<td style='padding:8px 4px;text-align:center;'>"+Math.round(p.used30)+" "+esc(p.unit)+"</td>"
+            +"<td style='padding:8px 4px;text-align:center;font-weight:700;color:#f59e0b;'>"+p.suggestedOrder+" "+esc(p.unit)+"</td>"
+            +"</tr>";
+        }).join("")
+        +"</table>"
+        +"<button class='btn bp' style='width:100%;margin-top:12px;padding:10px;' data-a='analytics-to-restock'>Send to Restock Tab &#x2192;</button>"
+        +"</div>"
+      : "<div class='card' style='margin-bottom:16px;padding:20px;text-align:center;color:#22c55e;'>&#x2713; All products sufficiently stocked based on current usage.</div>";
+
+    var noData = usageArr.length===0;
+
+    var target = S.analyticsTarget||45;
+    var targetOpts = [
+      {days:14, label:"2 Weeks"},
+      {days:30, label:"1 Month"},
+      {days:45, label:"1.5 Months"},
+      {days:60, label:"2 Months"},
+      {days:90, label:"3 Months"}
+    ];
+    var targetSelector = "<div style='display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;'>"
+      +"<span style='font-size:12px;color:#64748b;font-weight:600;'>Target Supply:</span>"
+      +targetOpts.map(function(t){
+        return "<button class='btn "+(target===t.days?"bp":"bg")+"' style='padding:5px 12px;font-size:12px;' data-a='set-analytics-target' data-v='"+t.days+"'>"+t.label+"</button>";
+      }).join("")
       +"</div>";
 
-    // Render PDF preview
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    const bin = atob(result.pdfBase64);
-    const bytes = new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-    const pdf = await pdfjsLib.getDocument({data:bytes}).promise;
-    const container = document.getElementById("sig-pdf-preview");
-    for(var p=1;p<=pdf.numPages;p++){
-      const page = await pdf.getPage(p);
-      const viewport = page.getViewport({scale:1.2});
-      const canvas = document.createElement("canvas");
-      canvas.width = viewport.width; canvas.height = viewport.height;
-      canvas.style.width="100%"; canvas.style.marginBottom="8px"; canvas.style.display="block";
-      canvas.style.border="1px solid #1e3a5f"; canvas.style.borderRadius="6px";
-      await page.render({canvasContext:canvas.getContext("2d"), viewport}).promise;
-      container.appendChild(canvas);
-    }
+    pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+      +"<h2 style='font-size:20px;font-weight:700;'>Analytics</h2>"
+      +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='analytics-refresh'>&#x21BB; Refresh</button></div>"
+      +targetSelector
+      +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Usage based on last 30 days vs previous 30 days. Reorder suggestion targets a "+target+"-day supply.</p>"
+      +(noData
+        ? "<div class='card' style='padding:30px;text-align:center;color:#475569;'>"
+          +"<div style='font-size:36px;margin-bottom:12px;'>&#x1F4CA;</div>"
+          +"<p>Not enough data yet.</p><p style='font-size:13px;margin-top:8px;'>Usage data will appear as your Adjustment Log and Order History build up.</p></div>"
+        : reorderTable
+          +"<div style='font-size:15px;font-weight:700;margin-bottom:10px;'>Inventory Health</div>"
+          +healthCards);
 
-    // Set up signature pad
-    const pad = document.getElementById("sig-pad");
-    const ctx = pad.getContext("2d");
-    setTimeout(function(){
-      const rect = pad.getBoundingClientRect();
-      pad.width = rect.width * 2; pad.height = rect.height * 2;
-      ctx.scale(2,2); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#1C1F22";
-    }, 100);
-    let drawing=false, lx=0, ly=0;
-    function getPos(e){ const r=pad.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return [t.clientX-r.left, t.clientY-r.top]; }
-    pad.onmousedown=function(e){ drawing=true; [lx,ly]=getPos(e); };
-    pad.onmousemove=function(e){ if(!drawing)return; const [x,y]=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke(); [lx,ly]=[x,y]; };
-    pad.onmouseup=function(){ drawing=false; };
-    pad.onmouseleave=function(){ drawing=false; };
-    pad.ontouchstart=function(e){ e.preventDefault(); drawing=true; [lx,ly]=getPos(e); };
-    pad.ontouchmove=function(e){ e.preventDefault(); if(!drawing)return; const [x,y]=getPos(e); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(x,y); ctx.stroke(); [lx,ly]=[x,y]; };
-    pad.ontouchend=function(){ drawing=false; };
-    window._sigPad = pad;
-  } catch(e){
-    pg.innerHTML="<div style='color:#ef4444;padding:20px;'>Error loading document: "+esc(e.message)+"</div>";
+  } catch(e) {
+    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>Analytics</h2>"
+      +"<div class='card' style='padding:20px;text-align:center;color:#ef4444;'>Error loading data: "+e.message+"</div>";
   }
 }
 
-async function sigSubmit(){
-  const errEl = document.getElementById("sig-submit-err");
-  const name = (document.getElementById("sig-name-inp")||{}).value||"";
-  if(!name.trim()){ errEl.textContent="Please type your full name."; return; }
-  const pad = window._sigPad;
-  if(!pad){ errEl.textContent="Signature pad not found."; return; }
-  const btn = document.querySelector("[data-a='sig-submit']");
-  if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
-  errEl.textContent="";
-  try {
-    // Fetch original PDF from server
-    const original = await gs("getSignatureRequestServer", {id:S._currentSigId});
-    const { PDFDocument, rgb } = PDFLib;
-    const bin = atob(original.pdfBase64);
-    const bytes = new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-    const pdfDoc = await PDFDocument.load(bytes);
-    // Embed signature
-    const sigDataUrl = pad.toDataURL("image/png");
-    const pngBytes = await fetch(sigDataUrl).then(function(r){return r.arrayBuffer();});
-    const pngImage = await pdfDoc.embedPng(pngBytes);
-    const pages = pdfDoc.getPages();
-    const lastPage = pages[pages.length-1];
-    const {width} = lastPage.getSize();
-    const sigW=180, sigH=sigW*(pngImage.height/pngImage.width);
-    lastPage.drawImage(pngImage, {x:40, y:60, width:sigW, height:sigH});
-    lastPage.drawText("Technician: "+name+"  "+new Date().toLocaleString(), {x:40, y:52, size:8, color:rgb(0.35,0.37,0.4)});
-    // Save and encode
-    const signedBytes = await pdfDoc.save();
-    let b64=""; const chunk=8192;
-    for(var j=0;j<signedBytes.length;j+=chunk){
-      b64+=String.fromCharCode.apply(null, signedBytes.subarray(j,j+chunk));
-    }
-    b64=btoa(b64);
-    const result = await gs("submitSignatureServer", {id:S._currentSigId, signedPdfBase64:b64, signerName:name});
-    if(result.ok){
-      await renderSignatures();
-    } else {
-      errEl.textContent="Error: "+(result.error||"Unknown");
-      if(btn){ btn.disabled=false; btn.textContent="Sign and Submit"; }
-    }
-  } catch(e){
-    errEl.textContent="Error: "+e.message;
-    if(btn){ btn.disabled=false; btn.textContent="Sign and Submit"; }
-  }
-}
-
-async function sigDownload(id){
-  try {
-    const result = await gs("getSignedPdfServer", {id:id});
-    if(!result.ok){ alert("Could not retrieve signed PDF: "+(result.error||"")); return; }
-    const bin=atob(result.pdfBase64);
-    const bytes=new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-    const blob=new Blob([bytes],{type:"application/pdf"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download=result.docName||"signed.pdf"; a.click();
-  } catch(e){ alert("Download error: "+e.message); }
-}
 function renderSettings(){
   const tab=S.settingsTab;
   const tabs=[{id:"access",l:"Access"},{id:"trucks",l:"Trucks"},{id:"techs",l:"Technicians"},{id:"cats",l:"Inspection"},{id:"prods",l:"Products"},{id:"me",l:"My Name"}];
@@ -2777,7 +2621,6 @@ function renderCatSettings(){
         +"<select class='inp' style='width:100px;padding:5px 8px;font-size:12px;' data-fieldidx='"+fi+"' data-fieldprop='type'>"
         +fieldTypes.map(function(t){return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>";}).join("")
         +"</select>"
-        +(f.type==="select"?"<div style='margin-top:6px;'><div style='font-size:11px;color:#64748b;margin-bottom:4px;'>Options (one per line):</div><textarea style='width:100%;padding:5px 8px;font-size:12px;background:#162235;border:1px solid #1e3a5f;border-radius:6px;color:#e2e8f0;resize:vertical;min-height:60px;' data-fieldidx='"+fi+"' data-fieldprop='selectOptions' placeholder='Option 1\nOption 2\nOption 3'>"+((f.selectOptions||[]).join("\n"))+"</textarea></div>":"")
         +(f.id!=="truck"?"<button class='btn bd' style='padding:4px 8px;font-size:12px;' data-a='del-insp-field' data-v='"+fi+"'>X</button>":"")
         +"</div>"
         +"<input class='inp' style='width:100%;padding:5px 8px;font-size:12px;margin-bottom:6px;' value='"+esc(f.placeholder||"")+"' data-fieldidx='"+fi+"' data-fieldprop='placeholder' placeholder='Placeholder text (optional)'>"
@@ -3026,8 +2869,6 @@ tap("pk0","0"); tap("pkdel","del");
 
 var lo = document.getElementById("logout-btn");
 if(lo) lo.onclick = function(){ logout(); };
-var syncTop = document.getElementById("sync-top-btn");
-if(syncTop) syncTop.onclick = function(){ syncFromSheet(); };
 
 if(dbg) dbg.textContent = "Ready - tap a number";
 
@@ -3046,7 +2887,5 @@ function globalHandler(e){
 document.body.onclick = globalHandler;
 document.body.addEventListener("touchend", globalHandler, {passive:false});
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </body>
 </html>
