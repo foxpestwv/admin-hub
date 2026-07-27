@@ -2392,7 +2392,7 @@ async function renderAnalytics(){
       var pct = p.dailyRate>0&&p.qty>0 ? Math.min(100,Math.round((p.daysLeft/tgt)*100)) : p.qty>p.lowAt?100:5;
       var barColor = pct>50?"#22c55e":pct>25?"#f59e0b":"#ef4444";
       var trendIcon = p.trend==="up"?"&#x2191;":p.trend==="down"?"&#x2193;":"&#x2192;";
-      var trendColor = p.trend==="up"?"#22c55e":p.trend==="down"?"#ef4444":"#64748b";
+      var trendColor = p.trend==="up"?"#ef4444":p.trend==="down"?"#22c55e":"#64748b";
       var daysText = p.daysLeft!==null ? p.daysLeft+" days" : "N/A";
       var daysColor = p.daysLeft!==null&&p.daysLeft<14?"#ef4444":p.daysLeft!==null&&p.daysLeft<30?"#f59e0b":"#22c55e";
       return "<div class='card' style='margin-bottom:10px;padding:14px;'>"
