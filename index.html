@@ -2360,9 +2360,9 @@ async function renderAnalytics(){
       }
     });
 
-    // Last 3 full months
+    // Current month + last 2 full months = 3 months of data
     var last3=[];
-    for(var mi=1;mi<=3;mi++){
+    for(var mi=0;mi<=2;mi++){
       var d2=new Date(now.getFullYear(),now.getMonth()-mi,1);
       last3.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"));
     }
