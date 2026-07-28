@@ -2338,6 +2338,8 @@ async function renderAnalytics(){
       if(!usage[product]) usage[product]={name:product,unit:unit,totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
 
       var isRestock = reason.toLowerCase().includes("restock");
+      var skipReason = reason.includes("audit")||reason.includes("correction")||reason.includes("weekly")||reason.includes("count")||reason.includes("return")||reason.includes("damage");
+      if(skipReason) return;
 
       if(rowDate >= thirtyDaysAgo){
         if(isRestock && change>0) usage[product].restocked30+=change;
