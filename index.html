@@ -2319,6 +2319,9 @@ async function renderAnalytics(){
 
   try {
     var adjData = await gs("getAdjustmentLogServer", null);
+    console.log("Adj rows:", adjustments.length, "Order rows:", orders.length);
+    if(adjustments.length>0) console.log("First adj row:", JSON.stringify(adjustments[0]));
+    if(orders.length>0) console.log("First order row:", JSON.stringify(orders[0]));
     var orderData = await gs("getOrderHistoryServer", null);
 
     var adjustments = adjData && adjData.rows ? adjData.rows : [];
