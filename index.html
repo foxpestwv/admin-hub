@@ -2319,41 +2319,44 @@ async function renderAnalytics(){
 
   try {
     var adjData = await gs("getAdjustmentLogServer", null);
-    console.log("Adj rows:", adjustments.length, "Order rows:", orders.length);
-    if(adjustments.length>0) console.log("First adj row:", JSON.stringify(adjustments[0]));
-    if(orders.length>0) console.log("First order row:", JSON.stringify(orders[0]));
     var orderData = await gs("getOrderHistoryServer", null);
 
     var adjustments = adjData && adjData.rows ? adjData.rows : [];
     var orders = orderData && orderData.rows ? orderData.rows : [];
+
+    // Debug - remove after testing
+    console.log("Adj rows:", adjustments.length, "Order rows:", orders.length);
+    if(adjustments.length>0) console.log("First adj row:", JSON.stringify(adjustments[0]));
+    if(orders.length>0) console.log("First order row:", JSON.stringify(orders[0]));
+
     var now = new Date();
     var nowTs = now.getTime();
 
-    // Build monthly usage: {product: {unit, months:{YYYY-MM:qty}, techMonths:{tech:{YYYY-MM:qty}}}}
     var prodMap = {};
     function ensureProd(name, unit){ if(!prodMap[name]) prodMap[name]={name:name,unit:unit,months:{},techMonths:{}}; }
 
-    // Non-usage reasons to skip
     var skipWords = ["audit","correction","weekly","count","return","damage","loss","restock received","warehouse"];
 
     adjustments.forEach(function(row){
-      var dateStr=row[0], product=row[1], unit=row[2];
+      var dateVal=row[0], product=row[1], unit=row[2];
       var change=parseFloat(row[5])||0;
       var reason=String(row[7]||"").toLowerCase();
-      if(!product||!dateStr||change>=0) return;
-      // Skip non-usage adjustments
+      if(!product||!dateVal||change>=0) return;
       for(var si=0;si<skipWords.length;si++){ if(reason.includes(skipWords[si])) return; }
-      var d=new Date(dateStr); if(isNaN(d.getTime())) return;
+      // Handle both string dates and JS Date objects from sheets
+      var d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+      if(isNaN(d.getTime())) return;
       var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
       ensureProd(product,unit);
       prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+Math.abs(change);
     });
 
     orders.forEach(function(row){
-      var dateStr=row[0], tech=String(row[1]||""), product=row[2];
+      var dateVal=row[0], tech=String(row[1]||""), product=row[2];
       var qty=parseFloat(row[3])||0, unit=row[4];
-      if(!product||!qty||!dateStr) return;
-      var d=new Date(dateStr); if(isNaN(d.getTime())) return;
+      if(!product||!qty||!dateVal) return;
+      var d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+      if(isNaN(d.getTime())) return;
       var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
       ensureProd(product,unit);
       prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+qty;
@@ -2363,19 +2366,19 @@ async function renderAnalytics(){
       }
     });
 
-    // Current month + last 2 full months = 3 months of data
+    // Current month + last 2 months
     var last3=[];
     for(var mi=0;mi<=2;mi++){
       var d2=new Date(now.getFullYear(),now.getMonth()-mi,1);
       last3.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"));
     }
+    console.log("Looking for months:", last3);
+    console.log("Months found in data:", Object.keys(prodMap).length>0 ? Object.keys(prodMap[Object.keys(prodMap)[0]].months) : "none");
 
-    // All months sorted
     var allMonths={};
     Object.keys(prodMap).forEach(function(p){ Object.keys(prodMap[p].months).forEach(function(m){ allMonths[m]=1; }); });
     var sortedMonths=Object.keys(allMonths).sort();
 
-    // ── ORDER PLANNER ─────────────────────────────────────────────────────────
     if(view==="planner"){
       var targetOpts=[{days:14,label:"2 Weeks"},{days:30,label:"1 Month"},{days:45,label:"1.5 Months"},{days:60,label:"2 Months"},{days:90,label:"3 Months"}];
       var targetBar="<div style='display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap;'>"
@@ -2433,10 +2436,9 @@ async function renderAnalytics(){
         +navHtml+targetBar+summaryBar+sendBtn
         +(plannerRows||"<div class='card' style='padding:30px;text-align:center;color:#475569;'><div style='font-size:32px;margin-bottom:10px;'>&#x1F4CA;</div><p>Not enough usage data yet.</p><p style='font-size:12px;margin-top:6px;'>Usage data builds up over time from approved orders and inventory adjustments.</p></div>");
 
-    // ── USAGE TIMELINE ────────────────────────────────────────────────────────
     } else if(view==="timeline"){
       var recentMonths=sortedMonths.slice(-6);
-      var prodRows=Object.keys(prodMap).sort().map(function(pname){
+      var prodRows2=Object.keys(prodMap).sort().map(function(pname){
         var pm=prodMap[pname];
         if(!recentMonths.some(function(m){ return (pm.months[m]||0)>0; })) return "";
         var maxQty=Math.max.apply(null,recentMonths.map(function(m){ return pm.months[m]||0; }))||1;
@@ -2458,10 +2460,9 @@ async function renderAnalytics(){
       pg.innerHTML="<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
         +navHtml
         +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Monthly usage per product — last 6 months.</p>"
-        +(prodRows?"<div style='overflow-x:auto;'><table style='width:100%;border-collapse:collapse;font-size:13px;'><thead><tr style='border-bottom:2px solid #1e3a5f;'><th style='padding:6px 4px;text-align:left;font-size:11px;color:#64748b;'>Product</th>"+monthHeaders+"</tr></thead><tbody>"+prodRows+"</tbody></table></div>"
+        +(prodRows2?"<div style='overflow-x:auto;'><table style='width:100%;border-collapse:collapse;font-size:13px;'><thead><tr style='border-bottom:2px solid #1e3a5f;'><th style='padding:6px 4px;text-align:left;font-size:11px;color:#64748b;'>Product</th>"+monthHeaders+"</tr></thead><tbody>"+prodRows2+"</tbody></table></div>"
           :"<div class='card' style='padding:30px;text-align:center;color:#475569;'>No usage data yet.</div>");
 
-    // ── TECH USAGE ────────────────────────────────────────────────────────────
     } else if(view==="techs"){
       var techMap={};
       Object.keys(prodMap).forEach(function(pname){
@@ -2502,6 +2503,7 @@ async function renderAnalytics(){
       +"<div class='card' style='padding:20px;text-align:center;color:#ef4444;'>Error loading data: "+esc(e.message)+"</div>";
   }
 }
+
 
 function renderSettings(){
   const tab=S.settingsTab;
