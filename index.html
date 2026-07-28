@@ -2310,10 +2310,8 @@ async function renderAnalytics(){
 
   try {
     // Fetch adjustment log and order history from sheet
-    const [adjData, orderData] = await Promise.all([
-      gs("getAdjustmentLogServer", null),
-      gs("getOrderHistoryServer", null)
-    ]);
+    const adjData = await gs("getAdjustmentLogServer", null);
+    const orderData = await gs("getOrderHistoryServer", null);
 
     const adjustments = adjData && adjData.rows ? adjData.rows : [];
     const orders = orderData && orderData.rows ? orderData.rows : [];
