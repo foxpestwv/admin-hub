@@ -2346,18 +2346,19 @@ async function renderAnalytics(){
       // Handle both string dates and JS Date objects from sheets
       var d = dateVal instanceof Date ? dateVal : new Date(dateVal);
       if(isNaN(d.getTime())) return;
-      var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      // Use UTC to avoid timezone issues with ISO strings
+      var monthKey=d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");
       ensureProd(product,unit);
       prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+Math.abs(change);
     });
 
     orders.forEach(function(row){
-      var dateVal=row[0], tech=String(row[1]||""), product=row[2];
-      var qty=parseFloat(row[3])||0, unit=row[4];
+      var dateVal=row[0], tech=String(row[2]||""), product=row[3];
+      var qty=parseFloat(row[4])||0, unit=row[5];
       if(!product||!qty||!dateVal) return;
       var d = dateVal instanceof Date ? dateVal : new Date(dateVal);
       if(isNaN(d.getTime())) return;
-      var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      var monthKey=d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");
       ensureProd(product,unit);
       prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+qty;
       if(tech){
@@ -2369,8 +2370,8 @@ async function renderAnalytics(){
     // Current month + last 2 months
     var last3=[];
     for(var mi=0;mi<=2;mi++){
-      var d2=new Date(now.getFullYear(),now.getMonth()-mi,1);
-      last3.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"));
+      var d2=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-mi,1));
+      last3.push(d2.getUTCFullYear()+"-"+String(d2.getUTCMonth()+1).padStart(2,"0"));
     }
     console.log("Looking for months:", last3);
     console.log("Months found in data:", Object.keys(prodMap).length>0 ? Object.keys(prodMap[Object.keys(prodMap)[0]].months) : "none");
