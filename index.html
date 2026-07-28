@@ -778,7 +778,10 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="analytics-refresh") { renderAnalytics(); return; }
+  if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
   if(a==="set-analytics-target") { S.analyticsTarget=parseInt(v); renderAnalytics(); return; }
+  if(a==="toggle-tech-usage") { S._expandedTech=S._expandedTech===v?null:v; renderAnalytics(); return; }
+  if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="restock-archive") {
     S.restockOrders.forEach(function(o){ if(o.status==="Received") o.archived=true; });
