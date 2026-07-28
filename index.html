@@ -2304,170 +2304,199 @@ async function renderAnalytics(){
   const pg = document.getElementById("pg-analytics");
   if(!pg) return;
 
-  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Analytics</h2>"
-    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Pulling usage data from your sheets...</p>"
-    +"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
+  var view = S._analyticsView || "planner";
+  var target = S.analyticsTarget || 30;
+
+  var navHtml = "<div style='display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;'>"
+    +"<button class='btn "+(view==="planner"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='planner'>&#x1F4CB; Order Planner</button>"
+    +"<button class='btn "+(view==="timeline"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='timeline'>&#x1F4C5; Usage Timeline</button>"
+    +"<button class='btn "+(view==="techs"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='techs'>&#x1F464; Tech Usage</button>"
+    +"<button class='btn bg' style='font-size:12px;padding:6px 12px;margin-left:auto;' data-a='analytics-refresh'>&#x21BB;</button>"
+    +"</div>";
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
+    +navHtml+"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
 
   try {
-    // Fetch adjustment log and order history from sheet
-    const adjData = await gs("getAdjustmentLogServer", null);
-    const orderData = await gs("getOrderHistoryServer", null);
+    var adjData = await gs("getAdjustmentLogServer", null);
+    var orderData = await gs("getOrderHistoryServer", null);
 
-    const adjustments = adjData && adjData.rows ? adjData.rows : [];
-    const orders = orderData && orderData.rows ? orderData.rows : [];
+    var adjustments = adjData && adjData.rows ? adjData.rows : [];
+    var orders = orderData && orderData.rows ? orderData.rows : [];
+    var now = new Date();
+    var nowTs = now.getTime();
 
-    // Calculate usage per product from adjustment log
-    // Negative changes = usage, positive = restock
-    var usage = {}; // {productName: {totalUsed, restocked, lastUsed, useCount}}
-    var now = Date.now();
-    var thirtyDaysAgo = now - 30*24*60*60*1000;
-    var sixtyDaysAgo = now - 60*24*60*60*1000;
+    // Build monthly usage: {product: {unit, months:{YYYY-MM:qty}, techMonths:{tech:{YYYY-MM:qty}}}}
+    var prodMap = {};
+    function ensureProd(name, unit){ if(!prodMap[name]) prodMap[name]={name:name,unit:unit,months:{},techMonths:{}}; }
+
+    // Non-usage reasons to skip
+    var skipWords = ["audit","correction","weekly","count","return","damage","loss","restock received","warehouse"];
 
     adjustments.forEach(function(row){
-      // row: Date, Product, Unit, OldQty, NewQty, Change, Manager, Reason
-      var dateStr = row[0];
-      var product = row[1];
-      var unit = row[2];
-      var change = parseFloat(row[5])||0;
-      var reason = String(row[7]||"");
-      if(!product) return;
-
-      var rowDate = new Date(dateStr).getTime();
-      if(isNaN(rowDate)) return;
-
-      if(!usage[product]) usage[product]={name:product,unit:unit,totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
-
-      var isRestock = reason.toLowerCase().includes("restock");
-      var skipReason = reason.includes("audit")||reason.includes("correction")||reason.includes("weekly")||reason.includes("count")||reason.includes("return")||reason.includes("damage");
-      if(skipReason) return;
-
-      if(rowDate >= thirtyDaysAgo){
-        if(isRestock && change>0) usage[product].restocked30+=change;
-        else if(change<0){ usage[product].totalUsed30+=Math.abs(change); usage[product].useCount++; }
-      }
-      if(rowDate >= sixtyDaysAgo && rowDate < thirtyDaysAgo){
-        if(!isRestock && change<0) usage[product].totalUsed60+=Math.abs(change);
-      }
-      if(!usage[product].lastDate || rowDate > new Date(usage[product].lastDate).getTime()){
-        usage[product].lastDate = dateStr;
-      }
+      var dateStr=row[0], product=row[1], unit=row[2];
+      var change=parseFloat(row[5])||0;
+      var reason=String(row[7]||"").toLowerCase();
+      if(!product||!dateStr||change>=0) return;
+      // Skip non-usage adjustments
+      for(var si=0;si<skipWords.length;si++){ if(reason.includes(skipWords[si])) return; }
+      var d=new Date(dateStr); if(isNaN(d.getTime())) return;
+      var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      ensureProd(product,unit);
+      prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+Math.abs(change);
     });
 
-    // Also count from approved orders
     orders.forEach(function(row){
-      // row: Date, Tech, Product, Qty, Unit, Status, ApprovedBy
-      var dateStr = row[0];
-      var product = row[2];
-      var qty = parseFloat(row[3])||0;
-      var unit = row[4];
-      if(!product||!qty) return;
-      var rowDate = new Date(dateStr).getTime();
-      if(isNaN(rowDate)) return;
-      if(!usage[product]) usage[product]={name:product,unit:unit,totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
-      if(rowDate >= thirtyDaysAgo){ usage[product].totalUsed30+=qty; usage[product].useCount++; }
-      if(rowDate >= sixtyDaysAgo && rowDate < thirtyDaysAgo){ usage[product].totalUsed60+=qty; }
+      var dateStr=row[0], tech=String(row[1]||""), product=row[2];
+      var qty=parseFloat(row[3])||0, unit=row[4];
+      if(!product||!qty||!dateStr) return;
+      var d=new Date(dateStr); if(isNaN(d.getTime())) return;
+      var monthKey=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      ensureProd(product,unit);
+      prodMap[product].months[monthKey]=(prodMap[product].months[monthKey]||0)+qty;
+      if(tech){
+        if(!prodMap[product].techMonths[tech]) prodMap[product].techMonths[tech]={};
+        prodMap[product].techMonths[tech][monthKey]=(prodMap[product].techMonths[tech][monthKey]||0)+qty;
+      }
     });
 
-    var products = S.products;
-    var usageArr = products.map(function(p){
-      var u = usage[p.name]||{totalUsed30:0,totalUsed60:0,restocked30:0,useCount:0,lastDate:null};
-      var dailyRate = u.totalUsed30/30;
-      var daysLeft = dailyRate>0 ? Math.round(p.qty/dailyRate) : null;
-      var trend = u.totalUsed30>u.totalUsed60?"up":u.totalUsed30<u.totalUsed60?"down":"flat";
-      var target2 = S.analyticsTarget||45;
-        var suggestedOrder = Math.max(0, Math.round((dailyRate*target2) - p.qty));
-      return {
-        name:p.name, unit:p.unit, qty:p.qty, lowAt:p.lowAt,
-        used30:u.totalUsed30, used60:u.totalUsed60,
-        dailyRate:dailyRate, daysLeft:daysLeft,
-        trend:trend, suggestedOrder:suggestedOrder,
-        useCount:u.useCount
-      };
-    }).filter(function(p){ return p.used30>0||p.used60>0||p.qty<=p.lowAt; })
-      .sort(function(a,b){ return b.used30-a.used30; });
+    // Last 3 full months
+    var last3=[];
+    for(var mi=1;mi<=3;mi++){
+      var d2=new Date(now.getFullYear(),now.getMonth()-mi,1);
+      last3.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"));
+    }
 
-    // Period toggle
-    var period = S._analyticsPeriod||"30";
+    // All months sorted
+    var allMonths={};
+    Object.keys(prodMap).forEach(function(p){ Object.keys(prodMap[p].months).forEach(function(m){ allMonths[m]=1; }); });
+    var sortedMonths=Object.keys(allMonths).sort();
 
-    // Build health cards
-    var healthCards = usageArr.map(function(p){
-      var tgt = S.analyticsTarget||45;
-      var pct = p.dailyRate>0&&p.qty>0 ? Math.min(100,Math.round((p.daysLeft/tgt)*100)) : p.qty>p.lowAt?100:5;
-      var barColor = pct>50?"#22c55e":pct>25?"#f59e0b":"#ef4444";
-      var trendIcon = p.trend==="up"?"&#x2191;":p.trend==="down"?"&#x2193;":"&#x2192;";
-      var trendColor = p.trend==="up"?"#ef4444":p.trend==="down"?"#22c55e":"#64748b";
-      var daysText = p.daysLeft!==null ? p.daysLeft+" days" : "N/A";
-      var daysColor = p.daysLeft!==null&&p.daysLeft<14?"#ef4444":p.daysLeft!==null&&p.daysLeft<30?"#f59e0b":"#22c55e";
-      return "<div class='card' style='margin-bottom:10px;padding:14px;'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
-        +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
-        +"<div style='display:flex;align-items:center;gap:12px;'>"
-        +"<span style='font-size:12px;color:"+trendColor+";font-weight:600;'>"+trendIcon+" vs last 30d</span>"
-        +"<span style='font-size:12px;font-weight:700;color:"+daysColor+";'>"+daysText+" left</span>"
-        +"</div></div>"
-        +"<div style='background:#0a1628;border-radius:4px;height:8px;margin-bottom:8px;'>"
-        +"<div style='background:"+barColor+";border-radius:4px;height:8px;width:"+pct+"%;transition:width .3s;'></div></div>"
-        +"<div style='display:flex;justify-content:space-between;font-size:12px;color:#64748b;'>"
-        +"<span>On hand: <b style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit)+"</b></span>"
-        +"<span>Used/30d: <b style='color:#e2e8f0;'>"+Math.round(p.used30)+" "+esc(p.unit)+"</b></span>"
-        +(p.suggestedOrder>0?"<span style='color:#f59e0b;font-weight:600;'>Order: "+p.suggestedOrder+" "+esc(p.unit)+"</span>":"<span style='color:#22c55e;'>&#x2713; Stocked</span>")
-        +"</div></div>";
-    }).join("");
+    // ── ORDER PLANNER ─────────────────────────────────────────────────────────
+    if(view==="planner"){
+      var targetOpts=[{days:14,label:"2 Weeks"},{days:30,label:"1 Month"},{days:45,label:"1.5 Months"},{days:60,label:"2 Months"},{days:90,label:"3 Months"}];
+      var targetBar="<div style='display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap;'>"
+        +"<span style='font-size:12px;color:#64748b;font-weight:600;white-space:nowrap;'>Target Supply:</span>"
+        +targetOpts.map(function(t){ return "<button class='btn "+(target===t.days?"bp":"bg")+"' style='padding:4px 10px;font-size:12px;' data-a='set-analytics-target' data-v='"+t.days+"'>"+t.label+"</button>"; }).join("")+"</div>";
 
-    // Build reorder table
-    var reorderItems = usageArr.filter(function(p){ return p.suggestedOrder>0; });
-    var reorderTable = reorderItems.length>0
-      ? "<div class='card' style='margin-bottom:16px;'>"
-        +"<div style='font-size:15px;font-weight:700;margin-bottom:12px;'>&#x1F4CB; Suggested Reorder</div>"
-        +"<p style='color:#475569;font-size:12px;margin-bottom:12px;'>Based on 30-day usage. Quantities to reach a 45-day supply.</p>"
-        +"<table style='width:100%;border-collapse:collapse;font-size:13px;'>"
-        +"<tr style='border-bottom:1px solid #1e3a5f;'><th style='text-align:left;padding:6px 4px;color:#64748b;'>Product</th><th style='text-align:center;padding:6px 4px;color:#64748b;'>On Hand</th><th style='text-align:center;padding:6px 4px;color:#64748b;'>30d Usage</th><th style='text-align:center;padding:6px 4px;color:#f59e0b;'>Suggest Order</th></tr>"
-        +reorderItems.map(function(p){
-          return "<tr style='border-bottom:1px solid #0a1628;'>"
-            +"<td style='padding:8px 4px;font-weight:600;'>"+esc(p.name)+"</td>"
-            +"<td style='padding:8px 4px;text-align:center;'>"+p.qty+" "+esc(p.unit)+"</td>"
-            +"<td style='padding:8px 4px;text-align:center;'>"+Math.round(p.used30)+" "+esc(p.unit)+"</td>"
-            +"<td style='padding:8px 4px;text-align:center;font-weight:700;color:#f59e0b;'>"+p.suggestedOrder+" "+esc(p.unit)+"</td>"
-            +"</tr>";
-        }).join("")
-        +"</table>"
-        +"<button class='btn bp' style='width:100%;margin-top:12px;padding:10px;' data-a='analytics-to-restock'>Send to Restock Tab &#x2192;</button>"
-        +"</div>"
-      : "<div class='card' style='margin-bottom:16px;padding:20px;text-align:center;color:#22c55e;'>&#x2713; All products sufficiently stocked based on current usage.</div>";
+      var plannerRows=S.products.map(function(p){
+        var pm=prodMap[p.name]||{months:{},techMonths:{}};
+        var total3=last3.reduce(function(sum,m){ return sum+(pm.months[m]||0); },0);
+        var avg3=total3/3;
+        var dailyRate=avg3/30;
+        var daysLeft=dailyRate>0?Math.round(p.qty/dailyRate):null;
+        var suggestedQty=Math.max(0,Math.round((dailyRate*target)-p.qty));
+        var lastMonth=last3[0], prevMonth=last3[1];
+        var lastUsed=pm.months[lastMonth]||0, prevUsed=pm.months[prevMonth]||0;
+        var trend=lastUsed>prevUsed*1.1?"up":lastUsed<prevUsed*0.9?"down":"flat";
+        var trendIcon=trend==="up"?"&#x2191;":trend==="down"?"&#x2193;":"&#x2192;";
+        var trendColor=trend==="up"?"#ef4444":trend==="down"?"#22c55e":"#64748b";
+        var daysColor=daysLeft===null?"#64748b":daysLeft<14?"#ef4444":daysLeft<30?"#f59e0b":"#22c55e";
+        var daysText=daysLeft===null?"N/A":daysLeft+" days";
+        var barPct=daysLeft!==null?Math.min(100,Math.round((daysLeft/target)*100)):avg3>0?50:10;
+        var barColor=barPct>66?"#22c55e":barPct>33?"#f59e0b":"#ef4444";
+        if(avg3===0&&p.qty>p.lowAt) return "";
+        return "<div class='card' style='margin-bottom:8px;padding:14px;"+(suggestedQty>0?"border-left:3px solid #f59e0b;":"")+"'>"
+          +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+          +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
+          +"<span style='font-size:12px;color:"+trendColor+";font-weight:600;'>"+trendIcon+" usage</span></div>"
+          +"<div style='background:#0a1628;border-radius:4px;height:6px;margin-bottom:8px;'>"
+          +"<div style='background:"+barColor+";border-radius:4px;height:6px;width:"+barPct+"%;'></div></div>"
+          +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;'>"
+          +"<div><div style='color:#64748b;'>On Hand</div><div style='font-weight:700;color:#e2e8f0;'>"+p.qty+" "+esc(p.unit)+"</div></div>"
+          +"<div><div style='color:#64748b;'>Avg/Month</div><div style='font-weight:700;color:#e2e8f0;'>"+Math.round(avg3)+" "+esc(p.unit)+"</div></div>"
+          +"<div><div style='color:#64748b;'>Days Left</div><div style='font-weight:700;color:"+daysColor+";'>"+daysText+"</div></div>"
+          +"</div>"
+          +(suggestedQty>0?"<div style='margin-top:8px;padding:6px 10px;background:#1c2d1a;border-radius:6px;border:1px solid #22c55e30;display:flex;justify-content:space-between;align-items:center;'>"
+            +"<span style='font-size:12px;color:#94a3b8;'>Suggested order:</span>"
+            +"<span style='font-weight:700;font-size:15px;color:#f59e0b;'>"+suggestedQty+" "+esc(p.unit)+"</span></div>":"")
+          +"</div>";
+      }).filter(Boolean).join("");
 
-    var noData = usageArr.length===0;
+      var needOrder=S.products.filter(function(p){
+        var pm2=prodMap[p.name]||{months:{}};
+        var avg=last3.reduce(function(s,m){return s+(pm2.months[m]||0);},0)/3;
+        return Math.max(0,Math.round((avg/30*target)-p.qty))>0;
+      });
 
-    var target = S.analyticsTarget||45;
-    var targetOpts = [
-      {days:14, label:"2 Weeks"},
-      {days:30, label:"1 Month"},
-      {days:45, label:"1.5 Months"},
-      {days:60, label:"2 Months"},
-      {days:90, label:"3 Months"}
-    ];
-    var targetSelector = "<div style='display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;'>"
-      +"<span style='font-size:12px;color:#64748b;font-weight:600;'>Target Supply:</span>"
-      +targetOpts.map(function(t){
-        return "<button class='btn "+(target===t.days?"bp":"bg")+"' style='padding:5px 12px;font-size:12px;' data-a='set-analytics-target' data-v='"+t.days+"'>"+t.label+"</button>";
-      }).join("")
-      +"</div>";
+      var summaryBar="<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;'>"
+        +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:28px;font-weight:700;color:#f59e0b;'>"+needOrder.length+"</div><div style='font-size:12px;color:#64748b;'>Products to Order</div></div>"
+        +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:28px;font-weight:700;color:#3b82f6;'>"+target+"</div><div style='font-size:12px;color:#64748b;'>Day Target Supply</div></div>"
+        +"</div>";
 
-    pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
-      +"<h2 style='font-size:20px;font-weight:700;'>Analytics</h2>"
-      +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='analytics-refresh'>&#x21BB; Refresh</button></div>"
-      +targetSelector
-      +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Usage based on last 30 days vs previous 30 days. Reorder suggestion targets a "+target+"-day supply.</p>"
-      +(noData
-        ? "<div class='card' style='padding:30px;text-align:center;color:#475569;'>"
-          +"<div style='font-size:36px;margin-bottom:12px;'>&#x1F4CA;</div>"
-          +"<p>Not enough data yet.</p><p style='font-size:13px;margin-top:8px;'>Usage data will appear as your Adjustment Log and Order History build up.</p></div>"
-        : reorderTable
-          +"<div style='font-size:15px;font-weight:700;margin-bottom:10px;'>Inventory Health</div>"
-          +healthCards);
+      var sendBtn=needOrder.length>0?"<button class='btn bp' style='width:100%;padding:12px;font-size:14px;margin-bottom:16px;' data-a='analytics-to-restock'>&#x1F4E4; Send Suggested Order to Restock Tab</button>":"";
+
+      pg.innerHTML="<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
+        +navHtml+targetBar+summaryBar+sendBtn
+        +(plannerRows||"<div class='card' style='padding:30px;text-align:center;color:#475569;'><div style='font-size:32px;margin-bottom:10px;'>&#x1F4CA;</div><p>Not enough usage data yet.</p><p style='font-size:12px;margin-top:6px;'>Usage data builds up over time from approved orders and inventory adjustments.</p></div>");
+
+    // ── USAGE TIMELINE ────────────────────────────────────────────────────────
+    } else if(view==="timeline"){
+      var recentMonths=sortedMonths.slice(-6);
+      var prodRows=Object.keys(prodMap).sort().map(function(pname){
+        var pm=prodMap[pname];
+        if(!recentMonths.some(function(m){ return (pm.months[m]||0)>0; })) return "";
+        var maxQty=Math.max.apply(null,recentMonths.map(function(m){ return pm.months[m]||0; }))||1;
+        var monthCells=recentMonths.map(function(m){
+          var qty=pm.months[m]||0;
+          var pct=Math.round((qty/maxQty)*100);
+          var col=qty===0?"#1e3a5f":pct>66?"#ef4444":pct>33?"#f59e0b":"#3b82f6";
+          return "<td style='padding:6px 4px;text-align:center;'>"+(qty>0?"<div style='background:"+col+";border-radius:4px;padding:3px 6px;font-size:11px;font-weight:700;color:white;display:inline-block;'>"+qty+"</div>":"<div style='color:#334155;font-size:11px;'>-</div>")+"</td>";
+        }).join("");
+        return "<tr style='border-bottom:1px solid #0a1628;'><td style='padding:8px 4px;font-size:12px;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+esc(pname)+"</td>"+monthCells+"</tr>";
+      }).filter(Boolean).join("");
+
+      var monthHeaders=recentMonths.map(function(m){
+        var parts=m.split("-");
+        var d3=new Date(parseInt(parts[0]),parseInt(parts[1])-1,1);
+        return "<th style='padding:6px 4px;text-align:center;font-size:11px;color:#64748b;font-weight:600;'>"+d3.toLocaleDateString("en-US",{month:"short",year:"2-digit"})+"</th>";
+      }).join("");
+
+      pg.innerHTML="<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
+        +navHtml
+        +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Monthly usage per product — last 6 months.</p>"
+        +(prodRows?"<div style='overflow-x:auto;'><table style='width:100%;border-collapse:collapse;font-size:13px;'><thead><tr style='border-bottom:2px solid #1e3a5f;'><th style='padding:6px 4px;text-align:left;font-size:11px;color:#64748b;'>Product</th>"+monthHeaders+"</tr></thead><tbody>"+prodRows+"</tbody></table></div>"
+          :"<div class='card' style='padding:30px;text-align:center;color:#475569;'>No usage data yet.</div>");
+
+    // ── TECH USAGE ────────────────────────────────────────────────────────────
+    } else if(view==="techs"){
+      var techMap={};
+      Object.keys(prodMap).forEach(function(pname){
+        Object.keys(prodMap[pname].techMonths).forEach(function(tech){
+          if(!techMap[tech]) techMap[tech]={name:tech,products:{}};
+          Object.keys(prodMap[pname].techMonths[tech]).forEach(function(m){
+            techMap[tech].products[pname]=(techMap[tech].products[pname]||0)+(prodMap[pname].techMonths[tech][m]||0);
+          });
+        });
+      });
+
+      var techCards=Object.keys(techMap).sort().map(function(tech){
+        var t=techMap[tech];
+        var expanded=S._expandedTech===tech;
+        var topProds=Object.keys(t.products).sort(function(a,b){ return t.products[b]-t.products[a]; }).slice(0,5);
+        var prodList=topProds.map(function(p){
+          return "<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #0a1628;font-size:12px;'>"
+            +"<span style='color:#94a3b8;'>"+esc(p)+"</span>"
+            +"<span style='font-weight:600;color:#e2e8f0;'>"+Math.round(t.products[p])+" "+esc(prodMap[p]?prodMap[p].unit:"")+"</span></div>";
+        }).join("");
+        return "<div class='card' style='margin-bottom:8px;'>"
+          +"<div style='display:flex;align-items:center;justify-content:space-between;cursor:pointer;' data-a='toggle-tech-usage' data-v='"+tech+"'>"
+          +"<div><div style='font-weight:700;font-size:15px;'>"+esc(tech)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+Object.keys(t.products).length+" products used total</div></div>"
+          +"<span style='color:#64748b;font-size:16px;'>"+(expanded?"&#x25B2;":"&#x25BC;")+"</span></div>"
+          +(expanded?"<div style='margin-top:10px;padding-top:10px;border-top:1px solid #1e3a5f;'><div style='font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:6px;'>Top Products (All Time)</div>"+prodList+"</div>":"")
+          +"</div>";
+      }).join("");
+
+      pg.innerHTML="<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
+        +navHtml
+        +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Product usage by technician. Tap a name to see their top products.</p>"
+        +(techCards||"<div class='card' style='padding:30px;text-align:center;color:#475569;'>No technician usage data yet.</div>");
+    }
 
   } catch(e) {
-    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>Analytics</h2>"
-      +"<div class='card' style='padding:20px;text-align:center;color:#ef4444;'>Error loading data: "+e.message+"</div>";
+    pg.innerHTML="<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>Analytics</h2>"
+      +"<div class='card' style='padding:20px;text-align:center;color:#ef4444;'>Error loading data: "+esc(e.message)+"</div>";
   }
 }
 
