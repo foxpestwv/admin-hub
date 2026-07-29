@@ -2373,6 +2373,9 @@ async function renderAnalytics(){
       var d2=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-mi,1));
       last3.push(d2.getUTCFullYear()+"-"+String(d2.getUTCMonth()+1).padStart(2,"0"));
     }
+    var allMonths={};
+    Object.keys(prodMap).forEach(function(p){ Object.keys(prodMap[p].months).forEach(function(m){ allMonths[m]=1; }); });
+    var sortedMonths=Object.keys(allMonths).sort();
     console.log("Looking for months:", last3);
     console.log("Months found in data:", Object.keys(allMonths));
     console.log("prodMap size:", Object.keys(prodMap).length);
@@ -2381,10 +2384,6 @@ async function renderAnalytics(){
       console.log("Order row 100:", JSON.stringify(orders[100]));
       console.log("Order row 200:", JSON.stringify(orders[200]));
     }
-
-    var allMonths={};
-    Object.keys(prodMap).forEach(function(p){ Object.keys(prodMap[p].months).forEach(function(m){ allMonths[m]=1; }); });
-    var sortedMonths=Object.keys(allMonths).sort();
 
     if(view==="planner"){
       var targetOpts=[{days:14,label:"2 Weeks"},{days:30,label:"1 Month"},{days:45,label:"1.5 Months"},{days:60,label:"2 Months"},{days:90,label:"3 Months"}];
