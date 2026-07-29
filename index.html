@@ -223,6 +223,7 @@ const S = {
   truckInventories:{}, // {techName: {truck, products:[{id,name,unit,qty,prevQty}], lastSubmit}}
   sheetTruckData:{}, // loaded from sheet for manager view
   analyticsTarget:45, // days of supply to target
+  analyticsAvgDays:90, // days to average usage over
   restockOrders:[], // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
@@ -778,6 +779,7 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="analytics-refresh") { renderAnalytics(); return; }
+  if(a==="set-analytics-avg") { S.analyticsAvgDays=parseInt(v); renderAnalytics(); return; }
   if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
   if(a==="set-analytics-target") { S.analyticsTarget=parseInt(v); renderAnalytics(); return; }
   if(a==="toggle-tech-usage") { S._expandedTech=S._expandedTech===v?null:v; renderAnalytics(); return; }
@@ -2367,34 +2369,39 @@ async function renderAnalytics(){
       }
     });
 
-    // Current month + last 2 months
+    // Build month buckets based on selected avg period
+    var avgDays2 = S.analyticsAvgDays||90;
+    var avgMonths = Math.ceil(avgDays2/30);
     var last3=[];
-    for(var mi=0;mi<=2;mi++){
+    for(var mi=0;mi<avgMonths;mi++){
       var d2=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-mi,1));
       last3.push(d2.getUTCFullYear()+"-"+String(d2.getUTCMonth()+1).padStart(2,"0"));
     }
+    console.log("Looking for months:", last3);
+    console.log("Months found in data:", Object.keys(prodMap).length>0 ? Object.keys(prodMap[Object.keys(prodMap)[0]].months) : "none");
+
     var allMonths={};
     Object.keys(prodMap).forEach(function(p){ Object.keys(prodMap[p].months).forEach(function(m){ allMonths[m]=1; }); });
     var sortedMonths=Object.keys(allMonths).sort();
-    console.log("Looking for months:", last3);
-    console.log("Months found in data:", Object.keys(allMonths));
-    console.log("prodMap size:", Object.keys(prodMap).length);
-    if(orders.length>10){
-      console.log("Order row 10:", JSON.stringify(orders[10]));
-      console.log("Order row 100:", JSON.stringify(orders[100]));
-      console.log("Order row 200:", JSON.stringify(orders[200]));
-    }
 
     if(view==="planner"){
+      var avgDays = S.analyticsAvgDays||90;
       var targetOpts=[{days:14,label:"2 Weeks"},{days:30,label:"1 Month"},{days:45,label:"1.5 Months"},{days:60,label:"2 Months"},{days:90,label:"3 Months"}];
-      var targetBar="<div style='display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap;'>"
-        +"<span style='font-size:12px;color:#64748b;font-weight:600;white-space:nowrap;'>Target Supply:</span>"
-        +targetOpts.map(function(t){ return "<button class='btn "+(target===t.days?"bp":"bg")+"' style='padding:4px 10px;font-size:12px;' data-a='set-analytics-target' data-v='"+t.days+"'>"+t.label+"</button>"; }).join("")+"</div>";
+      var avgOpts=[{days:30,label:"30 Days"},{days:60,label:"60 Days"},{days:90,label:"90 Days"}];
+      var targetBar="<div style='margin-bottom:12px;'>"
+        +"<div style='display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;'>"
+        +"<span style='font-size:12px;color:#64748b;font-weight:600;white-space:nowrap;min-width:90px;'>Target Supply:</span>"
+        +targetOpts.map(function(t){ return "<button class='btn "+(target===t.days?"bp":"bg")+"' style='padding:4px 10px;font-size:12px;' data-a='set-analytics-target' data-v='"+t.days+"'>"+t.label+"</button>"; }).join("")
+        +"</div>"
+        +"<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>"
+        +"<span style='font-size:12px;color:#64748b;font-weight:600;white-space:nowrap;min-width:90px;'>Avg Period:</span>"
+        +avgOpts.map(function(t){ return "<button class='btn "+(avgDays===t.days?"bp":"bg")+"' style='padding:4px 10px;font-size:12px;' data-a='set-analytics-avg' data-v='"+t.days+"'>"+t.label+"</button>"; }).join("")
+        +"</div></div>";
 
       var plannerRows=S.products.map(function(p){
         var pm=prodMap[p.name]||{months:{},techMonths:{}};
         var total3=last3.reduce(function(sum,m){ return sum+(pm.months[m]||0); },0);
-        var avg3=total3/3;
+        var avg3=total3/last3.length;
         var dailyRate=avg3/30;
         var daysLeft=dailyRate>0?Math.round(p.qty/dailyRate):null;
         var suggestedQty=Math.max(0,Math.round((dailyRate*target)-p.qty));
