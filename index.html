@@ -763,9 +763,9 @@ function handleAction(a,v,el,e){
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
   if(a==="restock-view") { S._restockView=v; renderRestock(); return; }
   if(a==="restock-add-prod") { restockAddProd(); return; }
-  if(a==="restock-remove-extra") { if(S._restockExtras) S._restockExtras.splice(parseInt(v),1); renderRestock(); return; }
+  if(a==="restock-remove-extra") { snapshotRestockQtys(); if(S._restockExtras) S._restockExtras.splice(parseInt(v),1); renderRestock(); return; }
   if(a==="restock-send-email") { restockSendEmail(); return; }
-  if(a==="restock-reset") { S._restockSent=false; S._restockExtras=[]; S._restockNotes=""; renderRestock(); return; }
+  if(a==="restock-reset") { S._restockSent=false; S._restockExtras=[]; S._restockNotes=""; S._restockQtys={}; S._restockSelected={}; renderRestock(); return; }
   if(a==="restock-open-receive") { S._receivingOrder=S.restockOrders.find(function(o){return o.id===v;}); S._restockView="receiving"; renderRestock(); return; }
   if(a==="restock-submit-receive") { restockSubmitReceive(); return; }
   if(a==="print-orders") { showPrintDialog("orders"); return; }
@@ -1927,7 +1927,22 @@ function restockAddProd(){
   const qty = parseInt(qtyInp?qtyInp.value:"")||0;
   if(!S._restockExtras) S._restockExtras=[];
   S._restockExtras.push({id:prod.id,name:prod.name,unit:prod.unit,qty:qty,onHand:prod.qty});
+  // Snapshot current low stock qty values before re-rendering
+  snapshotRestockQtys();
   renderRestock();
+}
+
+function snapshotRestockQtys(){
+  // Save current qty inputs for low stock items into state
+  if(!S._restockQtys) S._restockQtys={};
+  var lowStock = S.products.filter(function(p){ return p.qty<=p.lowAt; });
+  lowStock.forEach(function(p){
+    var qtyInp = document.getElementById("rs-qty-"+p.id);
+    var cb = document.getElementById("rs-"+p.id);
+    if(qtyInp) S._restockQtys[p.id] = qtyInp.value;
+    if(cb) S._restockSelected = S._restockSelected||{}; 
+    if(cb) S._restockSelected[p.id] = cb.checked;
+  });
 }
 
 async function restockSendEmail(){
