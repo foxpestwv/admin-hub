@@ -780,6 +780,7 @@ function handleAction(a,v,el,e){
   }
   if(a==="analytics-refresh") { renderAnalytics(); return; }
   if(a==="set-analytics-avg") { S.analyticsAvgDays=parseInt(v); renderAnalytics(); return; }
+  if(a==="analytics-print") { printAnalytics(); return; }
   if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
   if(a==="set-analytics-target") { S.analyticsTarget=parseInt(v); renderAnalytics(); return; }
   if(a==="toggle-tech-usage") { S._expandedTech=S._expandedTech===v?null:v; renderAnalytics(); return; }
@@ -2313,8 +2314,10 @@ async function renderAnalytics(){
     +"<button class='btn "+(view==="planner"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='planner'>&#x1F4CB; Order Planner</button>"
     +"<button class='btn "+(view==="timeline"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='timeline'>&#x1F4C5; Usage Timeline</button>"
     +"<button class='btn "+(view==="techs"?"bp":"bg")+"' style='font-size:12px;padding:6px 12px;' data-a='analytics-view' data-v='techs'>&#x1F464; Tech Usage</button>"
-    +"<button class='btn bg' style='font-size:12px;padding:6px 12px;margin-left:auto;' data-a='analytics-refresh'>&#x21BB;</button>"
-    +"</div>";
+    +"<div style='display:flex;gap:6px;margin-left:auto;'>"
+    +"<button class='btn bg' style='font-size:12px;padding:6px 12px;' data-a='analytics-print'>&#x1F5A8;</button>"
+    +"<button class='btn bg' style='font-size:12px;padding:6px 12px;' data-a='analytics-refresh'>&#x21BB;</button>"
+    +"</div></div>";
 
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Analytics</h2>"
     +navHtml+"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
@@ -2517,6 +2520,36 @@ async function renderAnalytics(){
   }
 }
 
+
+function printAnalytics(){
+  var pg = document.getElementById("pg-analytics");
+  if(!pg) return;
+  var view = S._analyticsView||"planner";
+  var viewName = view==="planner"?"Order Planner":view==="timeline"?"Usage Timeline":"Tech Usage";
+  var target = S.analyticsTarget||30;
+  var avgDays = S.analyticsAvgDays||90;
+  var printArea = document.getElementById("print-area");
+  printArea.innerHTML = "<div style='font-family:sans-serif;padding:20px;'>"
+    +"<div style='border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;'>"
+    +"<div><h1 style='font-size:20px;font-weight:700;margin:0 0 4px;'>Fox Pest Control - Willamette Valley</h1>"
+    +"<h2 style='font-size:15px;font-weight:600;color:#444;margin:0;'>Analytics: "+viewName+"</h2></div>"
+    +"<div style='text-align:right;font-size:12px;color:#666;'>"
+    +"<div>Printed: "+new Date().toLocaleDateString("en-US")+"</div>"
+    +"<div>By: "+S.managerName+"</div>"
+    +"<div>Target: "+target+" days | Avg: "+avgDays+" days</div>"
+    +"</div></div>"
+    // Clone the analytics content and make it print-friendly
+    + pg.innerHTML
+      .replace(/data-a="[^"]*"/g,"")
+      .replace(/class="btn[^"]*"/g,"style='display:none;'")
+      .replace(/background:#[0-9a-f]+/gi,function(m){
+        // Convert dark backgrounds to white for printing
+        return m;
+      })
+    +"</div>";
+  window.print();
+  setTimeout(function(){ printArea.innerHTML=""; }, 1000);
+}
 
 function renderSettings(){
   const tab=S.settingsTab;
