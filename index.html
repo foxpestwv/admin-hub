@@ -3093,23 +3093,10 @@ async function submitQAForm(){
       renderSign(); return;
     }
 
-    // Update loading message
-    var loadEl = document.getElementById("qa-loading");
-    if(loadEl) loadEl.querySelector("div div:last-child").textContent = "Generating PDF...";
-
-    // Step 2: Generate PDF (slower)
-    var pdfResult = await gs("generateQAPdfServer", {qaData:d, manager:S.managerName});
     document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
 
-    var fileId = pdfResult&&pdfResult.ok ? pdfResult.fileId : null;
-    var fileName = pdfResult&&pdfResult.ok ? pdfResult.fileName : d.tech+" QA - "+d.date+".pdf";
-
-    if(!pdfResult||!pdfResult.ok){
-      // PDF failed but data was written - continue without PDF
-      console.warn("PDF generation failed:", pdfResult?pdfResult.error:"unknown");
-    }
-
-    // Set up sign request
+    // No PDF yet - it will be generated after both signatures are collected
+    var fileName = d.tech+" QA - "+d.date+".pdf";
     var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
     S._pendingSignReq = {
       id: "SIG-"+Date.now(),
@@ -3122,7 +3109,7 @@ async function submitQAForm(){
       note: "QA Score: "+total+"/100",
       isQA: true,
       qaData: d,
-      fileId: fileId
+      fileId: null
     };
     S._signView = "signing";
     renderSign();
