@@ -3040,18 +3040,25 @@ async function signSubmitTech(){
     });
 
     if(result && result.ok){
-      // Update local state
+      // Update local state immediately
       var idx = S.signRequests.findIndex(function(r){ return r.id===req.id; });
       if(idx>=0){
         S.signRequests[idx].status = "Signed";
-        S.signRequests[idx].signedFileId = result.signedFileId;
+        S.signRequests[idx].signedFileId = result.signedFileId||"";
         S.signRequests[idx].signedDate = new Date().toISOString();
+      } else {
+        // Not in local state - add it
+        req.status = "Signed";
+        S.signRequests.unshift(req);
       }
       S._pendingSignReq = null;
       S._signView = "list";
       save();
       alert("Document signed successfully! The manager has been notified.");
-      renderSign();
+      // Render immediately from local state, then refresh from sheet in background
+      if(S.role==="manager") renderSignManager(document.getElementById("pg-sign"));
+      else renderSignTech(document.getElementById("pg-sign"));
+      render(); // Update badge
     } else {
       alert("Error: "+(result?result.error:"unknown"));
       if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
