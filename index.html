@@ -863,7 +863,10 @@ function handleAction(a,v,el,e){
   }
   if(a==="sign-open-tech") {
     var r=S.signRequests.find(function(x){ return x.id===v; });
-    if(r){ S._pendingSignReq=r; S._signView="signing"; renderSign(); }
+    if(r){
+      if(r.status==="Signed"){ alert("You have already signed this document."); return; }
+      S._pendingSignReq=r; S._signView="signing"; renderSign();
+    }
     return;
   }
   if(a==="restock-archive") {
