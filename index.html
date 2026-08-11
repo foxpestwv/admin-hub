@@ -142,6 +142,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-truckinv" class="pg"></div>
     <div id="pg-restock" class="pg"></div>
     <div id="pg-analytics" class="pg"></div>
+    <div id="pg-sign" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
   </div>
 </div>
@@ -225,7 +226,8 @@ const S = {
   sheetTruckData:{}, // loaded from sheet for manager view
   analyticsTarget:45, // days of supply to target
   analyticsAvgDays:90, // days to average usage over
-  restockOrders:[], // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
+  restockOrders:[],
+  signRequests:[], // [{id,date,techName,techEmail,docName,status,createdBy,fileData,managerSig,techSig,note}] // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
   ordersFilter:"Pending", settingsTab:"access",
@@ -316,6 +318,10 @@ async function loadAccountsFromSheet(){
     if(result && result.cats && result.cats.length){
       S.cats = result.cats;
       lsSet("hub:cats", S.cats);
+    }
+    if(result && result.signRequests){
+      S.signRequests = result.signRequests;
+      lsSet("hub:signRequests", S.signRequests);
     }
     if(result && result.inspFields && result.inspFields.length){
       S.inspFields = result.inspFields;
@@ -589,7 +595,7 @@ function login(role){
           // Update nav badge and dashboard without full re-render
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
           // Re-render nav to update badge
-          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"settings",l:"Settings"}];
+          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
           document.getElementById("nav").innerHTML=mgrTabs.map(function(t){
             return "<button class='nb"+(S.tab===t.id?" on":"")+"' data-a='tab' data-v='"+t.id+"'>"+t.l+(t.id==="orders"&&pending>0?"<span class='bdg'>"+pending+"</span>":"")+"</button>";
           }).join("")+"<button class='nb' id='logout-btn' style='color:#475569;'>Exit</button>";
@@ -787,6 +793,45 @@ function handleAction(a,v,el,e){
   if(a==="toggle-tech-usage") { S._expandedTech=S._expandedTech===v?null:v; renderAnalytics(); return; }
   if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
+  if(a==="sign-upload") { S._signView="upload"; renderSign(); return; }
+  if(a==="sign-qa") { S._signView="qa"; S._qaData={}; renderSign(); return; }
+  if(a==="sign-qa-submit") { submitQAForm(); return; }
+  if(a==="sign-view") { S._signView=v; renderSign(); return; }
+  if(a==="sign-load-file") { signLoadFile(); return; }
+  if(a==="sign-submit-manager") { signSubmitManager(); return; }
+  if(a==="sign-submit-tech") { signSubmitTech(); return; }
+  if(a==="sign-use-saved") {
+    S._pendingSignReq.managerSig = S._savedManagerSig;
+    signSubmitManager();
+    return;
+  }
+  if(a==="sign-clear-saved") { S._savedManagerSig=null; renderSign(); return; }
+  if(a==="qa-answer") {
+    var parts = v.split("|");
+    if(!S._qaData) S._qaData={};
+    // Snapshot current text fields first
+    var techSel=document.getElementById("qa-tech"); if(techSel) S._qaData.tech=techSel.value;
+    var dateSel=document.getElementById("qa-date"); if(dateSel) S._qaData.date=dateSel.value;
+    S._qaData.account=(document.getElementById("qa-account")||{}).value||S._qaData.account||"";
+    S._qaData.customer=(document.getElementById("qa-customer")||{}).value||S._qaData.customer||"";
+    S._qaData.comments1=(document.getElementById("qa-comments1")||{}).value||S._qaData.comments1||"";
+    S._qaData.comments2=(document.getElementById("qa-comments2")||{}).value||S._qaData.comments2||"";
+    S._qaData.comments3=(document.getElementById("qa-comments3")||{}).value||S._qaData.comments3||"";
+    S._qaData.comments4=(document.getElementById("qa-comments4")||{}).value||S._qaData.comments4||"";
+    S._qaData[parts[0]]=parts[1];
+    renderSign();
+    return;
+  }
+  if(a==="sign-clear-canvas") {
+    var c=document.getElementById("sig-canvas");
+    if(c){ var ctx=c.getContext("2d"); ctx.clearRect(0,0,c.width,c.height); }
+    return;
+  }
+  if(a==="sign-open-tech") {
+    var r=S.signRequests.find(function(x){ return x.id===v; });
+    if(r){ S._pendingSignReq=r; S._signView="signing"; renderSign(); }
+    return;
+  }
   if(a==="restock-archive") {
     S.restockOrders.forEach(function(o){ if(o.status==="Received") o.archived=true; });
     save(); renderRestock(); return;
@@ -835,11 +880,12 @@ function setPage(id){
 
 function render(){
   // Nav
-  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"settings",l:"Settings"}];
-  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"}];
+  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
+  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"}];
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
-  document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}</button>`).join("");
+  const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
+  document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}${t.id==="sign"&&pendingSign>0?'<span class="bdg">'+pendingSign+'</span>':""}</button>`).join("");
   setPage(S.tab);
   if(S.tab==="dashboard") renderDash();
   else if(S.tab==="inspect") renderInspect();
@@ -849,6 +895,7 @@ function render(){
   else if(S.tab==="truckinv") renderTruckInv();
   else if(S.tab==="restock") renderRestock();
   else if(S.tab==="analytics") renderAnalytics();
+  else if(S.tab==="sign") renderSign();
   else if(S.tab==="settings") renderSettings();
 }
 
@@ -2339,6 +2386,11 @@ async function renderAnalytics(){
     +navHtml+"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
 
   try {
+    var signData = await gs("getSignRequestsServer", null);
+    if(signData && signData.signRequests){
+      S.signRequests = signData.signRequests;
+      lsSet("hub:signRequests", S.signRequests);
+    }
     var adjData = await gs("getAdjustmentLogServer", null);
     var orderData = await gs("getOrderHistoryServer", null);
 
@@ -2565,6 +2617,479 @@ function printAnalytics(){
     +"</div>";
   window.print();
   setTimeout(function(){ printArea.innerHTML=""; }, 1000);
+}
+
+
+// ─── Sign Tab ─────────────────────────────────────────────────────────────────
+function renderSign(){
+  const pg = document.getElementById("pg-sign");
+  if(!pg) return;
+  if(S.role==="manager") renderSignManager(pg);
+  else renderSignTech(pg);
+}
+
+function renderSignManager(pg){
+  const view = S._signView||"list";
+  if(view==="upload") { renderSignUpload(pg); return; }
+  if(view==="qa") { renderQAForm(pg); return; }
+  if(view==="signing") { renderSignCanvas(pg,"manager"); return; }
+
+  // List view
+  const reqs = S.signRequests;
+  const pending = reqs.filter(function(r){ return r.status==="Pending"; });
+  const signed = reqs.filter(function(r){ return r.status==="Signed"; });
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>Documents</h2>"
+    +"<div style='display:flex;gap:8px;'>"
+    +"<button class='btn bg' style='font-size:13px;padding:8px 14px;' data-a='sign-qa'>&#x1F4CB; QA Form</button>"
+    +"<button class='btn bp' style='font-size:13px;padding:8px 14px;' data-a='sign-upload'>+ Upload Doc</button>"
+    +"</div></div>"
+    +(pending.length>0
+      ? "<div style='font-size:12px;font-weight:600;color:#f59e0b;text-transform:uppercase;margin-bottom:8px;'>Awaiting Signature</div>"
+        +pending.map(function(r){ return signCard(r); }).join("")
+      : "")
+    +(signed.length>0
+      ? "<div style='font-size:12px;font-weight:600;color:#22c55e;text-transform:uppercase;margin-bottom:8px;margin-top:12px;'>Signed</div>"
+        +signed.map(function(r){ return signCard(r); }).join("")
+      : "")
+    +(reqs.length===0
+      ? "<div class='card' style='padding:30px;text-align:center;color:#475569;'><div style='font-size:36px;margin-bottom:12px;'>&#x1F4DD;</div><p>No documents yet.</p><p style='font-size:13px;margin-top:6px;'>Tap Send for Signature to upload a document.</p></div>"
+      : "");
+}
+
+function signCard(r){
+  var sc = r.status==="Signed"?"#22c55e":"#f59e0b";
+  return "<div class='card' style='margin-bottom:8px;padding:14px;'>"
+    +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;'>"
+    +"<div style='font-weight:600;font-size:14px;'>"+esc(r.docName)+"</div>"
+    +"<span class='sbdg' style='background:"+sc+"22;color:"+sc+";'>"+r.status+"</span>"
+    +"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>"+esc(r.techName)+" &bull; "+fd(r.date)+"</div>"
+    +(r.note?"<div style='font-size:12px;color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(r.note)+"</div>":"")
+    +(r.status==="Signed"&&r.signedFileId
+      ? "<a href='https://drive.google.com/file/d/"+r.signedFileId+"/view' target='_blank' style='display:inline-block;margin-top:8px;font-size:12px;color:#3b82f6;'>&#x1F4C4; View Signed Document</a>"
+      : "")
+    +"</div>";
+}
+
+function renderSignUpload(pg){
+  var techOpts = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.id)+"'>"+esc(t.name)+"</option>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>Send for Signature</h2></div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='margin-bottom:12px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Select Technician</label>"
+    +"<select class='inp' id='sign-tech-sel'>"+techOpts+"</select></div>"
+    +"<div style='margin-bottom:12px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Upload PDF Document</label>"
+    +"<input type='file' accept='*/*' id='sign-file-inp' style='width:100%;padding:8px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:13px;'></div>"
+    +"<div style='margin-bottom:16px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Note (optional)</label>"
+    +"<input type='text' class='inp' id='sign-note' placeholder='e.g. Please review and sign your QA form'></div>"
+    +"<button class='btn bp' style='width:100%;padding:12px;font-size:14px;' data-a='sign-load-file'>Next: Sign Document &#x2192;</button>"
+    +"</div>";
+}
+
+function renderSignCanvas(pg, role){
+  var req = S._pendingSignReq;
+  var isManager = role==="manager";
+  var title = isManager ? "Your Signature (Manager)" : "Your Signature";
+  var subtitle = isManager
+    ? "Sign below as the manager. The document will then be sent to "+esc(req?req.techName:"the technician")+" for their signature."
+    : "Please review and sign the document below.";
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:12px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='"+(isManager?"upload":"list")+"'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>"+title+"</h2></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>"+subtitle+"</p>"
+    +(req?"<div class='card' style='margin-bottom:14px;padding:12px 14px;'>"
+      +"<div style='font-weight:600;'>"+esc(req.docName)+"</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(req.techName)+" &bull; "+fd(req.date)+"</div>"
+      +"</div>":"")
+    // Check if saved signature exists
+    +(S._savedManagerSig&&isManager
+      ? "<div style='margin-bottom:12px;'>"
+        +"<div style='font-size:12px;color:#64748b;margin-bottom:6px;'>Saved signature:</div>"
+        +"<img src='"+S._savedManagerSig+"' style='background:white;border-radius:8px;max-width:100%;height:80px;object-fit:contain;border:1px solid #1e3a5f;'>"
+        +"<div style='display:flex;gap:8px;margin-top:8px;'>"
+        +"<button class='btn bp' style='flex:2;padding:10px;' data-a='sign-use-saved'>Use Saved Signature</button>"
+        +"<button class='btn bg' style='flex:1;padding:10px;font-size:12px;' data-a='sign-clear-saved'>Draw New</button>"
+        +"</div></div>"
+      : "<div style='margin-bottom:6px;font-size:12px;color:#64748b;'>Draw your signature below:</div>"
+        +"<canvas id='sig-canvas' style='width:100%;height:200px;background:white;border-radius:10px;border:2px solid #1e3a5f;touch-action:none;display:block;cursor:crosshair;'></canvas>"
+        +"<div style='display:flex;gap:8px;margin-top:8px;'>"
+        +"<button class='btn bg' style='flex:1;padding:8px;font-size:13px;' data-a='sign-clear-canvas'>Clear</button>"
+        +"</div>")
+    +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;margin-top:16px;' data-a='"+(isManager?"sign-submit-manager":"sign-submit-tech")+"'>"
+    +(isManager?"Send to Tech for Signature &#x2192;":"Submit Signed Document &#x2713;")+"</button>";
+
+  // Initialize canvas
+  setTimeout(function(){
+    var canvas = document.getElementById("sig-canvas");
+    if(!canvas) return;
+    var ctx = canvas.getContext("2d");
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 200;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    var drawing = false;
+    var lastX=0, lastY=0;
+    function getPos(e){
+      var rect=canvas.getBoundingClientRect();
+      var scaleX=canvas.width/rect.width;
+      var scaleY=canvas.height/rect.height;
+      if(e.touches){ return {x:(e.touches[0].clientX-rect.left)*scaleX,y:(e.touches[0].clientY-rect.top)*scaleY}; }
+      return {x:(e.clientX-rect.left)*scaleX,y:(e.clientY-rect.top)*scaleY};
+    }
+    function start(e){ e.preventDefault(); drawing=true; var p=getPos(e); lastX=p.x; lastY=p.y; }
+    function draw(e){ e.preventDefault(); if(!drawing) return; var p=getPos(e); ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke(); lastX=p.x; lastY=p.y; }
+    function stop(){ drawing=false; }
+    canvas.addEventListener("mousedown",start);
+    canvas.addEventListener("mousemove",draw);
+    canvas.addEventListener("mouseup",stop);
+    canvas.addEventListener("touchstart",start,{passive:false});
+    canvas.addEventListener("touchmove",draw,{passive:false});
+    canvas.addEventListener("touchend",stop);
+  },100);
+}
+
+function renderSignTech(pg){
+  var myName = S.currentTech||"";
+  var pending = S.signRequests.filter(function(r){ return r.status==="Pending"&&r.techName===myName; });
+  var signed = S.signRequests.filter(function(r){ return r.status==="Signed"&&r.techName===myName; });
+
+  if(S._signView==="signing"){ renderSignCanvas(pg,"tech"); return; }
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>My Documents</h2>"
+    +(pending.length>0
+      ? "<div style='font-size:12px;font-weight:600;color:#f59e0b;text-transform:uppercase;margin-bottom:8px;'>Awaiting Your Signature</div>"
+        +pending.map(function(r){
+          return "<div class='card' style='margin-bottom:10px;padding:14px;border-left:3px solid #f59e0b;'>"
+            +"<div style='font-weight:600;font-size:14px;margin-bottom:4px;'>"+esc(r.docName)+"</div>"
+            +"<div style='font-size:12px;color:#64748b;'>From: "+esc(r.createdBy)+" &bull; "+fd(r.date)+"</div>"
+            +(r.note?"<div style='font-size:12px;color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(r.note)+"</div>":"")
+            +"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>Sign Document &#x270F;</button>"
+            +"</div>";
+        }).join("")
+      : "")
+    +(signed.length>0
+      ? "<div style='font-size:12px;font-weight:600;color:#22c55e;text-transform:uppercase;margin-bottom:8px;margin-top:12px;'>Signed</div>"
+        +signed.map(function(r){ return signCard(r); }).join("")
+      : "")
+    +(pending.length===0&&signed.length===0
+      ? "<div class='card' style='padding:30px;text-align:center;color:#475569;'><div style='font-size:36px;margin-bottom:12px;'>&#x2705;</div><p>No documents require your signature.</p></div>"
+      : "");
+}
+
+// ─── Sign Actions ─────────────────────────────────────────────────────────────
+async function signLoadFile(){
+  var sel = document.getElementById("sign-tech-sel");
+  var fileInp = document.getElementById("sign-file-inp");
+  var note = (document.getElementById("sign-note")||{}).value||"";
+  if(!sel||!sel.value){ alert("Please select a technician."); return; }
+  if(!fileInp||!fileInp.files||!fileInp.files[0]){ alert("Please select a PDF file."); return; }
+
+  var file = fileInp.files[0];
+  var tech = S.techAccounts.find(function(t){ return t.id===sel.value; });
+  if(!tech){ alert("Tech not found."); return; }
+
+  // Read file as base64
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var b64 = e.target.result.split(",")[1];
+    var req = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: tech.name,
+      techEmail: tech.email||"",
+      techId: tech.id,
+      docName: file.name,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: note,
+      fileData: b64,
+      managerSig: null,
+      techSig: null
+    };
+    S._pendingSignReq = req;
+    S._signView = "signing";
+    renderSign();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function signSubmitManager(){
+  var req = S._pendingSignReq;
+  if(!req){ alert("No document loaded."); return; }
+
+  // Get signature
+  var sigData = null;
+  if(S._savedManagerSig && !document.getElementById("sig-canvas")){
+    sigData = S._savedManagerSig;
+  } else {
+    var canvas = document.getElementById("sig-canvas");
+    if(!canvas){ alert("Signature canvas not found."); return; }
+    sigData = canvas.toDataURL("image/png");
+    // Save for future use
+    S._savedManagerSig = sigData;
+  }
+
+  req.managerSig = sigData;
+  req.date = new Date().toISOString();
+
+  // Show loading
+  var btn = document.querySelector("[data-a='sign-submit-manager']");
+  if(btn){ btn.disabled=true; btn.textContent="Uploading..."; }
+
+  try {
+    // Upload original PDF to Drive and log to sheet
+    var result = await gs("uploadSignRequestServer", {
+      id: req.id,
+      date: req.date,
+      techName: req.techName,
+      techEmail: req.techEmail,
+      docName: req.docName,
+      createdBy: req.createdBy,
+      note: req.note,
+      fileData: req.fileData||null,
+      existingFileId: req.fileId||null,
+      managerSig: req.managerSig,
+      isQA: req.isQA||false
+    });
+
+    if(result && result.ok){
+      req.fileId = result.fileId;
+      req.signedFileId = null;
+      // Add to local state
+      S.signRequests.unshift(req);
+      S._pendingSignReq = null;
+      S._signView = "list";
+      delete req.fileData; // don't keep large data in memory
+      save();
+      alert("Document uploaded! "+req.techName+" will be notified by email.");
+      renderSign();
+    } else {
+      alert("Upload failed: "+(result?result.error:"unknown error"));
+      if(btn){ btn.disabled=false; btn.textContent="Send to Tech for Signature →"; }
+    }
+  } catch(e){
+    alert("Error: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="Send to Tech for Signature →"; }
+  }
+}
+
+async function signSubmitTech(){
+  var req = S._pendingSignReq;
+  if(!req){ alert("No document found."); return; }
+
+  var sigData = null;
+  if(S._savedTechSig && !document.getElementById("sig-canvas")){
+    sigData = S._savedTechSig;
+  } else {
+    var canvas = document.getElementById("sig-canvas");
+    if(!canvas){ alert("Please draw your signature."); return; }
+    sigData = canvas.toDataURL("image/png");
+    S._savedTechSig = sigData;
+  }
+
+  var btn = document.querySelector("[data-a='sign-submit-tech']");
+  if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
+
+  try {
+    var result = await gs("submitTechSignatureServer", {
+      id: req.id,
+      techName: req.techName,
+      techSig: sigData,
+      signedDate: new Date().toISOString(),
+      managerEmail: "john.kluttz@fox-marketingservices.com"
+    });
+
+    if(result && result.ok){
+      // Update local state
+      var idx = S.signRequests.findIndex(function(r){ return r.id===req.id; });
+      if(idx>=0){
+        S.signRequests[idx].status = "Signed";
+        S.signRequests[idx].signedFileId = result.signedFileId;
+        S.signRequests[idx].signedDate = new Date().toISOString();
+      }
+      S._pendingSignReq = null;
+      S._signView = "list";
+      save();
+      alert("Document signed successfully! The manager has been notified.");
+      renderSign();
+    } else {
+      alert("Error: "+(result?result.error:"unknown"));
+      if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+    }
+  } catch(e){
+    alert("Error: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+  }
+}
+
+
+function renderQAForm(pg){
+  var d = S._qaData||{};
+  var techOpts = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
+  }).join("");
+
+  function yesno(field, score){
+    var val = d[field];
+    return "<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(val==="yes"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;"+(val==="yes"?"border-color:#22c55e;":"")+";' data-a='qa-answer' data-v='"+field+"|yes'>"
+      +"Yes"+(score>0?" (+"+score+")":"")+"</button>"
+      +"<button class='btn "+(val==="no"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='qa-answer' data-v='"+field+"|no'>No</button>"
+      +"</div>";
+  }
+
+  // Calculate score
+  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
+  var total = 0;
+  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
+
+  function section(title, color){
+    return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
+  }
+  function item(label, field, score){
+    return "<div style='margin-bottom:10px;'>"
+      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
+      +yesno(field, score)+"</div>";
+  }
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>QA Inspection Form</h2></div>"
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
+    +"<select class='inp' style='margin-top:4px;' id='qa-tech'>"+techOpts+"</select></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
+    +"<input type='date' class='inp' style='margin-top:4px;' id='qa-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Account #</label>"
+    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-account' placeholder='Account number' value='"+esc(d.account||"")+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Customer</label>"
+    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-customer' placeholder='Customer name' value='"+esc(d.customer||"")+"'></div>"
+    +"</div></div>"
+
+    +section("Customer Interview","#3b82f6")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Were you home during your HPP service?","D9",0)
+    +item("Do you know your technician's name?","D10",2)
+    +item("Was your service completed on time?","D11",5)
+    +item("Did our technician ask if you had any concerns prior to beginning your service?","D12",3)
+    +item("Did our technician discuss the treatment/follow-up expectations after completion?","D13",3)
+    +item("Is there anything we can do to improve your customer experience?","D14",0)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments1' style='margin-top:4px;font-size:13px;' placeholder='Customer interview comments...'>"+esc(d.comments1||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Quality Service Inspection","#f59e0b")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Asked questions, listened, took notes","D16",4)
+    +item("Completed a thorough investigation, beginning with customer concerns","D17",4)
+    +item("Was pest activity addressed not including spider webs?","D18",5)
+    +item("Used webster, removed wasp nest?","D19",5)
+    +item("Were rodent entry points sealed and bait stations serviced?","D20",5)
+    +item("Was a liquid application performed? (check service ticket)","D21",5)
+    +item("Was a granular application performed? (check service ticket)","D22",5)
+    +item("What else opportunities","D23",3)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments2' style='margin-top:4px;font-size:13px;' placeholder='Quality service comments...'>"+esc(d.comments2||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Service Wrap Up","#22c55e")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Reported back to the customer (Curbside call if not home)","D26",5)
+    +item("Service note: Personalized to the home and includes the 4 Part Notes?","D27",5)
+    +item("Check in/out times correct and aligned with service performed?","D28",4)
+    +item("Discussed additional service options as identified during the inspection","D29",3)
+    +item("Work order signed by Technician and Customer (if available)?","D30",5)
+    +item("Were photos added to the work order?","D31",4)
+    +item("Placed required Yard Sign and Door Stickers?","D32",5)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments3' style='margin-top:4px;font-size:13px;' placeholder='Service wrap up comments...'>"+esc(d.comments3||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Required Documentation","#a855f7")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Proper Application Method","D35",10)
+    +item("Product Usage recorded accurately","D36",10)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments4' style='margin-top:4px;font-size:13px;' placeholder='Documentation comments...'>"+esc(d.comments4||"")+"</textarea></div>"
+    +"</div>"
+
+    +"<div class='card' style='margin-bottom:16px;padding:16px;text-align:center;'>"
+    +"<div style='font-size:13px;color:#64748b;margin-bottom:4px;'>Overall Score</div>"
+    +"<div style='font-size:36px;font-weight:700;color:"+(total>=80?"#22c55e":total>=60?"#f59e0b":"#ef4444")+";'>"+total+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>out of 100</div>"
+    +"</div>"
+
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-qa-submit'>Next: Manager Signature &#x2192;</button>";
+}
+
+async function submitQAForm(){
+  // Snapshot current field values
+  var d = S._qaData||{};
+  var techSel = document.getElementById("qa-tech");
+  var dateSel = document.getElementById("qa-date");
+  if(techSel) d.tech = techSel.value;
+  if(dateSel) d.date = dateSel.value;
+  d.account = (document.getElementById("qa-account")||{}).value||"";
+  d.customer = (document.getElementById("qa-customer")||{}).value||"";
+  d.comments1 = (document.getElementById("qa-comments1")||{}).value||"";
+  d.comments2 = (document.getElementById("qa-comments2")||{}).value||"";
+  d.comments3 = (document.getElementById("qa-comments3")||{}).value||"";
+  d.comments4 = (document.getElementById("qa-comments4")||{}).value||"";
+  S._qaData = d;
+
+  if(!d.tech){ alert("Please select a technician."); return; }
+
+  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
+  var total = 0;
+  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
+  d.total = total;
+
+  // Show loading
+  var pg2 = document.getElementById("pg-sign");
+  if(pg2) pg2.innerHTML += "<div style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:99;'>"
+    +"<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;'>"
+    +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
+    +"<div style='color:#e2e8f0;'>Writing to QA sheet and generating PDF...</div>"
+    +"</div></div>";
+
+  try {
+    var result = await gs("submitQAFormServer", {qaData:d, manager:S.managerName});
+    if(!result||!result.ok){
+      alert("Error writing to QA sheet: "+(result?result.error:"unknown")); 
+      renderSign(); return;
+    }
+
+    // Set up sign request with generated PDF file ID
+    var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
+    S._pendingSignReq = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: d.tech,
+      techEmail: tech?tech.email:"",
+      docName: result.fileName||d.tech+" QA - "+d.date,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: "QA Score: "+total+"/100",
+      isQA: true,
+      qaData: d,
+      fileId: result.fileId
+    };
+    S._signView = "signing";
+    renderSign();
+  } catch(e) {
+    alert("Error: "+e.message);
+    renderSign();
+  }
 }
 
 function renderSettings(){
