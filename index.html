@@ -578,7 +578,8 @@ function login(role){
   S.role=role;
   S.tab=role==="tech"?"checkout":"dashboard";
   if(S.currentUser) S.managerName=S.currentUser.name;
-  if(role==="tech" && S.currentUser) S.checkTech=S.currentUser.name;
+  if(role==="tech" && S.currentUser){ S.checkTech=S.currentUser.name; S.currentTech=S.currentUser.name; }
+  if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
   syncFromSheet();
@@ -2621,9 +2622,17 @@ function printAnalytics(){
 
 
 // ─── Sign Tab ─────────────────────────────────────────────────────────────────
-function renderSign(){
+async function renderSign(){
   const pg = document.getElementById("pg-sign");
   if(!pg) return;
+  // Always load fresh sign requests from sheet
+  try {
+    var signData = await gs("getSignRequestsServer", null);
+    if(signData && signData.signRequests){
+      S.signRequests = signData.signRequests;
+      lsSet("hub:signRequests", S.signRequests);
+    }
+  } catch(e){ console.warn("Load sign requests:", e); }
   if(S.role==="manager") renderSignManager(pg);
   else renderSignTech(pg);
 }
@@ -2757,7 +2766,11 @@ function renderSignCanvas(pg, role){
 }
 
 function renderSignTech(pg){
-  var myName = S.currentTech||"";
+  // Get current user's name from their account
+  var myName = S.currentTech||S.managerName||"";
+  // Also check by email in case names differ slightly
+  var myAcct = (S.techAccounts||[]).find(function(t){ return t.name===myName; })
+    || (S.managers||[]).find(function(m){ return m.name===myName; });
   var pending = S.signRequests.filter(function(r){ return r.status==="Pending"&&r.techName===myName; });
   var signed = S.signRequests.filter(function(r){ return r.status==="Signed"&&r.techName===myName; });
 
