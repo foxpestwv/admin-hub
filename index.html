@@ -2916,8 +2916,12 @@ async function signSubmitTech(){
       id: req.id,
       techName: req.techName,
       techSig: sigData,
+      managerSig: req.managerSig||null,
       signedDate: new Date().toISOString(),
-      managerEmail: "john.kluttz@fox-marketingservices.com"
+      managerEmail: "john.kluttz@fox-marketingservices.com",
+      docName: req.docName,
+      createdBy: req.createdBy||S.managerName,
+      isQA: req.isQA||false
     });
 
     if(result && result.ok){
