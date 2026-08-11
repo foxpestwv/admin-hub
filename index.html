@@ -3054,39 +3054,63 @@ async function submitQAForm(){
   Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
   d.total = total;
 
-  // Show loading
+  // Show loading overlay
   var pg2 = document.getElementById("pg-sign");
-  if(pg2) pg2.innerHTML += "<div style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:99;'>"
-    +"<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;'>"
-    +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
-    +"<div style='color:#e2e8f0;'>Writing to QA sheet and generating PDF...</div>"
-    +"</div></div>";
+  if(pg2){
+    var overlay = document.createElement("div");
+    overlay.id = "qa-loading";
+    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;";
+    overlay.innerHTML = "<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;border:1px solid #1e3a5f;'>"
+      +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
+      +"<div style='color:#e2e8f0;font-size:15px;'>Writing QA data to spreadsheet...</div>"
+      +"</div>";
+    document.body.appendChild(overlay);
+  }
 
   try {
-    var result = await gs("submitQAFormServer", {qaData:d, manager:S.managerName});
-    if(!result||!result.ok){
-      alert("Error writing to QA sheet: "+(result?result.error:"unknown")); 
+    // Step 1: Write data to QA sheet (fast)
+    var writeResult = await gs("writeQADataServer", {qaData:d, manager:S.managerName});
+    if(!writeResult||!writeResult.ok){
+      document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+      alert("Error writing to QA sheet: "+(writeResult?writeResult.error:"unknown"));
       renderSign(); return;
     }
 
-    // Set up sign request with generated PDF file ID
+    // Update loading message
+    var loadEl = document.getElementById("qa-loading");
+    if(loadEl) loadEl.querySelector("div div:last-child").textContent = "Generating PDF...";
+
+    // Step 2: Generate PDF (slower)
+    var pdfResult = await gs("generateQAPdfServer", {qaData:d, manager:S.managerName});
+    document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+
+    var fileId = pdfResult&&pdfResult.ok ? pdfResult.fileId : null;
+    var fileName = pdfResult&&pdfResult.ok ? pdfResult.fileName : d.tech+" QA - "+d.date+".pdf";
+
+    if(!pdfResult||!pdfResult.ok){
+      // PDF failed but data was written - continue without PDF
+      console.warn("PDF generation failed:", pdfResult?pdfResult.error:"unknown");
+    }
+
+    // Set up sign request
     var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
     S._pendingSignReq = {
       id: "SIG-"+Date.now(),
       date: new Date().toISOString(),
       techName: d.tech,
       techEmail: tech?tech.email:"",
-      docName: result.fileName||d.tech+" QA - "+d.date,
+      docName: fileName,
       status: "Pending",
       createdBy: S.managerName,
       note: "QA Score: "+total+"/100",
       isQA: true,
       qaData: d,
-      fileId: result.fileId
+      fileId: fileId
     };
     S._signView = "signing";
     renderSign();
   } catch(e) {
+    document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
     alert("Error: "+e.message);
     renderSign();
   }
