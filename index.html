@@ -2907,7 +2907,8 @@ async function signSubmitManager(){
       fileData: req.fileData||null,
       existingFileId: req.fileId||null,
       managerSig: req.managerSig,
-      isQA: req.isQA||false
+      isQA: req.isQA||false,
+      isRA: req.isRA||false
     });
 
     if(result && result.ok){
