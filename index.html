@@ -2815,13 +2815,84 @@ function renderSignTech(pg){
     +(pending.length>0
       ? "<div style='font-size:12px;font-weight:600;color:#f59e0b;text-transform:uppercase;margin-bottom:8px;'>Awaiting Your Signature</div>"
         +pending.map(function(r){
-          return "<div class='card' style='margin-bottom:10px;padding:14px;border-left:3px solid #f59e0b;'>"
+          // Build read-only form summary
+        var formPreview = "";
+        if(r.isQA && r.qaData){
+          var qd = r.qaData;
+          function ql(v){ return v==="yes"?"<span style='color:#22c55e;font-weight:700;'>YES</span>":"<span style='color:#ef4444;'>NO</span>"; }
+          formPreview = "<div style='margin-top:10px;padding:10px;background:#0a1628;border-radius:8px;font-size:12px;'>"
+            +"<div style='font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>QA Results (Read Only)</div>"
+            +"<div style='color:#64748b;margin-bottom:4px;font-weight:600;'>Customer Interview</div>"
+            +"<div style='margin-bottom:2px;'>Were you home: "+ql(qd.D9)+"</div>"
+            +"<div style='margin-bottom:2px;'>Know tech name: "+ql(qd.D10)+"</div>"
+            +"<div style='margin-bottom:2px;'>Service on time: "+ql(qd.D11)+"</div>"
+            +"<div style='margin-bottom:2px;'>Asked concerns: "+ql(qd.D12)+"</div>"
+            +"<div style='margin-bottom:2px;'>Discussed expectations: "+ql(qd.D13)+"</div>"
+            +(qd.comments1?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd.comments1)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Quality Service</div>"
+            +"<div style='margin-bottom:2px;'>Asked questions: "+ql(qd.D16)+"</div>"
+            +"<div style='margin-bottom:2px;'>Thorough investigation: "+ql(qd.D17)+"</div>"
+            +"<div style='margin-bottom:2px;'>Pest activity addressed: "+ql(qd.D18)+"</div>"
+            +"<div style='margin-bottom:2px;'>Webster/wasp nest: "+ql(qd.D19)+"</div>"
+            +"<div style='margin-bottom:2px;'>Rodent/bait stations: "+ql(qd.D20)+"</div>"
+            +"<div style='margin-bottom:2px;'>Liquid application: "+ql(qd.D21)+"</div>"
+            +"<div style='margin-bottom:2px;'>Granular application: "+ql(qd.D22)+"</div>"
+            +(qd.comments2?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd.comments2)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Service Wrap Up</div>"
+            +"<div style='margin-bottom:2px;'>Reported to customer: "+ql(qd.D26)+"</div>"
+            +"<div style='margin-bottom:2px;'>Service note: "+ql(qd.D27)+"</div>"
+            +"<div style='margin-bottom:2px;'>Times correct: "+ql(qd.D28)+"</div>"
+            +"<div style='margin-bottom:2px;'>Additional services: "+ql(qd.D29)+"</div>"
+            +"<div style='margin-bottom:2px;'>Work order signed: "+ql(qd.D30)+"</div>"
+            +"<div style='margin-bottom:2px;'>Photos added: "+ql(qd.D31)+"</div>"
+            +"<div style='margin-bottom:2px;'>Yard sign/stickers: "+ql(qd.D32)+"</div>"
+            +(qd.comments3?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd.comments3)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Required Documentation</div>"
+            +"<div style='margin-bottom:2px;'>Proper application: "+ql(qd.D35)+"</div>"
+            +"<div style='margin-bottom:2px;'>Product usage recorded: "+ql(qd.D36)+"</div>"
+            +(qd.comments4?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd.comments4)+"</div>":"")
+            +"<div style='margin-top:8px;padding:6px;background:#1c2d1a;border-radius:6px;text-align:center;'>"
+            +"<span style='font-weight:700;font-size:16px;color:"+(qd.total>=80?"#22c55e":qd.total>=60?"#f59e0b":"#ef4444")+";'>Score: "+qd.total+"/100</span></div>"
+            +"</div>";
+        } else if(r.isRA && r.raData){
+          var rd = r.raData;
+          function rl(v){ return v==="exceeds"?"<span style='color:#22c55e;font-weight:700;'>EXCEEDS</span>":v==="meets"?"<span style='color:#3b82f6;font-weight:700;'>MEETS</span>":"<span style='color:#ef4444;'>BELOW</span>"; }
+          formPreview = "<div style='margin-top:10px;padding:10px;background:#0a1628;border-radius:8px;font-size:12px;'>"
+            +"<div style='font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Ride Along Results (Read Only)</div>"
+            +"<div style='color:#64748b;margin-bottom:4px;font-weight:600;'>Professionalism</div>"
+            +"<div style='margin-bottom:2px;'>Uniform/groomed: "+rl(rd.R9)+"</div>"
+            +"<div style='margin-bottom:2px;'>Truck organized: "+rl(rd.R10)+"</div>"
+            +"<div style='margin-bottom:2px;'>Equipped/supplied: "+rl(rd.R11)+"</div>"
+            +"<div style='margin-bottom:2px;'>Greeted customer: "+rl(rd.R12)+"</div>"
+            +(rd.comments1?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(rd.comments1)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Quality Service</div>"
+            +"<div style='margin-bottom:2px;'>Arrived on time: "+rl(rd.R15)+"</div>"
+            +"<div style='margin-bottom:2px;'>Asked questions: "+rl(rd.R16)+"</div>"
+            +"<div style='margin-bottom:2px;'>Thorough investigation: "+rl(rd.R17)+"</div>"
+            +"<div style='margin-bottom:2px;'>Showed value: "+rl(rd.R18)+"</div>"
+            +"<div style='margin-bottom:2px;'>Seasonal targets: "+rl(rd.R19)+"</div>"
+            +"<div style='margin-bottom:2px;'>Knowledge/skill: "+rl(rd.R20)+"</div>"
+            +(rd.comments2?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(rd.comments2)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Service Wrap Up</div>"
+            +"<div style='margin-bottom:2px;'>Reported to customer: "+rl(rd.R23)+"</div>"
+            +"<div style='margin-bottom:2px;'>Explained details: "+rl(rd.R24)+"</div>"
+            +"<div style='margin-bottom:2px;'>Entered into iPad: "+rl(rd.R25)+"</div>"
+            +"<div style='margin-bottom:2px;'>Additional services: "+rl(rd.R26)+"</div>"
+            +(rd.comments3?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(rd.comments3)+"</div>":"")
+            +"<div style='color:#64748b;margin-top:8px;margin-bottom:4px;font-weight:600;'>Required Documentation</div>"
+            +"<div style='margin-bottom:2px;'>Equipment: "+rl(rd.R29)+"</div>"
+            +"<div style='margin-bottom:2px;'>Product Safety: "+rl(rd.R30)+"</div>"
+            +"<div style='margin-bottom:2px;'>Inspections: "+rl(rd.R31)+"</div>"
+            +"</div>";
+        }
+        return "<div class='card' style='margin-bottom:10px;padding:14px;border-left:3px solid #f59e0b;'>"
             +"<div style='font-weight:600;font-size:14px;margin-bottom:4px;'>"+esc(r.docName)+"</div>"
             +"<div style='font-size:12px;color:#64748b;'>From: "+esc(r.createdBy)+" &bull; "+fd(r.date)+"</div>"
             +(r.note?"<div style='font-size:12px;color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(r.note)+"</div>":"")
+            +formPreview
             +(r.status==="Signed"
               ?"<div style='margin-top:10px;padding:8px;background:#14532d;border-radius:8px;text-align:center;font-size:13px;color:#22c55e;'>&#x2713; Signed</div>"
-              :"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>Sign Document &#x270F;</button>")
+              :"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>I have reviewed the above &mdash; Sign Document &#x270F;</button>")
             +"</div>";
         }).join("")
       : "")
