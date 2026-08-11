@@ -797,6 +797,25 @@ function handleAction(a,v,el,e){
   if(a==="sign-upload") { S._signView="upload"; renderSign(); return; }
   if(a==="sign-qa") { S._signView="qa"; S._qaData={}; renderSign(); return; }
   if(a==="sign-qa-submit") { submitQAForm(); return; }
+  if(a==="sign-ra") { S._signView="ra"; S._raData={}; renderSign(); return; }
+  if(a==="sign-ra-submit") { submitRAForm(); return; }
+  if(a==="ra-answer") {
+    var raParts=v.split("|"); var raField=raParts[0], raAnswer=raParts[1];
+    if(!S._raData) S._raData={};
+    S._raData[raField]=raAnswer;
+    // Update buttons in place
+    ["below","meets","exceeds"].forEach(function(opt){
+      var btn=document.querySelector("[data-a='ra-answer'][data-v='"+raField+"|"+opt+"']");
+      if(btn){
+        if(opt===raAnswer){
+          btn.className = opt==="exceeds"?"btn bs":opt==="meets"?"btn bp":"btn bd";
+        } else {
+          btn.className="btn bg";
+        }
+      }
+    });
+    return;
+  }
   if(a==="sign-view") { S._signView=v; renderSign(); return; }
   if(a==="sign-load-file") { signLoadFile(); return; }
   if(a==="sign-submit-manager") { signSubmitManager(); return; }
@@ -2655,6 +2674,7 @@ function renderSignManager(pg){
   const view = S._signView||"list";
   if(view==="upload") { renderSignUpload(pg); return; }
   if(view==="qa") { renderQAForm(pg); return; }
+  if(view==="ra") { renderRAForm(pg); return; }
   if(view==="signing") { renderSignCanvas(pg,"manager"); return; }
 
   // List view
@@ -2666,6 +2686,7 @@ function renderSignManager(pg){
     +"<h2 style='font-size:20px;font-weight:700;'>Documents</h2>"
     +"<div style='display:flex;gap:8px;'>"
     +"<button class='btn bg' style='font-size:13px;padding:8px 14px;' data-a='sign-qa'>&#x1F4CB; QA Form</button>"
+    +"<button class='btn bg' style='font-size:13px;padding:8px 14px;' data-a='sign-ra'>&#x1F697; RA Form</button>"
     +"<button class='btn bp' style='font-size:13px;padding:8px 14px;' data-a='sign-upload'>+ Upload Doc</button>"
     +"</div></div>"
     +(pending.length>0
@@ -2937,7 +2958,8 @@ async function signSubmitTech(){
       managerEmail: "john.kluttz@fox-marketingservices.com",
       docName: req.docName,
       createdBy: req.createdBy||S.managerName,
-      isQA: req.isQA||false
+      isQA: req.isQA||false,
+      isRA: req.isRA||false
     });
 
     if(result && result.ok){
@@ -3131,6 +3153,145 @@ async function submitQAForm(){
     renderSign();
   } catch(e) {
     document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+    alert("Error: "+e.message);
+    renderSign();
+  }
+}
+
+
+function renderRAForm(pg){
+  var d = S._raData||{};
+  var techOpts = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
+  }).join("");
+
+  function raItem(label, field){
+    var val = d[field]||"";
+    return "<div style='margin-bottom:12px;'>"
+      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(val==="below"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|below'>Below</button>"
+      +"<button class='btn "+(val==="meets"?"bp":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|meets'>Meets</button>"
+      +"<button class='btn "+(val==="exceeds"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|exceeds'>Exceeds</button>"
+      +"</div></div>";
+  }
+
+  function section(title, color){
+    return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
+  }
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>Ride Along Form</h2></div>"
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
+    +"<select class='inp' style='margin-top:4px;' id='ra-tech'>"+techOpts+"</select></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
+    +"<input type='date' class='inp' style='margin-top:4px;' id='ra-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time In</label>"
+    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timein' value='"+(d.timein||"")+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time Out</label>"
+    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timeout' value='"+(d.timeout||"")+"'></div>"
+    +"</div></div>"
+
+    +section("Professionalism","#3b82f6")
+    +"<div style='background:#0f1f38;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #1e3a5f;font-size:12px;color:#64748b;display:flex;gap:8px;margin-bottom:6px;'>"
+    +"<span style='flex:1;'></span><span style='width:70px;text-align:center;'>Below</span><span style='width:70px;text-align:center;'>Meets</span><span style='width:70px;text-align:center;'>Exceeds</span></div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Uniform clean / well groomed","R9")
+    +raItem("Truck clean and organized per expectations","R10")
+    +raItem("Properly equipped and supplied, equipment in good working condition","R11")
+    +raItem("Greeted customer with smile, upbeat attitude, reinforced connection","R12")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments1' style='margin-top:4px;font-size:13px;'>"+esc(d.comments1||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Quality Service","#f59e0b")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Was expected, arrived on time, or else notified customer","R15")
+    +raItem("Asked questions, listened, took notes","R16")
+    +raItem("Completed a thorough investigation, beginning with customer concerns","R17")
+    +raItem("Showed our value: used websters, removed wasp nest, WOW the customer","R18")
+    +raItem("Focused upon seasonal service targets and pests","R19")
+    +raItem("Demonstrated knowledge and skill for World Class Service","R20")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments2' style='margin-top:4px;font-size:13px;'>"+esc(d.comments2||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Service Wrap Up","#22c55e")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Reported back to the customer (Curbside call if not home)","R23")
+    +raItem("Explained details of Inspection, what was Found, set Expectations","R24")
+    +raItem("Entered details and comments into the iPad","R25")
+    +raItem("Discussed additional service options identified during inspection","R26")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments3' style='margin-top:4px;font-size:13px;'>"+esc(d.comments3||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Required Documentation","#a855f7")
+    +"<div class='card' style='margin-bottom:16px;'>"
+    +raItem("Equipment","R29")
+    +raItem("Product Safety / Handling / Usage","R30")
+    +raItem("Inspections - Interior / Exterior","R31")
+    +"</div>"
+
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-ra-submit'>Next: Manager Signature &#x2192;</button>";
+}
+
+async function submitRAForm(){
+  var d = S._raData||{};
+  var techSel = document.getElementById("ra-tech");
+  var dateSel = document.getElementById("ra-date");
+  if(techSel) d.tech = techSel.value;
+  if(dateSel) d.date = dateSel.value;
+  d.timein = (document.getElementById("ra-timein")||{}).value||"";
+  d.timeout = (document.getElementById("ra-timeout")||{}).value||"";
+  d.comments1 = (document.getElementById("ra-comments1")||{}).value||"";
+  d.comments2 = (document.getElementById("ra-comments2")||{}).value||"";
+  d.comments3 = (document.getElementById("ra-comments3")||{}).value||"";
+  S._raData = d;
+
+  if(!d.tech){ alert("Please select a technician."); return; }
+
+  var overlay = document.createElement("div");
+  overlay.id = "ra-loading";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;";
+  overlay.innerHTML = "<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;border:1px solid #1e3a5f;'>"
+    +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
+    +"<div style='color:#e2e8f0;font-size:15px;'>Writing RA data to spreadsheet...</div>"
+    +"</div>";
+  document.body.appendChild(overlay);
+
+  try {
+    var writeResult = await gs("writeRADataServer", {raData:d, manager:S.managerName});
+    document.getElementById("ra-loading")&&document.getElementById("ra-loading").remove();
+
+    if(!writeResult||!writeResult.ok){
+      alert("Error writing to RA sheet: "+(writeResult?writeResult.error:"unknown"));
+      renderSign(); return;
+    }
+
+    var fileName = d.tech+" RA - "+d.date+".pdf";
+    var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
+    S._pendingSignReq = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: d.tech,
+      techEmail: tech?tech.email:"",
+      docName: fileName,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: "Ride Along Form",
+      isRA: true,
+      raData: d,
+      fileId: null
+    };
+    S._signView = "signing";
+    renderSign();
+  } catch(e){
+    document.getElementById("ra-loading")&&document.getElementById("ra-loading").remove();
     alert("Error: "+e.message);
     renderSign();
   }
