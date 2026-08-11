@@ -2798,7 +2798,9 @@ function renderSignTech(pg){
             +"<div style='font-weight:600;font-size:14px;margin-bottom:4px;'>"+esc(r.docName)+"</div>"
             +"<div style='font-size:12px;color:#64748b;'>From: "+esc(r.createdBy)+" &bull; "+fd(r.date)+"</div>"
             +(r.note?"<div style='font-size:12px;color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(r.note)+"</div>":"")
-            +"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>Sign Document &#x270F;</button>"
+            +(r.status==="Signed"
+              ?"<div style='margin-top:10px;padding:8px;background:#14532d;border-radius:8px;text-align:center;font-size:13px;color:#22c55e;'>&#x2713; Signed</div>"
+              :"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>Sign Document &#x270F;</button>")
             +"</div>";
         }).join("")
       : "")
