@@ -1968,7 +1968,7 @@ function renderRestockReceive(pg){
         +"</div>"
         +"<div style='color:#64748b;font-size:12px;'>"+fd(o.date)+"</div>"
         +"<div style='color:#94a3b8;font-size:12px;margin-top:4px;margin-bottom:10px;'>"+itemSummary+"</div>"
-        +(o.status==="Pending"||o.status==="Backordered"
+        +(o.status!=="Cancelled"&&o.status!=="Received"
           ?"<button class='btn bd' style='width:100%;padding:8px;font-size:13px;' data-a='restock-cancel-order' data-v='"+o.id+"'>Cancel This Order</button>"
           :"")
         +"</div>";
