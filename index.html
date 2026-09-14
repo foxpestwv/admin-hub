@@ -797,11 +797,15 @@ function handleAction(a,v,el,e){
   if(a==="sign-upload") { S._signView="upload"; renderSign(); return; }
   if(a==="sign-delete") {
     if(confirm("Delete this document request? This cannot be undone.")){
-      S.signRequests = S.signRequests.filter(function(r){ return r.id!==v; });
+      var deleteId = v;
+      S.signRequests = S.signRequests.filter(function(r){ return r.id!==deleteId; });
+      lsSet("hub:signRequests", S.signRequests);
       save();
-      // Also delete from sheet
-      gs("deleteSignRequestServer", {id:v}).catch(function(e){ console.warn("Delete sign request:", e); });
       renderSign(true);
+      // Delete from sheet in background
+      gs("deleteSignRequestServer", {id:deleteId}).then(function(res){
+        if(!res||!res.ok) console.warn("Delete from sheet failed:", res);
+      }).catch(function(e){ console.warn("Delete sign request error:", e); });
     }
     return;
   }
