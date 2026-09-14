@@ -3358,8 +3358,16 @@ async function submitRAForm(){
   var dateSel = document.getElementById("ra-date");
   if(techSel) d.tech = techSel.value;
   if(dateSel) d.date = dateSel.value;
-  d.timein = (document.getElementById("ra-timein")||{}).value||"";
-  d.timeout = (document.getElementById("ra-timeout")||{}).value||"";
+  function to12hr(t){
+    if(!t) return "";
+    var parts=t.split(":");
+    var h=parseInt(parts[0]), m=parts[1];
+    var ampm=h>=12?"PM":"AM";
+    h=h%12||12;
+    return h+":"+m+" "+ampm;
+  }
+  d.timein = to12hr((document.getElementById("ra-timein")||{}).value||"");
+  d.timeout = to12hr((document.getElementById("ra-timeout")||{}).value||"");
   d.comments1 = (document.getElementById("ra-comments1")||{}).value||"";
   d.comments2 = (document.getElementById("ra-comments2")||{}).value||"";
   d.comments3 = (document.getElementById("ra-comments3")||{}).value||"";
