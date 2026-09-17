@@ -3259,7 +3259,9 @@ function renderSignTech(pg){
             +formPreview
             +(r.status==="Signed"
               ?"<div style='margin-top:10px;padding:8px;background:#14532d;border-radius:8px;text-align:center;font-size:13px;color:#22c55e;'>&#x2713; Signed</div>"
-              :"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>I have reviewed the above &mdash; Sign Document &#x270F;</button>")
+              :r.isMultiSign
+                ?"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>Open Document to Sign &#x270F;</button>"
+                :"<button class='btn bp' style='width:100%;margin-top:10px;padding:10px;' data-a='sign-open-tech' data-v='"+r.id+"'>I have reviewed the above &mdash; Sign Document &#x270F;</button>")
             +"</div>";
         }).join("")
       : "")
