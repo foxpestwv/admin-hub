@@ -2941,8 +2941,8 @@ async function _pdfRenderPages(){
         var rect = div.getBoundingClientRect();
         var xPct = (ev.clientX - rect.left) / rect.width;
         var yPct = (ev.clientY - rect.top) / rect.height;
-        var wPct = _pdfArmed.type==="date"?0.14:_pdfArmed.type==="name"?0.20:0.22;
-        var hPct = _pdfArmed.type==="date"?0.04:0.055;
+        var wPct = _pdfArmed.type==="date"?0.10:_pdfArmed.type==="name"?0.15:0.18;
+        var hPct = _pdfArmed.type==="date"?0.035:0.045;
         _pdfFields.push({signerIdx:_pdfArmed.signerIdx, page:pageNum, xPct:xPct, yPct:yPct, wPct:wPct, hPct:hPct, type:_pdfArmed.type});
         _pdfRenderFieldOverlays();
         // Show count update
@@ -2955,7 +2955,6 @@ async function _pdfRenderPages(){
 }
 
 function _pdfRenderFieldOverlays(){
-  // Remove old overlays
   document.querySelectorAll(".pdf-field-overlay").forEach(function(el){ el.remove(); });
   _pdfFields.forEach(function(f, idx){
     var pageDiv = document.querySelector("#pdf-pages-wrap [data-page='"+f.page+"']");
@@ -2969,12 +2968,18 @@ function _pdfRenderFieldOverlays(){
     box.style.cssText = "position:absolute;left:"+(f.xPct*100)+"%;top:"+(f.yPct*100)+"%;width:"+(f.wPct*100)+"%;height:"+(f.hPct*100)+"%;"
       +"border:2px dashed "+color+";background:"+color+"22;color:"+color+";"
       +"font-size:10px;display:flex;align-items:center;justify-content:center;"
-      +"border-radius:3px;pointer-events:all;cursor:default;";
-    box.textContent = label;
+      +"border-radius:3px;pointer-events:all;cursor:default;user-select:none;";
 
+    // Label
+    var labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+    labelSpan.style.cssText = "pointer-events:none;font-size:10px;";
+    box.appendChild(labelSpan);
+
+    // Remove button
     var removeBtn = document.createElement("span");
-    removeBtn.style.cssText = "position:absolute;top:-7px;right:-7px;background:#ef4444;color:#fff;"
-      +"border-radius:50%;width:14px;height:14px;font-size:9px;line-height:14px;text-align:center;cursor:pointer;";
+    removeBtn.style.cssText = "position:absolute;top:-7px;left:-7px;background:#ef4444;color:#fff;"
+      +"border-radius:50%;width:14px;height:14px;font-size:9px;line-height:14px;text-align:center;cursor:pointer;z-index:2;";
     removeBtn.textContent = "✕";
     removeBtn.onclick = function(ev){
       ev.stopPropagation();
@@ -2982,6 +2987,53 @@ function _pdfRenderFieldOverlays(){
       _pdfRenderFieldOverlays();
     };
     box.appendChild(removeBtn);
+
+    // Resize handle (bottom-right corner)
+    var resizeHandle = document.createElement("span");
+    resizeHandle.style.cssText = "position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;"
+      +"background:"+color+";border-radius:2px 0 3px 0;cursor:se-resize;z-index:2;"
+      +"display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;";
+    resizeHandle.textContent = "⤡";
+    resizeHandle.onmousedown = (function(fi, fbox, fPageDiv){
+      return function(ev){
+        ev.stopPropagation(); ev.preventDefault();
+        var startX=ev.clientX, startY=ev.clientY;
+        var startW=fbox.offsetWidth, startH=fbox.offsetHeight;
+        var parentW=fPageDiv.offsetWidth, parentH=fPageDiv.offsetHeight;
+        function onMove(e){
+          var newW = Math.max(40, startW+(e.clientX-startX));
+          var newH = Math.max(20, startH+(e.clientY-startY));
+          _pdfFields[fi].wPct = newW/parentW;
+          _pdfFields[fi].hPct = newH/parentH;
+          fbox.style.width = (_pdfFields[fi].wPct*100)+"%";
+          fbox.style.height = (_pdfFields[fi].hPct*100)+"%";
+        }
+        function onUp(){ document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp); }
+        document.addEventListener("mousemove",onMove);
+        document.addEventListener("mouseup",onUp);
+      };
+    })(idx, box, pageDiv);
+
+    // Touch resize
+    resizeHandle.ontouchstart = (function(fi, fbox, fPageDiv){
+      return function(ev){
+        ev.stopPropagation(); ev.preventDefault();
+        var startX=ev.touches[0].clientX, startY=ev.touches[0].clientY;
+        var startW=fbox.offsetWidth, startH=fbox.offsetHeight;
+        var parentW=fPageDiv.offsetWidth, parentH=fPageDiv.offsetHeight;
+        function onMove(e){ e.preventDefault();
+          var newW=Math.max(40,startW+(e.touches[0].clientX-startX));
+          var newH=Math.max(20,startH+(e.touches[0].clientY-startY));
+          _pdfFields[fi].wPct=newW/parentW; _pdfFields[fi].hPct=newH/parentH;
+          fbox.style.width=(_pdfFields[fi].wPct*100)+"%"; fbox.style.height=(_pdfFields[fi].hPct*100)+"%";
+        }
+        function onEnd(){ document.removeEventListener("touchmove",onMove); document.removeEventListener("touchend",onEnd); }
+        document.addEventListener("touchmove",onMove,{passive:false});
+        document.addEventListener("touchend",onEnd);
+      };
+    })(idx, box, pageDiv);
+
+    box.appendChild(resizeHandle);
     pageDiv.appendChild(box);
   });
 }
