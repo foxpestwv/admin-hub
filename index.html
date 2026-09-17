@@ -842,7 +842,7 @@ function handleAction(a,v,el,e){
       if(tech2 && !_pdfSigners.some(function(s){ return s.id===tech2.id; })){
         _pdfSigners.push({name:tech2.name, email:tech2.email||"", id:tech2.id});
         renderSignUpload(document.getElementById("pg-sign"));
-        if(_pdfDoc) setTimeout(_pdfRenderPages, 80);
+        if(_pdfDoc){ _pdfRendering=false; setTimeout(_pdfRenderPages, 80); }
         if(_pdfDoc) setTimeout(_pdfRenderPages, 80);
       }
     }
@@ -2928,7 +2928,7 @@ async function _pdfLoadAndRender(){
     _pdfDoc = await pdfjsLib.getDocument({data: _pdfBytes.slice(0)}).promise;
     _pdfFields = [];
     renderSignUpload(document.getElementById("pg-sign"));
-    // Explicitly render pages after page re-renders
+    _pdfRendering = false;
     setTimeout(_pdfRenderPages, 80);
   } catch(e){ alert("Error loading PDF: "+e.message); }
 }
@@ -2978,6 +2978,7 @@ async function _pdfRenderPages(){
     })(p, pageDiv));
   }
   _pdfRenderFieldOverlays();
+  _pdfRendering = false;
 }
 
 function _pdfRenderFieldOverlays(){
