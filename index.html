@@ -841,8 +841,9 @@ function handleAction(a,v,el,e){
       var tech2 = S.techAccounts[techIdx];
       if(tech2 && !_pdfSigners.some(function(s){ return s.id===tech2.id; })){
         _pdfSigners.push({name:tech2.name, email:tech2.email||"", id:tech2.id});
+        var hasPdf = !!_pdfDoc;
         renderSignUpload(document.getElementById("pg-sign"));
-        setTimeout(pdfRenderPages,150);
+        if(hasPdf) setTimeout(pdfRenderPages, 50);
       }
     }
     return;
@@ -853,8 +854,9 @@ function handleAction(a,v,el,e){
     _pdfFields = _pdfFields.filter(function(f){ return f.signerIdx!==rmIdx; }).map(function(f){
       return f.signerIdx>rmIdx?Object.assign({},f,{signerIdx:f.signerIdx-1}):f;
     });
+    var hasPdf2 = !!_pdfDoc;
     renderSignUpload(document.getElementById("pg-sign"));
-    setTimeout(pdfRenderPages,150);
+    if(hasPdf2) setTimeout(pdfRenderPages, 50);
     return;
   }
   if(a==="pdf-arm-place") {
@@ -862,12 +864,25 @@ function handleAction(a,v,el,e){
     var ftSel = document.getElementById("pdf-field-type");
     if(fsSel&&ftSel){
       _pdfPlacementArmed = {signerIdx:parseInt(fsSel.value), type:ftSel.value};
-      renderSignUpload(document.getElementById("pg-sign"));
-      setTimeout(pdfRenderPages,150);
+      // Just update the mode bar without full re-render
+      var existingBar = document.querySelector(".place-mode-bar");
+      var sigName = _pdfSigners[_pdfPlacementArmed.signerIdx]?_pdfSigners[_pdfPlacementArmed.signerIdx].name:"";
+      var barHtml = "<div class='place-mode-bar'>&#x1F4CC; Click on the document to place a <strong>"+_pdfPlacementArmed.type+"</strong> field for <strong>"+esc(sigName)+"</strong>"
+        +"<button class='btn bg' style='font-size:11px;padding:4px 8px;' data-a='pdf-disarm'>Cancel</button></div>";
+      if(existingBar){ existingBar.outerHTML=barHtml; }
+      else {
+        var container = document.getElementById("pdf-pages-container");
+        if(container){ container.insertAdjacentHTML("beforebegin", barHtml); }
+      }
     }
     return;
   }
-  if(a==="pdf-disarm") { _pdfPlacementArmed=null; renderSignUpload(document.getElementById("pg-sign")); setTimeout(pdfRenderPages,150); return; }
+  if(a==="pdf-disarm") {
+    _pdfPlacementArmed=null;
+    var bar = document.querySelector(".place-mode-bar");
+    if(bar) bar.remove();
+    return;
+  }
   if(a==="pdf-send-doc") { pdfSendDocument(); return; }
   if(a==="sign-submit-manager") { signSubmitManager(); return; }
   if(a==="sign-submit-tech") { signSubmitTech(); return; }
@@ -2871,7 +2886,7 @@ function renderSignUpload(pg){
     // Send button
     +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='pdf-send-doc'>&#x2709; Send for Signature</button>";
 
-  // Attach file input listener
+  // Attach file input listener and render PDF
   setTimeout(function(){
     var fi = document.getElementById("pdf-file-inp");
     if(fi) fi.addEventListener("change", function(e){
@@ -2885,8 +2900,10 @@ function renderSignUpload(pg){
       reader.readAsArrayBuffer(file);
     });
     // Render PDF pages if already loaded
-    if(_pdfDoc) pdfRenderPages();
-  }, 100);
+    if(_pdfDoc){
+      setTimeout(pdfRenderPages, 50);
+    }
+  }, 50);
 }
 
 async function pdfLoadAndRender(){
@@ -2914,16 +2931,20 @@ async function pdfRenderPages(){
     wrap.appendChild(canvas);
     container.appendChild(wrap);
     await page.render({canvasContext:canvas.getContext("2d"), viewport}).promise;
+    wrap.setAttribute("data-page", p);
     (function(pageNum, pageWrap){
       pageWrap.addEventListener("click", function(ev){
         if(!_pdfPlacementArmed) return;
+        // Ignore clicks on field boxes or their remove buttons
+        if(ev.target.classList.contains("pdf-field-box")||ev.target.classList.contains("field-x")) return;
         var rect = pageWrap.getBoundingClientRect();
         var xPct = (ev.clientX-rect.left)/rect.width;
         var yPct = (ev.clientY-rect.top)/rect.height;
-        var wPct = _pdfPlacementArmed.type==="date"?0.15:0.22;
-        var hPct = _pdfPlacementArmed.type==="date"?0.04:0.05;
+        var wPct = _pdfPlacementArmed.type==="date"?0.15:_pdfPlacementArmed.type==="name"?0.20:0.22;
+        var hPct = _pdfPlacementArmed.type==="date"?0.04:0.055;
         _pdfFields.push({signerIdx:_pdfPlacementArmed.signerIdx, page:pageNum, xPct:xPct, yPct:yPct, wPct:wPct, hPct:hPct, type:_pdfPlacementArmed.type});
         pdfRenderFields();
+        // Keep placement armed for multiple fields
       });
     })(p, wrap);
   }
