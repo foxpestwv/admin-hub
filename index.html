@@ -2933,10 +2933,12 @@ async function _pdfLoadAndRender(){
   } catch(e){ alert("Error loading PDF: "+e.message); }
 }
 
+var _pdfRendering = false;
 async function _pdfRenderPages(){
+  if(_pdfRendering) return;
+  _pdfRendering = true;
   var wrap = document.getElementById("pdf-pages-wrap");
-  if(!wrap || !_pdfDoc) return;
-  // Always clear before rendering to prevent duplicates
+  if(!wrap || !_pdfDoc){ _pdfRendering=false; return; }
   wrap.innerHTML = "";
   _pdfPageScales = {};
 
@@ -3798,14 +3800,21 @@ async function renderMultiSignTech(pg){
     +"<div id='ms-loading' style='text-align:center;padding:30px;color:#64748b;'>&#x23F3; Loading document...</div>";
 
   try {
+    // Use cached fields from sign request
+    _msFields = req._cachedFields||[];
+    _msFilled = {};
+
+    // Load PDF from Drive via bridge
     var res = await gs("getSigningPdfServer", {id:req.id});
     if(!res||!res.ok){
-      document.getElementById("ms-loading").innerHTML = "<div style='color:#ef4444;'>Error: "+(res?res.error:"failed to load")+"</div>";
+      document.getElementById("ms-loading").innerHTML = "<div style='color:#ef4444;'>Error loading PDF: "+(res?res.error:"failed")+"</div>";
       return;
     }
 
-    _msFields = res.fields||[];
-    _msFilled = {};
+    // Also get fields from response if not in cachedFields
+    if(_msFields.length===0 && res.fields&&res.fields.length>0){
+      _msFields = res.fields;
+    }
 
     // Decode PDF
     var b64 = res.pdfBase64;
@@ -3848,6 +3857,7 @@ async function renderMultiSignTech(pg){
     _msRenderFieldBoxes();
 
   } catch(e){
+    console.error("renderMultiSignTech error:", e);
     pg.innerHTML += "<div style='color:#ef4444;padding:12px;'>Error: "+esc(e.message)+"</div>";
   }
 }
@@ -3890,15 +3900,84 @@ function _msRenderFieldBoxes(){
 
 function _msOpenPad(fieldIdx, fieldType){
   var savedSig = S.role==="manager" ? S._savedManagerSig : S._savedTechSig;
-  var title = fieldType==="date"?"Draw today's date":fieldType==="name"?"Print your name":"Draw your signature";
 
   var overlay = document.createElement("div");
   overlay.id = "ms-pad-overlay";
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9999;";
 
+  // For 'name' type: show text input instead of canvas
+  if(fieldType==="name"){
+    overlay.innerHTML = "<div style='background:#0f1f38;padding:20px;border-radius:16px;width:90%;max-width:440px;border:1px solid #1e3a5f;'>"
+      +"<h3 style='margin:0 0 12px;font-size:15px;color:#e2e8f0;'>Type your printed name</h3>"
+      +"<input type='text' id='ms-name-input' class='inp' style='font-size:22px;text-align:center;padding:12px;margin-bottom:12px;' placeholder='Your full name' autocomplete='name'>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<button class='btn bg' style='flex:1;' id='ms-cancel'>Cancel</button>"
+      +"<button class='btn bp' style='flex:2;' id='ms-name-done'>Done</button>"
+      +"</div></div>";
+    document.body.appendChild(overlay);
+
+    var inp = document.getElementById("ms-name-input");
+    if(inp) setTimeout(function(){ inp.focus(); }, 100);
+
+    document.getElementById("ms-cancel").onclick = function(){ overlay.remove(); };
+    document.getElementById("ms-name-done").onclick = function(){
+      var name = (document.getElementById("ms-name-input")||{}).value||"";
+      if(!name){ alert("Please enter your name."); return; }
+      // Render name as image on canvas
+      var tmpCanvas = document.createElement("canvas");
+      tmpCanvas.width = 400; tmpCanvas.height = 80;
+      var tmpCtx = tmpCanvas.getContext("2d");
+      tmpCtx.fillStyle = "white";
+      tmpCtx.fillRect(0,0,400,80);
+      tmpCtx.fillStyle = "#111";
+      tmpCtx.font = "bold 28px Arial, sans-serif";
+      tmpCtx.textAlign = "center";
+      tmpCtx.textBaseline = "middle";
+      tmpCtx.fillText(name, 200, 40);
+      var dataUrl = tmpCanvas.toDataURL("image/png");
+      _msFilled[fieldIdx] = dataUrl;
+      overlay.remove();
+      _msRenderFieldBoxes();
+    };
+    return;
+  }
+
+  // For 'date' type: show text input
+  if(fieldType==="date"){
+    var today = new Date().toLocaleDateString("en-US");
+    overlay.innerHTML = "<div style='background:#0f1f38;padding:20px;border-radius:16px;width:90%;max-width:440px;border:1px solid #1e3a5f;'>"
+      +"<h3 style='margin:0 0 12px;font-size:15px;color:#e2e8f0;'>Enter today's date</h3>"
+      +"<input type='text' id='ms-date-input' class='inp' style='font-size:22px;text-align:center;padding:12px;margin-bottom:12px;' value='"+today+"'>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<button class='btn bg' style='flex:1;' id='ms-cancel'>Cancel</button>"
+      +"<button class='btn bp' style='flex:2;' id='ms-date-done'>Done</button>"
+      +"</div></div>";
+    document.body.appendChild(overlay);
+
+    document.getElementById("ms-cancel").onclick = function(){ overlay.remove(); };
+    document.getElementById("ms-date-done").onclick = function(){
+      var dateVal = (document.getElementById("ms-date-input")||{}).value||today;
+      var tmpCanvas2 = document.createElement("canvas");
+      tmpCanvas2.width = 300; tmpCanvas2.height = 60;
+      var tmpCtx2 = tmpCanvas2.getContext("2d");
+      tmpCtx2.fillStyle = "white";
+      tmpCtx2.fillRect(0,0,300,60);
+      tmpCtx2.fillStyle = "#111";
+      tmpCtx2.font = "22px Arial, sans-serif";
+      tmpCtx2.textAlign = "center";
+      tmpCtx2.textBaseline = "middle";
+      tmpCtx2.fillText(dateVal, 150, 30);
+      _msFilled[fieldIdx] = tmpCanvas2.toDataURL("image/png");
+      overlay.remove();
+      _msRenderFieldBoxes();
+    };
+    return;
+  }
+
+  // For 'signature' type: draw on canvas
   overlay.innerHTML = "<div style='background:#0f1f38;padding:20px;border-radius:16px;width:90%;max-width:440px;border:1px solid #1e3a5f;'>"
-    +"<h3 style='margin:0 0 10px;font-size:15px;color:#e2e8f0;'>"+title+"</h3>"
-    +(savedSig&&fieldType==="signature"
+    +"<h3 style='margin:0 0 10px;font-size:15px;color:#e2e8f0;'>Draw your signature</h3>"
+    +(savedSig
       ? "<div style='margin-bottom:10px;'>"
         +"<img src='"+savedSig+"' style='background:white;border-radius:6px;width:100%;height:55px;object-fit:contain;display:block;margin-bottom:6px;'>"
         +"<div style='display:flex;gap:8px;'>"
