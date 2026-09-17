@@ -867,8 +867,30 @@ function handleAction(a,v,el,e){
     } else if(fsSel&&ftSel){
       _pdfArmed = {signerIdx:parseInt(fsSel.value), type:ftSel.value};
     }
-    renderSignUpload(document.getElementById("pg-sign"));
-    setTimeout(_pdfRenderPages, 60);
+    // Update UI in place without full re-render (which resets dropdowns)
+    var armBtn = document.getElementById("pdf-arm-btn");
+    if(armBtn){
+      armBtn.textContent = _pdfArmed ? "&#x2713; Placing..." : "Place Field";
+      armBtn.className = _pdfArmed ? "btn bs" : "btn bp";
+    }
+    // Update or remove mode bar
+    var existingBar2 = document.querySelector(".pdf-arm-bar");
+    if(_pdfArmed){
+      var sigName2 = _pdfSigners[_pdfArmed.signerIdx]?_pdfSigners[_pdfArmed.signerIdx].name:"";
+      var barHtml2 = "<div class='pdf-arm-bar' style='background:#1c2d4a;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;color:#f59e0b;margin-bottom:8px;'>"
+        +"&#x1F4CC; Click on the PDF to place a <strong>"+_pdfArmed.type+"</strong> field for <strong>"+esc(sigName2)+"</strong>"
+        +"</div>";
+      if(existingBar2) existingBar2.outerHTML=barHtml2;
+      else {
+        var pagesWrap2=document.getElementById("pdf-pages-wrap");
+        if(pagesWrap2) pagesWrap2.insertAdjacentHTML("beforebegin",barHtml2);
+      }
+    } else {
+      if(existingBar2) existingBar2.remove();
+    }
+    // Update cursor on pdf-pages-wrap
+    var pw2=document.getElementById("pdf-pages-wrap");
+    if(pw2) pw2.style.cursor=_pdfArmed?"crosshair":"default";
     return;
   }
   if(a==="pdf-send-doc") { pdfSendDocument(); return; }
@@ -2836,7 +2858,7 @@ function renderSignUpload(pg){
       +"<button class='btn "+(!!_pdfArmed?"bs":"bp")+"' id='pdf-arm-btn' style='padding:8px 12px;font-size:12px;align-self:end;' data-a='pdf-toggle-arm'>"
       +(!!_pdfArmed?"&#x2713; Placing...":"Place Field")+"</button>"
       +"</div>"
-      +(_pdfArmed?"<div style='background:#1c2d4a;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;color:#f59e0b;margin-bottom:8px;'>"
+      +(_pdfArmed?"<div class='pdf-arm-bar' style='background:#1c2d4a;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;color:#f59e0b;margin-bottom:8px;'>"
         +"&#x1F4CC; Click anywhere on the PDF below to place a <strong>"+_pdfArmed.type+"</strong> field"
         +" for <strong>"+esc(_pdfSigners[_pdfArmed.signerIdx]?_pdfSigners[_pdfArmed.signerIdx].name:"")+"</strong>"
         +" &mdash; or tap <strong>Place Field</strong> again to stop.</div>":"")
@@ -3830,9 +3852,10 @@ async function renderMultiSignTech(pg){
 
 function _msRenderFieldBoxes(){
   document.querySelectorAll(".ms-field-box").forEach(function(el){ el.remove(); });
+  if(!_msFields||_msFields.length===0){ console.warn("_msRenderFieldBoxes: no fields"); return; }
   _msFields.forEach(function(f, idx){
-    var pageDiv = document.querySelector("#ms-pdf-wrap [data-page='"+f.page+"']");
-    if(!pageDiv) return;
+    var pageDiv = document.querySelector("#ms-pdf-wrap [data-page='"+String(f.page)+"']");
+    if(!pageDiv){ console.warn("No pageDiv for page",f.page); return; }
     var box = document.createElement("div");
     box.className = "ms-field-box";
     box.style.cssText = "position:absolute;left:"+(f.xPct*100)+"%;top:"+(f.yPct*100)+"%;width:"+(f.wPct*100)+"%;height:"+(f.hPct*100)+"%;"
