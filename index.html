@@ -843,7 +843,7 @@ function handleAction(a,v,el,e){
         _pdfSigners.push({name:tech2.name, email:tech2.email||"", id:tech2.id});
         var hasPdf = !!_pdfDoc;
         renderSignUpload(document.getElementById("pg-sign"));
-        if(hasPdf) setTimeout(pdfRenderPages, 50);
+        if(hasPdf) setTimeout(_pdfRenderPages, 60);
       }
     }
     return;
@@ -856,31 +856,19 @@ function handleAction(a,v,el,e){
     });
     var hasPdf2 = !!_pdfDoc;
     renderSignUpload(document.getElementById("pg-sign"));
-    if(hasPdf2) setTimeout(pdfRenderPages, 50);
+    if(hasPdf2) setTimeout(_pdfRenderPages, 60);
     return;
   }
-  if(a==="pdf-arm-place") {
+  if(a==="pdf-toggle-arm") {
     var fsSel = document.getElementById("pdf-field-signer");
     var ftSel = document.getElementById("pdf-field-type");
-    if(fsSel&&ftSel){
-      _pdfPlacementArmed = {signerIdx:parseInt(fsSel.value), type:ftSel.value};
-      // Just update the mode bar without full re-render
-      var existingBar = document.querySelector(".place-mode-bar");
-      var sigName = _pdfSigners[_pdfPlacementArmed.signerIdx]?_pdfSigners[_pdfPlacementArmed.signerIdx].name:"";
-      var barHtml = "<div class='place-mode-bar'>&#x1F4CC; Click on the document to place a <strong>"+_pdfPlacementArmed.type+"</strong> field for <strong>"+esc(sigName)+"</strong>"
-        +"<button class='btn bg' style='font-size:11px;padding:4px 8px;' data-a='pdf-disarm'>Cancel</button></div>";
-      if(existingBar){ existingBar.outerHTML=barHtml; }
-      else {
-        var container = document.getElementById("pdf-pages-container");
-        if(container){ container.insertAdjacentHTML("beforebegin", barHtml); }
-      }
+    if(_pdfArmed){
+      _pdfArmed = null;
+    } else if(fsSel&&ftSel){
+      _pdfArmed = {signerIdx:parseInt(fsSel.value), type:ftSel.value};
     }
-    return;
-  }
-  if(a==="pdf-disarm") {
-    _pdfPlacementArmed=null;
-    var bar = document.querySelector(".place-mode-bar");
-    if(bar) bar.remove();
+    renderSignUpload(document.getElementById("pg-sign"));
+    setTimeout(_pdfRenderPages, 60);
     return;
   }
   if(a==="pdf-send-doc") { pdfSendDocument(); return; }
@@ -922,7 +910,7 @@ function handleAction(a,v,el,e){
     }
     return;
   }
-  if(a==="multi-sign-submit") { submitMultiSign(); return; }
+  if(a==="ms-submit") { submitMultiSign(); return; }
   if(a==="sign-clear-canvas") {
     var c=document.getElementById("sig-canvas");
     if(c){ var ctx=c.getContext("2d"); ctx.clearRect(0,0,c.width,c.height); }
@@ -2811,9 +2799,10 @@ function signCard(r){
 // ─── PDF Upload State ────────────────────────────────────────────────────────
 var _pdfDoc = null;
 var _pdfBytes = null;
-var _pdfFields = []; // {signerIdx, page, xPct, yPct, wPct, hPct, type}
-var _pdfSigners = []; // [{name, email, id}]
-var _pdfPlacementArmed = null; // {signerIdx, type}
+var _pdfFields = [];
+var _pdfSigners = [];
+var _pdfArmed = null; // {signerIdx, type}
+var _pdfPageScales = {};
 
 function renderSignUpload(pg){
   var techOpts = (S.techAccounts||[]).map(function(t,i){
@@ -2821,195 +2810,202 @@ function renderSignUpload(pg){
   }).join("");
 
   var signerTags = _pdfSigners.map(function(s,i){
-    return "<span style='display:inline-flex;align-items:center;gap:6px;background:#0a1628;border:1px solid #1e3a5f;padding:4px 10px;border-radius:20px;font-size:12px;margin:3px;'>"
+    return "<div style='display:inline-flex;align-items:center;gap:6px;background:#0a1628;border:1px solid #1e3a5f;padding:4px 10px;border-radius:20px;font-size:12px;margin:3px;'>"
+      +"<span style='width:18px;height:18px;border-radius:50%;background:"+_signerColor(i)+";display:inline-block;'></span>"
       +(i+1)+". "+esc(s.name)
-      +"<button style='background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;padding:0;' data-a='pdf-remove-signer' data-v='"+i+"'>&#x2715;</button></span>";
+      +"<button style='background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;' data-a='pdf-remove-signer' data-v='"+i+"'>&#x2715;</button>"
+      +"</div>";
   }).join("");
 
   var signerSelOpts = _pdfSigners.map(function(s,i){
-    return "<option value='"+i+"'>"+(i+1)+". "+esc(s.name)+"</option>";
+    return "<option value='"+i+"'>"+esc(s.name)+"</option>";
   }).join("");
 
-  var placeBar = _pdfPlacementArmed
-    ? "<div class='place-mode-bar'>&#x1F4CC; Click on the document below to place a <strong>"+_pdfPlacementArmed.type+"</strong> field for <strong>"+esc(_pdfSigners[_pdfPlacementArmed.signerIdx]?_pdfSigners[_pdfPlacementArmed.signerIdx].name:"")+"</strong>"
-      +"<button class='btn bg' style='font-size:11px;padding:4px 8px;' data-a='pdf-disarm'>Cancel</button></div>"
-    : "";
+  var step3 = (_pdfDoc && _pdfSigners.length > 0)
+    ? "<div class='card' style='margin-bottom:12px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>3. Place Signature Fields</div>"
+      +"<div style='display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:10px;'>"
+      +"<div><label style='font-size:11px;color:#64748b;'>Signer</label>"
+      +"<select class='inp' id='pdf-field-signer' style='margin-top:4px;'>"+signerSelOpts+"</select></div>"
+      +"<div><label style='font-size:11px;color:#64748b;'>Field Type</label>"
+      +"<select class='inp' id='pdf-field-type' style='margin-top:4px;'>"
+      +"<option value='signature'>Signature</option>"
+      +"<option value='date'>Date</option>"
+      +"<option value='name'>Print Name</option>"
+      +"</select></div>"
+      +"<button class='btn "+(!!_pdfArmed?"bs":"bp")+"' id='pdf-arm-btn' style='padding:8px 12px;font-size:12px;align-self:end;' data-a='pdf-toggle-arm'>"
+      +(!!_pdfArmed?"&#x2713; Placing...":"Place Field")+"</button>"
+      +"</div>"
+      +(_pdfArmed?"<div style='background:#1c2d4a;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;color:#f59e0b;margin-bottom:8px;'>"
+        +"&#x1F4CC; Click anywhere on the PDF below to place a <strong>"+_pdfArmed.type+"</strong> field"
+        +" for <strong>"+esc(_pdfSigners[_pdfArmed.signerIdx]?_pdfSigners[_pdfArmed.signerIdx].name:"")+"</strong>"
+        +" &mdash; or tap <strong>Place Field</strong> again to stop.</div>":"")
+      +(_pdfFields.length>0?"<div style='font-size:12px;color:#22c55e;margin-bottom:8px;'>"+_pdfFields.length+" field(s) placed</div>":"")
+      +"<div id='pdf-pages-wrap' style='cursor:"+(!!_pdfArmed?"crosshair":"default")+"'></div>"
+      +"</div>"
+    : (_pdfDoc?"<div class='card' style='margin-bottom:12px;padding:14px;color:#475569;font-size:13px;'>Add signers above to place fields.</div>":"");
 
   pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
-    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
-    +"<h2 style='font-size:18px;font-weight:700;'>Send for Signature</h2></div>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>&#x2190; Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>Upload for Signature</h2></div>"
 
-    // Step 1: Document
     +"<div class='card' style='margin-bottom:12px;'>"
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>1. Document</div>"
-    +"<div style='margin-bottom:10px;'><label style='font-size:12px;color:#64748b;font-weight:600;'>Document Name</label>"
-    +"<input type='text' class='inp' id='pdf-doc-name' style='margin-top:4px;' placeholder='e.g. Safety Agreement' value='"+esc((_pdfDoc?document.getElementById("pdf-doc-name")&&document.getElementById("pdf-doc-name").value:""))+"'></div>"
-    +"<div style='margin-bottom:10px;'><label style='font-size:12px;color:#64748b;font-weight:600;'>Upload PDF</label>"
-    +"<input type='file' accept='application/pdf' id='pdf-file-inp' style='width:100%;padding:8px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:13px;margin-top:4px;'>"
-    +(_pdfDoc?"<div style='font-size:12px;color:#22c55e;margin-top:4px;'>&#x2713; PDF loaded</div>":"")
-    +"</div>"
-    +"<div><label style='font-size:12px;color:#64748b;font-weight:600;'>Note (optional)</label>"
-    +"<input type='text' class='inp' id='pdf-note' style='margin-top:4px;' placeholder='Note to signers'></div>"
+    +"<input type='text' class='inp' id='pdf-doc-name' placeholder='Document name' style='margin-bottom:8px;' value='"+esc(S._pdfDocName||"")+"'>"
+    +"<input type='file' accept='application/pdf' id='pdf-file-inp' style='width:100%;padding:8px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;color:#e2e8f0;font-size:13px;margin-bottom:6px;'>"
+    +(_pdfDoc?"<div style='font-size:12px;color:#22c55e;'>&#x2713; PDF loaded — "+_pdfDoc.numPages+" page(s)</div>":"")
+    +"<input type='text' class='inp' id='pdf-note' placeholder='Note to signers (optional)' style='margin-top:8px;' value='"+esc(S._pdfNote||"")+"'>"
     +"</div>"
 
-    // Step 2: Signers
     +"<div class='card' style='margin-bottom:12px;'>"
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>2. Signers</div>"
-    +"<div style='display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px;'>"
+    +"<div style='display:flex;gap:8px;margin-bottom:8px;'>"
     +"<select class='inp' id='pdf-signer-sel'>"+techOpts+"</select>"
-    +"<button class='btn bp' style='padding:8px 12px;font-size:13px;white-space:nowrap;' data-a='pdf-add-signer'>+ Add</button>"
+    +"<button class='btn bp' style='padding:8px 14px;white-space:nowrap;' data-a='pdf-add-signer'>+ Add</button>"
     +"</div>"
-    +(_pdfSigners.length>0?"<div style='margin-top:6px;'>"+signerTags+"</div>":"<div style='font-size:12px;color:#475569;'>No signers added yet.</div>")
+    +(_pdfSigners.length>0?signerTags:"<div style='font-size:12px;color:#475569;'>No signers yet.</div>")
     +"</div>"
 
-    // Step 3: Place fields
-    +(_pdfDoc&&_pdfSigners.length>0
-      ? "<div class='card' style='margin-bottom:12px;'>"
-        +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>3. Place Signature Fields</div>"
-        +"<div style='display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;'>"
-        +"<div><label style='font-size:11px;color:#64748b;'>Signer</label>"
-        +"<select class='inp' id='pdf-field-signer' style='margin-top:4px;'>"+signerSelOpts+"</select></div>"
-        +"<div><label style='font-size:11px;color:#64748b;'>Field Type</label>"
-        +"<select class='inp' id='pdf-field-type' style='margin-top:4px;'>"
-        +"<option value='signature'>Signature</option>"
-        +"<option value='date'>Date</option>"
-        +"<option value='name'>Print Name</option>"
-        +"</select></div>"
-        +"<button class='btn bp' style='padding:8px 12px;font-size:13px;' data-a='pdf-arm-place'>Place Field</button>"
-        +"</div>"
-        +placeBar
-        +"<div id='pdf-pages-container'></div>"
-        +"</div>"
-      : (_pdfDoc?""
-        :"<div class='card' style='margin-bottom:12px;padding:16px;text-align:center;color:#475569;font-size:13px;'>Upload a PDF and add signers to place signature fields.</div>"))
+    +step3
 
-    // Send button
-    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='pdf-send-doc'>&#x2709; Send for Signature</button>";
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='pdf-send-doc'>&#x2709; Send for Signatures</button>";
 
-  // Attach file input listener and render PDF
+  // Wire up file input
   setTimeout(function(){
+    var docNameEl = document.getElementById("pdf-doc-name");
+    if(docNameEl) docNameEl.oninput = function(){ S._pdfDocName = this.value; };
+    var noteEl = document.getElementById("pdf-note");
+    if(noteEl) noteEl.oninput = function(){ S._pdfNote = this.value; };
+
     var fi = document.getElementById("pdf-file-inp");
-    if(fi) fi.addEventListener("change", function(e){
+    if(fi) fi.onchange = function(e){
       var file = e.target.files[0];
       if(!file) return;
+      if(!document.getElementById("pdf-doc-name").value) document.getElementById("pdf-doc-name").value = file.name.replace(/\.pdf$/i,"");
+      S._pdfDocName = document.getElementById("pdf-doc-name").value;
       var reader = new FileReader();
-      reader.onload = function(ev){
-        _pdfBytes = ev.target.result;
-        pdfLoadAndRender();
-      };
+      reader.onload = function(ev){ _pdfBytes = ev.target.result; _pdfLoadAndRender(); };
       reader.readAsArrayBuffer(file);
-    });
-    // Render PDF pages if already loaded
-    if(_pdfDoc){
-      setTimeout(pdfRenderPages, 50);
-    }
-  }, 50);
+    };
+    if(_pdfDoc) _pdfRenderPages();
+  }, 60);
 }
 
-async function pdfLoadAndRender(){
+function _signerColor(i){
+  var colors = ["#f59e0b","#3b82f6","#22c55e","#a855f7","#ef4444","#f97316","#06b6d4","#ec4899"];
+  return colors[i % colors.length];
+}
+
+async function _pdfLoadAndRender(){
   try {
+    if(typeof pdfjsLib === "undefined"){
+      alert("PDF viewer not loaded yet. Please wait a moment and try again.");
+      return;
+    }
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     _pdfDoc = await pdfjsLib.getDocument({data: _pdfBytes.slice(0)}).promise;
+    _pdfFields = [];
     renderSignUpload(document.getElementById("pg-sign"));
-    setTimeout(pdfRenderPages, 150);
+    setTimeout(_pdfRenderPages, 60);
   } catch(e){ alert("Error loading PDF: "+e.message); }
 }
 
-async function pdfRenderPages(){
-  var container = document.getElementById("pdf-pages-container");
-  if(!container||!_pdfDoc) return;
-  container.innerHTML = "";
-  for(var p=1; p<=_pdfDoc.numPages; p++){
+async function _pdfRenderPages(){
+  var wrap = document.getElementById("pdf-pages-wrap");
+  if(!wrap || !_pdfDoc) return;
+  wrap.innerHTML = "";
+  _pdfPageScales = {};
+
+  for(var p = 1; p <= _pdfDoc.numPages; p++){
     var page = await _pdfDoc.getPage(p);
-    var viewport = page.getViewport({scale:1.4});
-    var wrap = document.createElement("div");
-    wrap.className = "pdf-page-wrap";
-    wrap.dataset.page = p;
+    var viewport = page.getViewport({scale: 1.5});
+    var pageDiv = document.createElement("div");
+    pageDiv.style.cssText = "position:relative;margin-bottom:8px;border:1px solid #1e3a5f;border-radius:6px;overflow:hidden;";
+    pageDiv.dataset.page = p;
+
     var canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    wrap.appendChild(canvas);
-    container.appendChild(wrap);
-    await page.render({canvasContext:canvas.getContext("2d"), viewport}).promise;
-    wrap.setAttribute("data-page", p);
-    (function(pageNum, pageWrap){
-      pageWrap.addEventListener("click", function(ev){
-        if(!_pdfPlacementArmed) return;
-        // Ignore clicks on field boxes or their remove buttons
-        if(ev.target.classList.contains("pdf-field-box")||ev.target.classList.contains("field-x")) return;
-        var rect = pageWrap.getBoundingClientRect();
-        var xPct = (ev.clientX-rect.left)/rect.width;
-        var yPct = (ev.clientY-rect.top)/rect.height;
-        var wPct = _pdfPlacementArmed.type==="date"?0.15:_pdfPlacementArmed.type==="name"?0.20:0.22;
-        var hPct = _pdfPlacementArmed.type==="date"?0.04:0.055;
-        _pdfFields.push({signerIdx:_pdfPlacementArmed.signerIdx, page:pageNum, xPct:xPct, yPct:yPct, wPct:wPct, hPct:hPct, type:_pdfPlacementArmed.type});
-        pdfRenderFields();
-        // Keep placement armed for multiple fields
-      });
-    })(p, wrap);
+    canvas.style.cssText = "display:block;width:100%;height:auto;";
+    pageDiv.appendChild(canvas);
+    wrap.appendChild(pageDiv);
+
+    await page.render({canvasContext: canvas.getContext("2d"), viewport}).promise;
+    _pdfPageScales[p] = {w: viewport.width, h: viewport.height};
+
+    // Click listener on the div (not canvas)
+    pageDiv.addEventListener("click", (function(pageNum, div){
+      return function(ev){
+        if(!_pdfArmed) return;
+        if(ev.target.closest&&ev.target.closest(".pdf-field-overlay")) return;
+        var rect = div.getBoundingClientRect();
+        var xPct = (ev.clientX - rect.left) / rect.width;
+        var yPct = (ev.clientY - rect.top) / rect.height;
+        var wPct = _pdfArmed.type==="date"?0.14:_pdfArmed.type==="name"?0.20:0.22;
+        var hPct = _pdfArmed.type==="date"?0.04:0.055;
+        _pdfFields.push({signerIdx:_pdfArmed.signerIdx, page:pageNum, xPct:xPct, yPct:yPct, wPct:wPct, hPct:hPct, type:_pdfArmed.type});
+        _pdfRenderFieldOverlays();
+        // Show count update
+        var countEl = document.querySelector("#pdf-pages-wrap").previousElementSibling;
+        if(countEl&&countEl.style&&countEl.tagName==="DIV") countEl.textContent = _pdfFields.length+" field(s) placed";
+      };
+    })(p, pageDiv));
   }
-  pdfRenderFields();
+  _pdfRenderFieldOverlays();
 }
 
-function pdfRenderFields(){
-  document.querySelectorAll(".pdf-field-box").forEach(function(el){ el.remove(); });
-  var colors = ["#f59e0b","#3b82f6","#22c55e","#a855f7","#ef4444","#f97316"];
+function _pdfRenderFieldOverlays(){
+  // Remove old overlays
+  document.querySelectorAll(".pdf-field-overlay").forEach(function(el){ el.remove(); });
   _pdfFields.forEach(function(f, idx){
-    var wrap = document.querySelector(".pdf-page-wrap[data-page='"+f.page+"']");
-    if(!wrap) return;
-    var box = document.createElement("div");
-    box.className = "pdf-field-box"+(f.type==="date"?" date-field":f.type==="name"?" name-field":"");
-    var color = colors[f.signerIdx%colors.length];
-    box.style.borderColor = color;
-    box.style.color = color;
-    box.style.background = color.replace("#","rgba(").replace(/(..)(..)(..)/, function(m,r,g,b){
-      return "rgba("+parseInt(r,16)+","+parseInt(g,16)+","+parseInt(b,16)+",0.15)";
-    })+")";
-    box.style.left = (f.xPct*100)+"%";
-    box.style.top = (f.yPct*100)+"%";
-    box.style.width = (f.wPct*100)+"%";
-    box.style.height = (f.hPct*100)+"%";
+    var pageDiv = document.querySelector("#pdf-pages-wrap [data-page='"+f.page+"']");
+    if(!pageDiv) return;
+    var color = _signerColor(f.signerIdx);
     var signer = _pdfSigners[f.signerIdx];
-    box.textContent = (signer?signer.name.split(" ")[0]:"?")+" - "+f.type;
-    var x = document.createElement("span");
-    x.className = "field-x";
-    x.textContent = "✕";
-    x.onclick = function(ev){ ev.stopPropagation(); _pdfFields.splice(idx,1); pdfRenderFields(); };
-    box.appendChild(x);
-    wrap.appendChild(box);
+    var label = (signer?signer.name.split(" ")[0]:"?")+": "+f.type;
+
+    var box = document.createElement("div");
+    box.className = "pdf-field-overlay";
+    box.style.cssText = "position:absolute;left:"+(f.xPct*100)+"%;top:"+(f.yPct*100)+"%;width:"+(f.wPct*100)+"%;height:"+(f.hPct*100)+"%;"
+      +"border:2px dashed "+color+";background:"+color+"22;color:"+color+";"
+      +"font-size:10px;display:flex;align-items:center;justify-content:center;"
+      +"border-radius:3px;pointer-events:all;cursor:default;";
+    box.textContent = label;
+
+    var removeBtn = document.createElement("span");
+    removeBtn.style.cssText = "position:absolute;top:-7px;right:-7px;background:#ef4444;color:#fff;"
+      +"border-radius:50%;width:14px;height:14px;font-size:9px;line-height:14px;text-align:center;cursor:pointer;";
+    removeBtn.textContent = "✕";
+    removeBtn.onclick = function(ev){
+      ev.stopPropagation();
+      _pdfFields.splice(idx, 1);
+      _pdfRenderFieldOverlays();
+    };
+    box.appendChild(removeBtn);
+    pageDiv.appendChild(box);
   });
 }
 
 async function pdfSendDocument(){
-  var docName = (document.getElementById("pdf-doc-name")||{}).value||"";
-  var note = (document.getElementById("pdf-note")||{}).value||"";
+  var docName = S._pdfDocName||(document.getElementById("pdf-doc-name")||{}).value||"";
+  var note = S._pdfNote||(document.getElementById("pdf-note")||{}).value||"";
   if(!docName){ alert("Please enter a document name."); return; }
   if(!_pdfBytes){ alert("Please upload a PDF."); return; }
   if(_pdfSigners.length===0){ alert("Please add at least one signer."); return; }
-  if(_pdfFields.length===0){ alert("Please place at least one signature field."); return; }
-
-  // Check each signer has at least one field
-  var missing = _pdfSigners.filter(function(s,i){ return !_pdfFields.some(function(f){ return f.signerIdx===i; }); });
-  if(missing.length>0){ alert("Missing signature field for: "+missing.map(function(s){ return s.name; }).join(", ")); return; }
+  if(_pdfFields.length===0){ alert("Please place at least one signature field on the document."); return; }
 
   var btn = document.querySelector("[data-a='pdf-send-doc']");
   if(btn){ btn.disabled=true; btn.textContent="Uploading..."; }
 
-  // Convert ArrayBuffer to base64
-  function ab2b64(buf){
-    var bytes = new Uint8Array(buf);
-    var binary = "";
-    var chunk = 0x8000;
-    for(var i=0;i<bytes.length;i+=chunk) binary += String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
-    return btoa(binary);
-  }
+  // Convert to base64
+  var bytes = new Uint8Array(_pdfBytes);
+  var binary = ""; var chunk = 0x8000;
+  for(var i=0;i<bytes.length;i+=chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
+  var pdfBase64 = btoa(binary);
 
-  var pdfBase64 = ab2b64(_pdfBytes);
   var signerPayload = _pdfSigners.map(function(s,i){
     return {
-      name: s.name,
-      email: s.email,
-      id: s.id,
+      name: s.name, email: s.email, id: s.id,
       fields: _pdfFields.filter(function(f){ return f.signerIdx===i; }).map(function(f){
         return {page:f.page, xPct:f.xPct, yPct:f.yPct, wPct:f.wPct, hPct:f.hPct, type:f.type};
       })
@@ -3020,44 +3016,37 @@ async function pdfSendDocument(){
     var result = await gs("uploadMultiSignRequestServer", {
       id: "SIG-"+Date.now(),
       date: new Date().toISOString(),
-      docName: docName,
-      note: note,
+      docName: docName, note: note,
       createdBy: S.managerName,
       pdfBase64: pdfBase64,
       signers: signerPayload
     });
 
     if(result && result.ok){
-      // Add to local sign requests
-      signerPayload.forEach(function(s){
+      signerPayload.forEach(function(s, i){
         S.signRequests.unshift({
-          id: result.id+"-"+s.id,
+          id: result.id+"-"+(i+1),
           date: new Date().toISOString(),
-          techName: s.name,
-          techEmail: s.email,
-          docName: docName,
-          status: "Pending",
-          createdBy: S.managerName,
-          note: note,
+          techName: s.name, techEmail: s.email,
+          docName: docName, status: "Pending",
+          createdBy: S.managerName, note: note,
           fileId: result.fileId,
-          isMultiSign: true,
-          multiSignId: result.id
+          isMultiSign: true, multiSignId: result.id
         });
       });
       lsSet("hub:signRequests", S.signRequests);
-      // Reset state
-      _pdfDoc=null; _pdfBytes=null; _pdfFields=[]; _pdfSigners=[]; _pdfPlacementArmed=null;
-      S._signView="list";
-      save();
-      alert("Document sent! Signers have been notified by email.");
+      _pdfDoc=null; _pdfBytes=null; _pdfFields=[]; _pdfSigners=[]; _pdfArmed=null;
+      S._pdfDocName=""; S._pdfNote="";
+      S._signView="list"; save();
+      alert("Document sent! Signers have been notified.");
       renderSign(true);
     } else {
       alert("Error: "+(result?result.error:"upload failed"));
-      if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
+      if(btn){ btn.disabled=false; btn.textContent="&#x2709; Send for Signatures"; }
     }
   } catch(e){
     alert("Error: "+e.message);
-    if(btn){ btn.disabled=false; btn.textContent="Send for Signature"; }
+    if(btn){ btn.disabled=false; btn.textContent="&#x2709; Send for Signatures"; }
   }
 }
 
@@ -3230,6 +3219,729 @@ function renderSignTech(pg){
       ? "<div class='card' style='padding:30px;text-align:center;color:#475569;'><div style='font-size:36px;margin-bottom:12px;'>&#x2705;</div><p>No documents require your signature.</p></div>"
       : "");
 }
+
+// ─── Sign Actions ─────────────────────────────────────────────────────────────
+async function signLoadFile(){
+  var sel = document.getElementById("sign-tech-sel");
+  var fileInp = document.getElementById("sign-file-inp");
+  var note = (document.getElementById("sign-note")||{}).value||"";
+  if(!sel||!sel.value){ alert("Please select a technician."); return; }
+  if(!fileInp||!fileInp.files||!fileInp.files[0]){ alert("Please select a PDF file."); return; }
+
+  var file = fileInp.files[0];
+  var tech = S.techAccounts.find(function(t){ return t.id===sel.value; });
+  if(!tech){ alert("Tech not found."); return; }
+
+  // Read file as base64
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var b64 = e.target.result.split(",")[1];
+    var req = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: tech.name,
+      techEmail: tech.email||"",
+      techId: tech.id,
+      docName: file.name,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: note,
+      fileData: b64,
+      managerSig: null,
+      techSig: null
+    };
+    S._pendingSignReq = req;
+    S._signView = "signing";
+    renderSign();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function signSubmitManager(){
+  var req = S._pendingSignReq;
+  if(!req){ alert("No document loaded."); return; }
+
+  // Get signature
+  var sigData = null;
+  if(S._savedManagerSig && !document.getElementById("sig-canvas")){
+    sigData = S._savedManagerSig;
+  } else {
+    var canvas = document.getElementById("sig-canvas");
+    if(!canvas){ alert("Signature canvas not found."); return; }
+    sigData = canvas.toDataURL("image/png");
+    // Save for future use
+    S._savedManagerSig = sigData;
+  }
+
+  req.managerSig = sigData;
+  req.date = new Date().toISOString();
+
+  // Show loading
+  var btn = document.querySelector("[data-a='sign-submit-manager']");
+  if(btn){ btn.disabled=true; btn.textContent="Uploading..."; }
+
+  try {
+    // Upload original PDF to Drive and log to sheet
+    var result = await gs("uploadSignRequestServer", {
+      id: req.id,
+      date: req.date,
+      techName: req.techName,
+      techEmail: req.techEmail,
+      docName: req.docName,
+      createdBy: req.createdBy,
+      note: req.note,
+      fileData: req.fileData||null,
+      existingFileId: req.fileId||null,
+      managerSig: req.managerSig,
+      isQA: req.isQA||false,
+      isRA: req.isRA||false,
+      qaData: req.qaData||null,
+      raData: req.raData||null
+    });
+
+    if(result && result.ok){
+      req.fileId = result.fileId;
+      req.signedFileId = null;
+      // Add to local state
+      S.signRequests.unshift(req);
+      S._pendingSignReq = null;
+      S._signView = "list";
+      delete req.fileData; // don't keep large data in memory
+      save();
+      alert("Document uploaded! "+req.techName+" will be notified by email.");
+      renderSign();
+    } else {
+      alert("Upload failed: "+(result?result.error:"unknown error"));
+      if(btn){ btn.disabled=false; btn.textContent="Send to Tech for Signature →"; }
+    }
+  } catch(e){
+    alert("Error: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="Send to Tech for Signature →"; }
+  }
+}
+
+async function signSubmitTech(){
+  var req = S._pendingSignReq;
+  if(!req){ alert("No document found."); return; }
+
+  var sigData = null;
+  if(S._savedTechSig && !document.getElementById("sig-canvas")){
+    sigData = S._savedTechSig;
+  } else {
+    var canvas = document.getElementById("sig-canvas");
+    if(!canvas){ alert("Please draw your signature."); return; }
+    sigData = canvas.toDataURL("image/png");
+    S._savedTechSig = sigData;
+  }
+
+  var btn = document.querySelector("[data-a='sign-submit-tech']");
+  if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
+
+  try {
+    var result = await gs("submitTechSignatureServer", {
+      id: req.id,
+      techName: req.techName,
+      techSig: sigData,
+      managerSig: req.managerSig||null,
+      signedDate: new Date().toISOString(),
+      managerEmail: "john.kluttz@fox-marketingservices.com",
+      docName: req.docName,
+      createdBy: req.createdBy||S.managerName,
+      isQA: req.isQA||false,
+      isRA: req.isRA||false
+    });
+
+    if(result && result.ok){
+      // Update local state immediately
+      var idx = S.signRequests.findIndex(function(r){ return r.id===req.id; });
+      if(idx>=0){
+        S.signRequests[idx].status = "Signed";
+        S.signRequests[idx].signedFileId = result.signedFileId||"";
+        S.signRequests[idx].signedDate = new Date().toISOString();
+      } else {
+        // Not in local state - add it
+        req.status = "Signed";
+        S.signRequests.unshift(req);
+      }
+      S._pendingSignReq = null;
+      S._signView = "list";
+      save();
+      alert("Document signed successfully! The manager has been notified.");
+      // Render immediately from local state without reloading from sheet
+      renderSign(true);
+      render(); // Update badge
+    } else {
+      alert("Error: "+(result?result.error:"unknown"));
+      if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+    }
+  } catch(e){
+    alert("Error: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+  }
+}
+
+
+function renderQAForm(pg){
+  var d = S._qaData||{};
+  var techOpts = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
+  }).join("");
+
+  function yesno(field, score){
+    var val = d[field];
+    return "<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(val==="yes"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;"+(val==="yes"?"border-color:#22c55e;":"")+";' data-a='qa-answer' data-v='"+field+"|yes'>"
+      +"Yes"+(score>0?" (+"+score+")":"")+"</button>"
+      +"<button class='btn "+(val==="no"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='qa-answer' data-v='"+field+"|no'>No</button>"
+      +"</div>";
+  }
+
+  // Calculate score
+  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
+  var total = 0;
+  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
+
+  function section(title, color){
+    return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
+  }
+  function item(label, field, score){
+    return "<div style='margin-bottom:10px;'>"
+      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
+      +yesno(field, score)+"</div>";
+  }
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>QA Inspection Form</h2></div>"
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
+    +"<select class='inp' style='margin-top:4px;' id='qa-tech'>"+techOpts+"</select></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
+    +"<input type='date' class='inp' style='margin-top:4px;' id='qa-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Account #</label>"
+    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-account' placeholder='Account number' value='"+esc(d.account||"")+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Customer</label>"
+    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-customer' placeholder='Customer name' value='"+esc(d.customer||"")+"'></div>"
+    +"</div></div>"
+
+    +section("Customer Interview","#3b82f6")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Were you home during your HPP service?","D9",0)
+    +item("Do you know your technician's name?","D10",2)
+    +item("Was your service completed on time?","D11",5)
+    +item("Did our technician ask if you had any concerns prior to beginning your service?","D12",3)
+    +item("Did our technician discuss the treatment/follow-up expectations after completion?","D13",3)
+    +item("Is there anything we can do to improve your customer experience?","D14",0)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments1' style='margin-top:4px;font-size:13px;' placeholder='Customer interview comments...'>"+esc(d.comments1||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Quality Service Inspection","#f59e0b")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Asked questions, listened, took notes","D16",4)
+    +item("Completed a thorough investigation, beginning with customer concerns","D17",4)
+    +item("Was pest activity addressed not including spider webs?","D18",5)
+    +item("Used webster, removed wasp nest?","D19",5)
+    +item("Were rodent entry points sealed and bait stations serviced?","D20",5)
+    +item("Was a liquid application performed? (check service ticket)","D21",5)
+    +item("Was a granular application performed? (check service ticket)","D22",5)
+    +item("What else opportunities","D23",3)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments2' style='margin-top:4px;font-size:13px;' placeholder='Quality service comments...'>"+esc(d.comments2||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Service Wrap Up","#22c55e")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Reported back to the customer (Curbside call if not home)","D26",5)
+    +item("Service note: Personalized to the home and includes the 4 Part Notes?","D27",5)
+    +item("Check in/out times correct and aligned with service performed?","D28",4)
+    +item("Discussed additional service options as identified during the inspection","D29",3)
+    +item("Work order signed by Technician and Customer (if available)?","D30",5)
+    +item("Were photos added to the work order?","D31",4)
+    +item("Placed required Yard Sign and Door Stickers?","D32",5)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments3' style='margin-top:4px;font-size:13px;' placeholder='Service wrap up comments...'>"+esc(d.comments3||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Required Documentation","#a855f7")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +item("Proper Application Method","D35",10)
+    +item("Product Usage recorded accurately","D36",10)
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='qa-comments4' style='margin-top:4px;font-size:13px;' placeholder='Documentation comments...'>"+esc(d.comments4||"")+"</textarea></div>"
+    +"</div>"
+
+    +"<div class='card' style='margin-bottom:16px;padding:16px;text-align:center;'>"
+    +"<div style='font-size:13px;color:#64748b;margin-bottom:4px;'>Overall Score</div>"
+    +"<div style='font-size:36px;font-weight:700;color:"+(total>=80?"#22c55e":total>=60?"#f59e0b":"#ef4444")+";' data-score-display>"+total+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>out of 100</div>"
+    +"</div>"
+
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-qa-submit'>Next: Manager Signature &#x2192;</button>";
+}
+
+async function submitQAForm(){
+  // Snapshot current field values
+  var d = S._qaData||{};
+  var techSel = document.getElementById("qa-tech");
+  var dateSel = document.getElementById("qa-date");
+  if(techSel) d.tech = techSel.value;
+  if(dateSel) d.date = dateSel.value;
+  d.account = (document.getElementById("qa-account")||{}).value||"";
+  d.customer = (document.getElementById("qa-customer")||{}).value||"";
+  d.comments1 = (document.getElementById("qa-comments1")||{}).value||"";
+  d.comments2 = (document.getElementById("qa-comments2")||{}).value||"";
+  d.comments3 = (document.getElementById("qa-comments3")||{}).value||"";
+  d.comments4 = (document.getElementById("qa-comments4")||{}).value||"";
+  S._qaData = d;
+
+  if(!d.tech){ alert("Please select a technician."); return; }
+
+  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
+  var total = 0;
+  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
+  d.total = total;
+
+  // Show loading overlay
+  var pg2 = document.getElementById("pg-sign");
+  if(pg2){
+    var overlay = document.createElement("div");
+    overlay.id = "qa-loading";
+    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;";
+    overlay.innerHTML = "<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;border:1px solid #1e3a5f;'>"
+      +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
+      +"<div style='color:#e2e8f0;font-size:15px;'>Writing QA data to spreadsheet...</div>"
+      +"</div>";
+    document.body.appendChild(overlay);
+  }
+
+  try {
+    // Step 1: Write data to QA sheet (fast)
+    var writeResult = await gs("writeQADataServer", {qaData:d, manager:S.managerName});
+    if(!writeResult||!writeResult.ok){
+      document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+      alert("Error writing to QA sheet: "+(writeResult?writeResult.error:"unknown"));
+      renderSign(); return;
+    }
+
+    document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+
+    // No PDF yet - it will be generated after both signatures are collected
+    var fileName = d.tech+" QA - "+d.date+".pdf";
+    var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
+    S._pendingSignReq = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: d.tech,
+      techEmail: tech?tech.email:"",
+      docName: fileName,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: "QA Score: "+total+"/100",
+      isQA: true,
+      qaData: d,
+      fileId: null
+    };
+    S._signView = "signing";
+    renderSign();
+  } catch(e) {
+    document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
+    alert("Error: "+e.message);
+    renderSign();
+  }
+}
+
+
+function renderRAForm(pg){
+  var d = S._raData||{};
+  var techOpts = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
+  }).join("");
+
+  function raItem(label, field){
+    var val = d[field]||"";
+    return "<div style='margin-bottom:12px;'>"
+      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(val==="below"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|below'>Below</button>"
+      +"<button class='btn "+(val==="meets"?"bp":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|meets'>Meets</button>"
+      +"<button class='btn "+(val==="exceeds"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|exceeds'>Exceeds</button>"
+      +"</div></div>";
+  }
+
+  function section(title, color){
+    return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
+  }
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>Ride Along Form</h2></div>"
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
+    +"<select class='inp' style='margin-top:4px;' id='ra-tech'>"+techOpts+"</select></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
+    +"<input type='date' class='inp' style='margin-top:4px;' id='ra-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time In</label>"
+    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timein' value='"+(d.timein||"")+"'></div>"
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time Out</label>"
+    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timeout' value='"+(d.timeout||"")+"'></div>"
+    +"</div></div>"
+
+    +section("Professionalism","#3b82f6")
+    +"<div style='background:#0f1f38;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #1e3a5f;font-size:12px;color:#64748b;display:flex;gap:8px;margin-bottom:6px;'>"
+    +"<span style='flex:1;'></span><span style='width:70px;text-align:center;'>Below</span><span style='width:70px;text-align:center;'>Meets</span><span style='width:70px;text-align:center;'>Exceeds</span></div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Uniform clean / well groomed","R9")
+    +raItem("Truck clean and organized per expectations","R10")
+    +raItem("Properly equipped and supplied, equipment in good working condition","R11")
+    +raItem("Greeted customer with smile, upbeat attitude, reinforced connection","R12")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments1' style='margin-top:4px;font-size:13px;'>"+esc(d.comments1||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Quality Service","#f59e0b")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Was expected, arrived on time, or else notified customer","R15")
+    +raItem("Asked questions, listened, took notes","R16")
+    +raItem("Completed a thorough investigation, beginning with customer concerns","R17")
+    +raItem("Showed our value: used websters, removed wasp nest, WOW the customer","R18")
+    +raItem("Focused upon seasonal service targets and pests","R19")
+    +raItem("Demonstrated knowledge and skill for World Class Service","R20")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments2' style='margin-top:4px;font-size:13px;'>"+esc(d.comments2||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Service Wrap Up","#22c55e")
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +raItem("Reported back to the customer (Curbside call if not home)","R23")
+    +raItem("Explained details of Inspection, what was Found, set Expectations","R24")
+    +raItem("Entered details and comments into the iPad","R25")
+    +raItem("Discussed additional service options identified during inspection","R26")
+    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
+    +"<textarea class='inp' rows='2' id='ra-comments3' style='margin-top:4px;font-size:13px;'>"+esc(d.comments3||"")+"</textarea></div>"
+    +"</div>"
+
+    +section("Required Documentation","#a855f7")
+    +"<div class='card' style='margin-bottom:16px;'>"
+    +raItem("Equipment","R29")
+    +raItem("Product Safety / Handling / Usage","R30")
+    +raItem("Inspections - Interior / Exterior","R31")
+    +"</div>"
+
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-ra-submit'>Next: Manager Signature &#x2192;</button>";
+}
+
+async function submitRAForm(){
+  var d = S._raData||{};
+  var techSel = document.getElementById("ra-tech");
+  var dateSel = document.getElementById("ra-date");
+  if(techSel) d.tech = techSel.value;
+  if(dateSel) d.date = dateSel.value;
+  function to12hr(t){
+    if(!t) return "";
+    var parts=t.split(":");
+    var h=parseInt(parts[0]), m=parts[1];
+    var ampm=h>=12?"PM":"AM";
+    h=h%12||12;
+    return h+":"+m+" "+ampm;
+  }
+  d.timein = to12hr((document.getElementById("ra-timein")||{}).value||"");
+  d.timeout = to12hr((document.getElementById("ra-timeout")||{}).value||"");
+  d.comments1 = (document.getElementById("ra-comments1")||{}).value||"";
+  d.comments2 = (document.getElementById("ra-comments2")||{}).value||"";
+  d.comments3 = (document.getElementById("ra-comments3")||{}).value||"";
+  S._raData = d;
+
+  if(!d.tech){ alert("Please select a technician."); return; }
+
+  var overlay = document.createElement("div");
+  overlay.id = "ra-loading";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;";
+  overlay.innerHTML = "<div style='background:#0f1f38;padding:30px;border-radius:16px;text-align:center;border:1px solid #1e3a5f;'>"
+    +"<div style='font-size:24px;margin-bottom:12px;'>&#x23F3;</div>"
+    +"<div style='color:#e2e8f0;font-size:15px;'>Writing RA data to spreadsheet...</div>"
+    +"</div>";
+  document.body.appendChild(overlay);
+
+  try {
+    var writeResult = await gs("writeRADataServer", {raData:d, manager:S.managerName});
+    document.getElementById("ra-loading")&&document.getElementById("ra-loading").remove();
+
+    if(!writeResult||!writeResult.ok){
+      alert("Error writing to RA sheet: "+(writeResult?writeResult.error:"unknown"));
+      renderSign(); return;
+    }
+
+    var fileName = d.tech+" RA - "+d.date+".pdf";
+    var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
+    S._pendingSignReq = {
+      id: "SIG-"+Date.now(),
+      date: new Date().toISOString(),
+      techName: d.tech,
+      techEmail: tech?tech.email:"",
+      docName: fileName,
+      status: "Pending",
+      createdBy: S.managerName,
+      note: "Ride Along Form",
+      isRA: true,
+      raData: d,
+      fileId: null
+    };
+    S._signView = "signing";
+    renderSign();
+  } catch(e){
+    document.getElementById("ra-loading")&&document.getElementById("ra-loading").remove();
+    alert("Error: "+e.message);
+    renderSign();
+  }
+}
+
+
+// ─── Multi-Sign Tech View ─────────────────────────────────────────────────────
+var _msFilled = {};   // fieldIdx -> dataUrl
+var _msFields = [];   // field definitions
+var _msPdfBytes = null;
+var _msPdfDoc = null;
+
+async function renderMultiSignTech(pg){
+  var req = S._pendingSignReq;
+  if(!req){ S._signView="list"; renderSign(true); return; }
+
+  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:12px;'>"
+    +"<button class='btn bg' data-a='sign-view' data-v='list'>&#x2190; Back</button>"
+    +"<h2 style='font-size:18px;font-weight:700;'>"+esc(req.docName)+"</h2></div>"
+    +"<div class='card' style='margin-bottom:12px;padding:12px;'>"
+    +"<div style='font-size:12px;color:#64748b;'>From: "+esc(req.createdBy)+(req.note?" &bull; "+esc(req.note):"")+"</div>"
+    +"</div>"
+    +"<div id='ms-loading' style='text-align:center;padding:30px;color:#64748b;'>&#x23F3; Loading document...</div>";
+
+  try {
+    var res = await gs("getSigningPdfServer", {id:req.id});
+    if(!res||!res.ok){
+      document.getElementById("ms-loading").innerHTML = "<div style='color:#ef4444;'>Error: "+(res?res.error:"failed to load")+"</div>";
+      return;
+    }
+
+    _msFields = res.fields||[];
+    _msFilled = {};
+
+    // Decode PDF
+    var b64 = res.pdfBase64;
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for(var i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+    _msPdfBytes = bytes.buffer;
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    _msPdfDoc = await pdfjsLib.getDocument({data:_msPdfBytes.slice(0)}).promise;
+
+    // Remove loading, add PDF container and submit button
+    document.getElementById("ms-loading").remove();
+    var pdfWrap = document.createElement("div");
+    pdfWrap.id = "ms-pdf-wrap";
+    pg.appendChild(pdfWrap);
+
+    var submitWrap = document.createElement("div");
+    submitWrap.style.cssText = "margin-top:12px;";
+    submitWrap.innerHTML = "<p style='font-size:13px;color:#64748b;margin-bottom:8px;'>Tap the highlighted fields to fill them in. Once all fields are complete, tap Submit.</p>"
+      +"<button class='btn bp' id='ms-submit-btn' style='width:100%;padding:14px;font-size:15px;' data-a='ms-submit' disabled>Submit Signature &#x2713;</button>";
+    pg.appendChild(submitWrap);
+
+    // Render PDF pages
+    for(var p=1; p<=_msPdfDoc.numPages; p++){
+      var page = await _msPdfDoc.getPage(p);
+      var viewport = page.getViewport({scale:1.5});
+      var pageDiv = document.createElement("div");
+      pageDiv.style.cssText = "position:relative;margin-bottom:8px;border:1px solid #1e3a5f;border-radius:6px;overflow:hidden;";
+      pageDiv.dataset.page = p;
+      var canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.cssText = "display:block;width:100%;height:auto;";
+      pageDiv.appendChild(canvas);
+      pdfWrap.appendChild(pageDiv);
+      await page.render({canvasContext:canvas.getContext("2d"),viewport}).promise;
+    }
+
+    _msRenderFieldBoxes();
+
+  } catch(e){
+    pg.innerHTML += "<div style='color:#ef4444;padding:12px;'>Error: "+esc(e.message)+"</div>";
+  }
+}
+
+function _msRenderFieldBoxes(){
+  document.querySelectorAll(".ms-field-box").forEach(function(el){ el.remove(); });
+  _msFields.forEach(function(f, idx){
+    var pageDiv = document.querySelector("#ms-pdf-wrap [data-page='"+f.page+"']");
+    if(!pageDiv) return;
+    var box = document.createElement("div");
+    box.className = "ms-field-box";
+    box.style.cssText = "position:absolute;left:"+(f.xPct*100)+"%;top:"+(f.yPct*100)+"%;width:"+(f.wPct*100)+"%;height:"+(f.hPct*100)+"%;"
+      +"border:2px solid;border-radius:3px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;";
+
+    if(_msFilled[idx]){
+      box.style.borderColor = "#22c55e";
+      box.style.background = "rgba(34,197,94,0.1)";
+      var img = document.createElement("img");
+      img.src = _msFilled[idx];
+      img.style.cssText = "max-width:100%;max-height:100%;object-fit:contain;";
+      box.appendChild(img);
+    } else {
+      box.style.borderColor = "#f59e0b";
+      box.style.background = "rgba(245,158,11,0.15)";
+      box.style.color = "#f59e0b";
+      box.style.fontSize = "11px";
+      box.style.fontWeight = "600";
+      box.textContent = f.type==="date"?"Tap: Date":f.type==="name"?"Tap: Name":"Tap: Sign";
+      box.onclick = (function(fi, ftype){ return function(){ _msOpenPad(fi, ftype); }; })(idx, f.type);
+    }
+    pageDiv.appendChild(box);
+  });
+
+  // Check if all filled
+  var allDone = _msFields.length>0 && _msFields.every(function(f,idx){ return !!_msFilled[idx]; });
+  var btn = document.getElementById("ms-submit-btn");
+  if(btn) btn.disabled = !allDone;
+}
+
+function _msOpenPad(fieldIdx, fieldType){
+  var savedSig = S.role==="manager" ? S._savedManagerSig : S._savedTechSig;
+  var title = fieldType==="date"?"Draw today's date":fieldType==="name"?"Print your name":"Draw your signature";
+
+  var overlay = document.createElement("div");
+  overlay.id = "ms-pad-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9999;";
+
+  overlay.innerHTML = "<div style='background:#0f1f38;padding:20px;border-radius:16px;width:90%;max-width:440px;border:1px solid #1e3a5f;'>"
+    +"<h3 style='margin:0 0 10px;font-size:15px;color:#e2e8f0;'>"+title+"</h3>"
+    +(savedSig&&fieldType==="signature"
+      ? "<div style='margin-bottom:10px;'>"
+        +"<img src='"+savedSig+"' style='background:white;border-radius:6px;width:100%;height:55px;object-fit:contain;display:block;margin-bottom:6px;'>"
+        +"<div style='display:flex;gap:8px;'>"
+        +"<button class='btn bp' style='flex:2;padding:8px;font-size:12px;' id='ms-use-saved'>Use Saved Signature</button>"
+        +"<button class='btn bg' style='flex:1;padding:8px;font-size:12px;' id='ms-draw-new'>Draw New</button>"
+        +"</div></div>"
+      : "")
+    +"<canvas id='ms-pad' style='width:100%;height:170px;background:white;border-radius:8px;touch-action:none;display:block;margin-bottom:10px;'></canvas>"
+    +"<div style='display:flex;gap:8px;'>"
+    +"<button class='btn bg' style='flex:1;' id='ms-clear'>Clear</button>"
+    +"<button class='btn bg' style='flex:1;' id='ms-cancel'>Cancel</button>"
+    +"<button class='btn bp' style='flex:2;' id='ms-done'>Done</button>"
+    +"</div></div>";
+
+  document.body.appendChild(overlay);
+
+  var canvas = document.getElementById("ms-pad");
+  canvas.width = canvas.offsetWidth||420;
+  canvas.height = 170;
+  var ctx3 = canvas.getContext("2d");
+  ctx3.strokeStyle="#111"; ctx3.lineWidth=2; ctx3.lineCap="round";
+  var drawing3=false, lx3=0, ly3=0;
+
+  function gp(e){
+    var r=canvas.getBoundingClientRect(), sx=canvas.width/r.width, sy=canvas.height/r.height;
+    var src=e.touches?e.touches[0]:e;
+    return {x:(src.clientX-r.left)*sx, y:(src.clientY-r.top)*sy};
+  }
+  canvas.addEventListener("mousedown",function(e){drawing3=true;var p=gp(e);lx3=p.x;ly3=p.y;});
+  canvas.addEventListener("mousemove",function(e){if(!drawing3)return;var p=gp(e);ctx3.beginPath();ctx3.moveTo(lx3,ly3);ctx3.lineTo(p.x,p.y);ctx3.stroke();lx3=p.x;ly3=p.y;});
+  canvas.addEventListener("mouseup",function(){drawing3=false;});
+  canvas.addEventListener("touchstart",function(e){e.preventDefault();drawing3=true;var p=gp(e);lx3=p.x;ly3=p.y;},{passive:false});
+  canvas.addEventListener("touchmove",function(e){e.preventDefault();if(!drawing3)return;var p=gp(e);ctx3.beginPath();ctx3.moveTo(lx3,ly3);ctx3.lineTo(p.x,p.y);ctx3.stroke();lx3=p.x;ly3=p.y;},{passive:false});
+  canvas.addEventListener("touchend",function(){drawing3=false;});
+
+  function savePad(dataUrl){
+    if(S.role==="manager") S._savedManagerSig=dataUrl; else S._savedTechSig=dataUrl;
+    _msFilled[fieldIdx] = dataUrl;
+    overlay.remove();
+    _msRenderFieldBoxes();
+  }
+
+  document.getElementById("ms-clear").onclick = function(){ ctx3.clearRect(0,0,canvas.width,canvas.height); };
+  document.getElementById("ms-cancel").onclick = function(){ overlay.remove(); };
+  document.getElementById("ms-done").onclick = function(){ savePad(canvas.toDataURL("image/png")); };
+
+  var useSaved = document.getElementById("ms-use-saved");
+  if(useSaved) useSaved.onclick = function(){ savePad(savedSig); };
+  var drawNew = document.getElementById("ms-draw-new");
+  if(drawNew) drawNew.onclick = function(){ ctx3.clearRect(0,0,canvas.width,canvas.height); };
+}
+
+async function submitMultiSign(){
+  var req = S._pendingSignReq;
+  if(!req||!_msPdfBytes){ alert("Document not loaded."); return; }
+
+  var btn = document.getElementById("ms-submit-btn");
+  if(btn){ btn.disabled=true; btn.textContent="Embedding signatures..."; }
+
+  try {
+    // Embed signatures into PDF with pdf-lib
+    var pdfLibDoc = await PDFLib.PDFDocument.load(_msPdfBytes.slice(0));
+    var pages3 = pdfLibDoc.getPages();
+
+    for(var idx3=0; idx3<_msFields.length; idx3++){
+      var f3 = _msFields[idx3];
+      var fillUrl = _msFilled[idx3];
+      if(!fillUrl) continue;
+
+      var b64img = fillUrl.split(",")[1];
+      var imgBin = atob(b64img);
+      var imgBytes2 = new Uint8Array(imgBin.length);
+      for(var bi=0;bi<imgBin.length;bi++) imgBytes2[bi]=imgBin.charCodeAt(bi);
+
+      var pngEmbed = await pdfLibDoc.embedPng(imgBytes2.buffer);
+      var pg4 = pages3[f3.page-1];
+      var pw3=pg4.getWidth(), ph3=pg4.getHeight();
+      pg4.drawImage(pngEmbed,{
+        x: f3.xPct * pw3,
+        y: ph3 - (f3.yPct * ph3) - (f3.hPct * ph3),
+        width: f3.wPct * pw3,
+        height: f3.hPct * ph3
+      });
+    }
+
+    if(btn) btn.textContent="Uploading...";
+    var outBytes3 = await pdfLibDoc.save();
+    var bin3=""; var ch3=0x8000;
+    var ub3=new Uint8Array(outBytes3);
+    for(var i3=0;i3<ub3.length;i3+=ch3) bin3+=String.fromCharCode.apply(null,ub3.subarray(i3,i3+ch3));
+    var outB64 = btoa(bin3);
+
+    var techSigUrl = _msFilled[_msFields.findIndex(function(f){ return f.type==="signature"; })];
+
+    var result = await gs("submitMultiSignServer", {
+      id: req.id,
+      multiSignId: req.multiSignId||"",
+      techName: req.techName,
+      techSig: techSigUrl||null,
+      signedPdfBase64: outB64,
+      signedDate: new Date().toISOString(),
+      managerEmail: "john.kluttz@fox-marketingservices.com"
+    });
+
+    if(result&&result.ok){
+      var idx4 = S.signRequests.findIndex(function(r){ return r.id===req.id; });
+      if(idx4>=0){ S.signRequests[idx4].status="Signed"; S.signRequests[idx4].signedFileId=result.signedFileId||""; }
+      S._pendingSignReq=null; S._signView="list";
+      _msFilled={}; _msFields=[]; _msPdfBytes=null; _msPdfDoc=null;
+      lsSet("hub:signRequests",S.signRequests); save();
+      alert("Signed successfully! The manager has been notified.");
+      renderSign(true); render();
+    } else {
+      alert("Error: "+(result?result.error:"unknown"));
+      if(btn){ btn.disabled=false; btn.textContent="Submit Signature ✓"; }
+    }
+  } catch(e){
+    alert("Error: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="Submit Signature ✓"; }
+  }
+}
+
 
 // ─── Sign Actions ─────────────────────────────────────────────────────────────
 async function signLoadFile(){
