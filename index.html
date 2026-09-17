@@ -3787,7 +3787,6 @@ var _msFilled = {};   // fieldIdx -> dataUrl
 var _msFields = [];   // field definitions
 var _msPdfBytes = null;
 var _msPdfDoc = null;
-var _msRevisionId = null;
 
 async function renderMultiSignTech(pg){
   var req = S._pendingSignReq;
@@ -3824,7 +3823,6 @@ async function renderMultiSignTech(pg){
     var bytes = new Uint8Array(binary.length);
     for(var i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
     _msPdfBytes = bytes.buffer;
-    _msRevisionId = res.fileId;
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     _msPdfDoc = await pdfjsLib.getDocument({data:_msPdfBytes.slice(0)}).promise;
@@ -4041,18 +4039,8 @@ async function submitMultiSign(){
   if(btn){ btn.disabled=true; btn.textContent="Embedding signatures..."; }
 
   try {
-    // Always re-fetch the latest shared PDF before embedding. The signer may
-    // have kept this screen open while another employee signed.
-    var pdfLibDoc;
-    var latestRevision;
-    var result;
-    for (var attempt=0; attempt<4; attempt++) {
-      latestRevision = await gs("getSigningPdfServer", {id:req.id});
-      if (!latestRevision || !latestRevision.ok) throw new Error(latestRevision?latestRevision.error:"Could not load current document");
-      var freshBin=atob(latestRevision.pdfBase64);
-      var freshBytes=new Uint8Array(freshBin.length);
-      for(var fi=0;fi<freshBin.length;fi++) freshBytes[fi]=freshBin.charCodeAt(fi);
-      pdfLibDoc = await PDFLib.PDFDocument.load(freshBytes);
+    // Embed signatures into PDF with pdf-lib
+    var pdfLibDoc = await PDFLib.PDFDocument.load(_msPdfBytes.slice(0));
     var pages3 = pdfLibDoc.getPages();
 
     for(var idx3=0; idx3<_msFields.length; idx3++){
@@ -4085,20 +4073,15 @@ async function submitMultiSign(){
 
     var techSigUrl = _msFilled[_msFields.findIndex(function(f){ return f.type==="signature"; })];
 
-    result = await gs("submitMultiSignServer", {
+    var result = await gs("submitMultiSignServer", {
       id: req.id,
       multiSignId: req.multiSignId||"",
       techName: req.techName,
       techSig: techSigUrl||null,
       signedPdfBase64: outB64,
-      expectedFileId: latestRevision.fileId,
       signedDate: new Date().toISOString(),
       managerEmail: "john.kluttz@fox-marketingservices.com"
     });
-    if (result && result.stale) continue;
-    break;
-    }
-    if (result && result.stale) throw new Error("Other employees are signing simultaneously. Please try Submit again.");
 
     if(result&&result.ok){
       var idx4 = S.signRequests.findIndex(function(r){ return r.id===req.id; });
