@@ -842,7 +842,8 @@ function handleAction(a,v,el,e){
       if(tech2 && !_pdfSigners.some(function(s){ return s.id===tech2.id; })){
         _pdfSigners.push({name:tech2.name, email:tech2.email||"", id:tech2.id});
         renderSignUpload(document.getElementById("pg-sign"));
-        // Don't re-render PDF pages, they persist in the DOM via renderSignUpload's check
+        if(_pdfDoc) setTimeout(_pdfRenderPages, 80);
+        if(_pdfDoc) setTimeout(_pdfRenderPages, 80);
       }
     }
     return;
@@ -2926,9 +2927,9 @@ async function _pdfLoadAndRender(){
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     _pdfDoc = await pdfjsLib.getDocument({data: _pdfBytes.slice(0)}).promise;
     _pdfFields = [];
-    // Re-render the upload page - this will call _pdfRenderPages via setTimeout internally
-    // Do NOT call _pdfRenderPages here separately or it renders twice
     renderSignUpload(document.getElementById("pg-sign"));
+    // Explicitly render pages after page re-renders
+    setTimeout(_pdfRenderPages, 80);
   } catch(e){ alert("Error loading PDF: "+e.message); }
 }
 
