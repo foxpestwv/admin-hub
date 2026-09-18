@@ -978,11 +978,29 @@ function handleAction(a,v,el,e){
   if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();saveAccountsToSheet();render();} return; }
   if(a==="truck-up") { var tui=parseInt(v); if(tui>0){var tutmp=S.trucks[tui-1];S.trucks[tui-1]=S.trucks[tui];S.trucks[tui]=tutmp;save();saveAccountsToSheet();render();} return; }
   if(a==="truck-down") { var tdi=parseInt(v); if(tdi<S.trucks.length-1){var tdtmp=S.trucks[tdi+1];S.trucks[tdi+1]=S.trucks[tdi];S.trucks[tdi]=tdtmp;save();saveAccountsToSheet();render();} return; }
+  if(a==="assign-truck") {
+    var techIdx = parseInt(v);
+    var sel3 = event.target || document.querySelector("[data-a='assign-truck'][data-v='"+v+"']");
+    if(sel3 && S.techAccounts[techIdx]){
+      S.techAccounts[techIdx].truck = sel3.value==="(None)" ? "" : sel3.value;
+      save();
+    }
+    return;
+  }
   if(a==="add-tech") { const inp=document.getElementById("new-tech-inp"); if(inp&&inp.value.trim()){S.techs.push(inp.value.trim());save();render();} return; }
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
   if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
+  if(a==="assign-truck") {
+    var techIdx = parseInt(v);
+    var sel3 = event.target || document.querySelector("[data-a='assign-truck'][data-v='"+v+"']");
+    if(sel3 && S.techAccounts[techIdx]){
+      S.techAccounts[techIdx].truck = sel3.value==="(None)" ? "" : sel3.value;
+      save();
+    }
+    return;
+  }
   if(a==="add-tech") {
     var name2=(document.getElementById("new-tech-name")||{}).value||"";
     var email2=(document.getElementById("new-tech-email")||{}).value||"";
@@ -1735,6 +1753,8 @@ function renderSettings(){
 
   const tabs = [
     {id:"access",l:"Access"},
+    {id:"techs",l:"Techs"},
+    {id:"trucks",l:"Trucks"},
     {id:"products",l:"Products"},
     {id:"inspection",l:"Inspection"}
   ];
@@ -1782,6 +1802,52 @@ function renderSettings(){
       +"<input type='text' class='inp' id='new-tech-truck' placeholder='Truck # (optional)' style='margin-bottom:10px;'>"
       +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
       +"</div>";
+
+  } else if(tab==="techs"){
+    var truckOpts = ["(None)"].concat(S.trucks||[]).map(function(t){
+      return "<option value='"+esc(t)+"'>"+esc(t)+"</option>";
+    }).join("");
+
+    var techCards = (S.techAccounts||[]).map(function(t,i){
+      var opts = ["(None)"].concat(S.trucks||[]).map(function(tr){
+        return "<option value='"+esc(tr)+"'"+(t.truck===tr?" selected":"")+">"+esc(tr)+"</option>";
+      }).join("");
+      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+        +"<div><div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email||"")+"</div></div>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
+        +"</div>"
+        +"<div style='display:flex;align-items:center;gap:8px;'>"
+        +"<label style='font-size:12px;color:#64748b;white-space:nowrap;'>Assigned Truck:</label>"
+        +"<select class='inp' style='flex:1;padding:5px 8px;font-size:13px;' data-a='assign-truck' data-v='"+i+"'>"+opts+"</select>"
+        +"</div></div>";
+    }).join("");
+
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Technicians</h2>"
+      +techCards
+      +"<div class='card' style='margin-top:14px;padding:14px;'>"
+      +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Technician</div>"
+      +"<input type='text' class='inp' id='new-tech-name' placeholder='Full name' style='margin-bottom:8px;'>"
+      +"<input type='email' class='inp' id='new-tech-email' placeholder='Email address' style='margin-bottom:8px;'>"
+      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
+      +"</div>";
+
+  } else if(tab==="trucks"){
+    var truckRows = (S.trucks||[]).map(function(t,i){
+      var upBtn = i>0 ? "<button style='background:transparent;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:2px 6px;' data-a='truck-up' data-v='"+i+"'>&#x25B2;</button>" : "<span style='width:28px;display:inline-block;'></span>";
+      var dnBtn = i<(S.trucks||[]).length-1 ? "<button style='background:transparent;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:2px 6px;' data-a='truck-down' data-v='"+i+"'>&#x25BC;</button>" : "<span style='width:28px;display:inline-block;'></span>";
+      return "<div class='card' style='display:flex;align-items:center;gap:8px;margin-bottom:7px;padding:10px 14px;'>"
+        +"<div style='display:flex;flex-direction:column;align-items:center;'>"+upBtn+dnBtn+"</div>"
+        +"<span style='flex:1;font-size:14px;font-weight:500;'>"+esc(t)+"</span>"
+        +"<button class='btn bd' style='padding:5px 9px;font-size:12px;' data-a='del-truck' data-v='"+i+"'>X</button>"
+        +"</div>";
+    }).join("");
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Trucks</h2>"
+      +"<div style='display:flex;gap:8px;margin-bottom:14px;'>"
+      +"<input type='text' class='inp' id='new-truck-inp' placeholder='e.g. Truck 10' style='flex:1;'>"
+      +"<button class='btn bp' style='padding:10px 14px;font-size:13px;' data-a='add-truck'>Add</button>"
+      +"</div>"+truckRows;
 
   } else if(tab==="products"){
     var prodRows = S.products.map(function(p){
