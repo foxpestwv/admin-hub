@@ -7,6 +7,10 @@
 <meta name="theme-color" content="#0a1628">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFlM2E1ZiIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2Y5NzMxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RlA8L3RleHQ+PC9zdmc+">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -258,53 +262,434 @@ function load(){
   if(!S.sheetTruckData) S.sheetTruckData={};
 }
 
-// ─── Apps Script Bridge ──────────────────────────────────────────────────────
-const BRIDGE = "https://script.google.com/macros/s/AKfycbzX1SVGdraGV6GpjQfwZguWx1IDXQ-OkHqeU-W0C5q9pvojRFY0OgYY-cZ96bFwDUNN/exec";
+// ─── Firebase Configuration ──────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAq_cRLmI0GZDxPqBPGiX2cTRGhesvvb0w",
+  authDomain: "fox-pest-admin-hub.firebaseapp.com",
+  projectId: "fox-pest-admin-hub",
+  storageBucket: "fox-pest-admin-hub.firebasestorage.app",
+  messagingSenderId: "834588931897",
+  appId: "1:834588931897:web:816b2f1456f8607d121ae8"
+};
 
-// JSONP for GET requests (bypasses CORS)
-function jsonpGet(action) {
-  return new Promise(function(res, rej){
-    var cb = "cb_" + Math.random().toString(36).slice(2);
-    var script = document.createElement("script");
-    var timer = setTimeout(function(){
-      delete window[cb];
-      if(script.parentNode) script.parentNode.removeChild(script);
-      rej(new Error("Timeout"));
-    }, 15000);
-    window[cb] = function(data){
-      clearTimeout(timer);
-      delete window[cb];
-      if(script.parentNode) script.parentNode.removeChild(script);
-      if(data.error) rej(new Error(data.error));
-      else res(data);
-    };
-    script.src = BRIDGE + "?action=" + action + "&callback=" + cb;
-    script.onerror = function(){ clearTimeout(timer); rej(new Error("Script error")); };
-    document.head.appendChild(script);
+// Firebase SDK loaded via script tags in <head>
+var _fbApp, _db, _auth, _fbReady = false;
+
+function initFirebase(){
+  if(_fbReady) return Promise.resolve();
+  return new Promise(function(resolve, reject){
+    var check = setInterval(function(){
+      if(typeof firebase !== "undefined" && firebase.firestore){
+        clearInterval(check);
+        if(!_fbApp){
+          _fbApp = firebase.initializeApp(firebaseConfig);
+          _db = firebase.firestore();
+          _auth = firebase.auth();
+        }
+        _fbReady = true;
+        resolve();
+      }
+    }, 50);
+    setTimeout(function(){ clearInterval(check); reject(new Error("Firebase SDK timeout")); }, 10000);
   });
 }
 
-// POST for write requests
-function jsonPost(action, data){
-  return fetch(BRIDGE, {
-    method: "POST",
-    headers: {"Content-Type": "text/plain"},
-    body: JSON.stringify({action: action, data: data})
-  }).then(function(r){ return r.json(); });
+// ─── Firebase Data Layer ──────────────────────────────────────────────────────
+// Replaces all gs() calls with direct Firestore operations
+
+async function fbGet(collection, docId){
+  await initFirebase();
+  if(docId){
+    var snap = await _db.collection(collection).doc(docId).get();
+    return snap.exists ? snap.data() : null;
+  } else {
+    var snap2 = await _db.collection(collection).orderBy("date","desc").get();
+    return snap2.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+  }
 }
 
-function gs(fn, data){
+async function fbSet(collection, docId, data){
+  await initFirebase();
+  await _db.collection(collection).doc(docId).set(data, {merge:true});
+  return {ok:true};
+}
+
+async function fbAdd(collection, data){
+  await initFirebase();
+  var ref = await _db.collection(collection).add(data);
+  return {ok:true, id:ref.id};
+}
+
+async function fbUpdate(collection, docId, data){
+  await initFirebase();
+  await _db.collection(collection).doc(docId).update(data);
+  return {ok:true};
+}
+
+async function fbDelete(collection, docId){
+  await initFirebase();
+  await _db.collection(collection).doc(docId).delete();
+  return {ok:true};
+}
+
+async function fbQuery(collection, field, op, value){
+  await initFirebase();
+  var snap = await _db.collection(collection).where(field, op, value).get();
+  return snap.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+}
+
+// Email via bridge (keep Apps Script only for email sending)
+const EMAIL_BRIDGE = "https://script.google.com/macros/s/AKfycbzX1SVGdraGV6GpjQfwZguWx1IDXQ-OkHqeU-W0C5q9pvojRFY0OgYY-cZ96bFwDUNN/exec";
+function sendEmail(to, subject, body){
+  return fetch(EMAIL_BRIDGE, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain"},
+    body: JSON.stringify({action:"sendEmail", data:{to,subject,body}})
+  }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; });
+}
+
+// ─── gs() compatibility shim ─────────────────────────────────────────────────
+// Maps old gs() calls to Firebase equivalents
+async function gs(fn, data){
   var action = fn.replace("Server","");
-  if(data === null || data === undefined){
-    return jsonpGet(action);
-  } else {
-    return jsonPost(action, data);
+  try {
+    switch(action){
+
+      // ── ACCOUNTS ────────────────────────────────────────────────────────────
+      case "getAccounts": {
+        var cfg = await fbGet("config","accounts");
+        return cfg || {managers:[],techAccounts:[],trucks:[],cats:[],inspFields:[]};
+      }
+      case "saveAccounts": {
+        await fbSet("config","accounts",{
+          managers: data.managers||[],
+          techAccounts: data.techAccounts||[],
+          trucks: data.trucks||[],
+          cats: data.cats||[],
+          inspFields: data.inspFields||[],
+          updatedAt: new Date().toISOString()
+        });
+        return {ok:true};
+      }
+
+      // ── PRODUCTS ────────────────────────────────────────────────────────────
+      case "getProducts": {
+        var prods = await fbGet("products");
+        return {products: prods||[]};
+      }
+      case "updateQty": {
+        await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
+        return {ok:true};
+      }
+      case "updateLowAt": {
+        await fbUpdate("products", data.id, {lowAt: data.lowAt});
+        return {ok:true};
+      }
+      case "updateTruckWarnAbove": {
+        await fbUpdate("products", data.id, {truckWarnAbove: data.truckWarnAbove});
+        return {ok:true};
+      }
+      case "addProductToSheet": {
+        var newProd = {
+          id: "prod_"+Date.now(),
+          name: data.name, unit: data.unit||"each",
+          qty: 0, lowAt: data.lowAt||0,
+          truckWarnAbove: data.truckWarnAbove||0,
+          reorderNote: data.reorderNote||"",
+          createdAt: new Date().toISOString()
+        };
+        await fbSet("products", newProd.id, newProd);
+        return {ok:true, product: newProd};
+      }
+      case "removeProductFromSheet": {
+        await fbDelete("products", data.id);
+        return {ok:true};
+      }
+
+      // ── ADJUSTMENT LOG ───────────────────────────────────────────────────────
+      case "logAdjustment": {
+        var adjId = "adj_"+Date.now();
+        await fbSet("adjustmentLog", adjId, {
+          id: adjId,
+          date: new Date().toISOString(),
+          productId: data.productId,
+          productName: data.productName,
+          oldQty: data.oldQty,
+          newQty: data.newQty,
+          change: data.newQty - data.oldQty,
+          reason: data.reason||"",
+          by: data.by||S.managerName||"",
+          unit: data.unit||""
+        });
+        // Update product qty atomically
+        await fbUpdate("products", data.productId, {qty: data.newQty, updatedAt: new Date().toISOString()});
+        return {ok:true};
+      }
+      case "getAdjustmentLog": {
+        await initFirebase();
+        var logSnap = await _db.collection("adjustmentLog").orderBy("date","desc").limit(500).get();
+        return {log: logSnap.docs.map(function(d){ return d.data(); })};
+      }
+
+      // ── CHECKOUT ─────────────────────────────────────────────────────────────
+      case "logCheckout": {
+        var coId = "co_"+Date.now();
+        await fbSet("checkouts", coId, {
+          id: coId,
+          date: new Date().toISOString(),
+          tech: data.tech||"",
+          items: data.items||[],
+          by: data.by||S.managerName||""
+        });
+        return {ok:true};
+      }
+
+      // ── ORDERS ───────────────────────────────────────────────────────────────
+      case "getPending": {
+        var pend = await fbGet("pendingOrders");
+        return {orders: pend||[]};
+      }
+      case "addPendingOrder": {
+        var poId = "po_"+Date.now();
+        await fbSet("pendingOrders", poId, Object.assign({}, data, {id:poId, date:new Date().toISOString(), status:"Pending"}));
+        return {ok:true, id:poId};
+      }
+      case "writeToOrderSheet": {
+        var ohId = "oh_"+Date.now();
+        await fbSet("orderHistory", ohId, Object.assign({}, data, {id:ohId, date:new Date().toISOString()}));
+        return {ok:true, id:ohId};
+      }
+      case "addOrderHistory": {
+        var ohId2 = "oh_"+Date.now();
+        await fbSet("orderHistory", ohId2, Object.assign({}, data, {id:ohId2, date:new Date().toISOString()}));
+        return {ok:true, id:ohId2};
+      }
+      case "getOrderHistory": {
+        await initFirebase();
+        var ohSnap = await _db.collection("orderHistory").orderBy("date","desc").get();
+        return {orders: ohSnap.docs.map(function(d){ return d.data(); })};
+      }
+      case "updateOrderStatus": {
+        if(data.collection==="pendingOrders"){
+          await fbUpdate("pendingOrders", data.id, {status:data.status, updatedAt:new Date().toISOString()});
+        } else {
+          await fbUpdate("orderHistory", data.id, {status:data.status, updatedAt:new Date().toISOString()});
+        }
+        return {ok:true};
+      }
+
+      // ── RESTOCK ORDERS ────────────────────────────────────────────────────────
+      case "saveRestockOrder": {
+        var rid = data.id || "ro_"+Date.now();
+        await fbSet("restockOrders", rid, Object.assign({}, data, {id:rid, updatedAt:new Date().toISOString()}));
+        return {ok:true, id:rid};
+      }
+      case "getRestockOrders": {
+        await initFirebase();
+        var roSnap = await _db.collection("restockOrders").orderBy("date","desc").get();
+        return {orders: roSnap.docs.map(function(d){ return d.data(); })};
+      }
+      case "updateRestockOrder": {
+        await fbUpdate("restockOrders", data.id, Object.assign({}, data, {updatedAt:new Date().toISOString()}));
+        return {ok:true};
+      }
+
+      // ── TECHS ─────────────────────────────────────────────────────────────────
+      case "getTechs": {
+        var cfg2 = await fbGet("config","accounts");
+        var techs2 = (cfg2&&cfg2.techAccounts)||[];
+        return {techs: techs2.map(function(t){ return {name:t.name, email:t.email||"", truck:t.truck||""}; })};
+      }
+      case "addTechToSheet": {
+        var cfg3 = await fbGet("config","accounts") || {};
+        var accts = cfg3.techAccounts||[];
+        accts.push({id:"tech_"+Date.now(), name:data.name, email:data.email||"", truck:data.truck||"", pin:"", tempPin:"1234", isTemp:true});
+        await fbSet("config","accounts", Object.assign(cfg3, {techAccounts:accts}));
+        return {ok:true};
+      }
+
+      // ── INSPECTIONS ───────────────────────────────────────────────────────────
+      case "logInspection": {
+        var inspId = "insp_"+Date.now();
+        await fbSet("inspections", inspId, Object.assign({}, data, {id:inspId, date:new Date().toISOString()}));
+        return {ok:true, id:inspId};
+      }
+      case "getInspections": {
+        await initFirebase();
+        var inspSnap = await _db.collection("inspections").orderBy("date","desc").limit(200).get();
+        return {inspections: inspSnap.docs.map(function(d){ return d.data(); })};
+      }
+      case "saveInspectionPdf": {
+        // Store PDF record in Firebase, keep Drive for actual file
+        var pdfId = "pdf_"+Date.now();
+        await fbSet("inspectionPdfs", pdfId, {
+          id: pdfId,
+          date: new Date().toISOString(),
+          truck: data.truck||"",
+          fileName: data.fileName||"",
+          html: data.html||""
+        });
+        return {ok:true, id:pdfId};
+      }
+
+      // ── TRUCK INVENTORY ────────────────────────────────────────────────────────
+      case "logTruckInventory": {
+        var tiId = "ti_"+data.techName.replace(/\s/g,"_")+"_"+Date.now();
+        await fbSet("truckInventory", tiId, Object.assign({}, data, {id:tiId, date:new Date().toISOString()}));
+        return {ok:true};
+      }
+      case "getTruckInventory": {
+        await initFirebase();
+        var tiSnap = await _db.collection("truckInventory").orderBy("date","desc").get();
+        var byTech = {};
+        tiSnap.docs.forEach(function(d){
+          var rec = d.data();
+          if(!byTech[rec.techName]) byTech[rec.techName] = rec;
+        });
+        return {trucks: byTech};
+      }
+
+      // ── SIGN REQUESTS ─────────────────────────────────────────────────────────
+      case "getSignRequests": {
+        await initFirebase();
+        var srSnap = await _db.collection("signRequests").orderBy("date","desc").get();
+        return {requests: srSnap.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); })};
+      }
+      case "uploadSignRequest": {
+        var srId = data.id || "sr_"+Date.now();
+        await fbSet("signRequests", srId, Object.assign({}, data, {id:srId, createdAt:new Date().toISOString()}));
+        // Send email to tech
+        if(data.techEmail){
+          sendEmail(data.techEmail,
+            "[Fox Pest Control] Document Ready for Signature: "+data.docName,
+            "Hi "+data.techName+",\n\n"+data.createdBy+" has sent you a document to sign.\n\nDocument: "+data.docName+"\n\nPlease log into the Fox Pest Control Admin Hub to review and sign.\n\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+          );
+        }
+        return {ok:true, id:srId};
+      }
+      case "uploadMultiSignRequest": {
+        var msId = data.id || "ms_"+Date.now();
+        // Store PDF in base64 in Firestore (for small PDFs) or just metadata
+        var signers = data.signers||[];
+        // Save one record per signer
+        for(var si=0; si<signers.length; si++){
+          var s = signers[si];
+          var rowId = msId+"-"+(si+1);
+          await fbSet("signRequests", rowId, {
+            id: rowId,
+            multiSignId: msId,
+            date: new Date().toISOString(),
+            techName: s.name,
+            techEmail: s.email||"",
+            docName: data.docName,
+            status: "Pending",
+            createdBy: data.createdBy,
+            note: data.note||"",
+            pdfBase64: data.pdfBase64||"",
+            fields: s.fields||[],
+            signerOrder: si,
+            totalSigners: signers.length,
+            isMultiSign: true,
+            formType: "MULTI:"+msId
+          });
+          if(s.email){
+            sendEmail(s.email,
+              "[Fox Pest Control] Please Sign: "+data.docName,
+              "Hi "+s.name+",\n\n"+data.createdBy+" has sent you a document that requires your signature.\n\nDocument: "+data.docName+"\n"+(data.note?"Note: "+data.note+"\n":"")+"Please log into the Fox Pest Control Admin Hub and go to the Sign tab.\n\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+            );
+          }
+        }
+        return {ok:true, id:msId, fileId:msId};
+      }
+      case "getSigningPdf": {
+        var srDoc = await fbGet("signRequests", data.id);
+        if(!srDoc) return {ok:false, error:"Request not found"};
+        return {ok:true, pdfBase64: srDoc.pdfBase64||"", fields: srDoc.fields||[]};
+      }
+      case "submitTechSignature": {
+        await fbUpdate("signRequests", data.id, {
+          status: "Signed",
+          signedDate: new Date().toISOString(),
+          techSig: data.techSig||""
+        });
+        // Email manager
+        sendEmail(data.managerEmail||"john.kluttz@fox-marketingservices.com",
+          "[Fox Pest Control] Document Signed: "+data.techName,
+          data.techName+" has signed the document.\n\nFox Pest Control - Willamette Valley"
+        );
+        return {ok:true};
+      }
+      case "submitMultiSign": {
+        // Update this signer's record
+        await fbUpdate("signRequests", data.id, {
+          status: "Signed",
+          signedDate: new Date().toISOString(),
+          signedPdfBase64: data.signedPdfBase64||"",
+          techSig: data.techSig||""
+        });
+        // Update remaining unsigned signers with new PDF
+        var multiId = data.multiSignId||"";
+        if(multiId){
+          var allSigners = await fbQuery("signRequests","multiSignId","==",multiId);
+          var allSigned = allSigners.every(function(s){ return s.status==="Signed"; });
+          // Update pending signers with latest signed PDF
+          for(var ai=0; ai<allSigners.length; ai++){
+            if(allSigners[ai].status!=="Signed"){
+              await fbUpdate("signRequests", allSigners[ai].id, {pdfBase64: data.signedPdfBase64||""});
+            }
+          }
+          if(allSigned){
+            sendEmail(data.managerEmail||"john.kluttz@fox-marketingservices.com",
+              "[Fox Pest Control] All Signatures Complete: "+data.docName,
+              "All signers have completed signing "+data.docName+".\n\nSigners: "+allSigners.map(function(s){return s.techName;}).join(", ")+"\n\nFox Pest Control - Willamette Valley"
+            );
+          } else {
+            var remaining = allSigners.filter(function(s){ return s.status!=="Signed"; }).map(function(s){ return s.techName; });
+            sendEmail(data.managerEmail||"john.kluttz@fox-marketingservices.com",
+              "[Fox Pest Control] Signature Received: "+data.docName,
+              data.techName+" has signed "+data.docName+".\n\nStill waiting on: "+remaining.join(", ")+"\n\nFox Pest Control - Willamette Valley"
+            );
+          }
+          return {ok:true, allSigned:allSigned};
+        }
+        return {ok:true};
+      }
+      case "deleteSignRequest": {
+        await fbDelete("signRequests", data.id);
+        return {ok:true};
+      }
+
+      // ── QA / RA FORMS ─────────────────────────────────────────────────────────
+      case "writeQAData": {
+        var qaId = "qa_"+Date.now();
+        await fbSet("qaForms", qaId, Object.assign({}, data, {id:qaId, date:new Date().toISOString(), status:"Pending"}));
+        return {ok:true, id:qaId};
+      }
+      case "submitTechSignatureQA":
+      case "writeRAData": {
+        var raId = "ra_"+Date.now();
+        await fbSet("raForms", raId, Object.assign({}, data, {id:raId, date:new Date().toISOString(), status:"Pending"}));
+        return {ok:true, id:raId};
+      }
+
+      // ── EMAIL ─────────────────────────────────────────────────────────────────
+      case "sendEmail": {
+        return sendEmail(data.to, data.subject, data.body);
+      }
+
+      default:
+        console.warn("Unknown gs() action:", action);
+        return {ok:false, error:"Unknown action: "+action};
+    }
+  } catch(e){
+    console.error("Firebase gs() error ["+action+"]:", e.message);
+    return {ok:false, error:e.message};
   }
 }
 
 async function loadAccountsFromSheet(){
   try {
-    const result = await gs("getAccountsServer", null);
+    const result = await gs("getAccountsServer", null);  // maps to getAccounts in Firebase layer
     if(result && result.managers && result.managers.length){
       S.managers = result.managers;
       lsSet("hub:managers", S.managers);
@@ -346,6 +731,24 @@ async function syncFromSheet(){
   badge("syncing");
   try {
     const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",null),gs("getTechsServer",null),gs("getRestockOrdersServer",null),gs("getInspectionsServer",null),gs("getTruckInventoryServer",null)]);
+    // Also load sign requests fresh
+    try {
+      var srResult = await gs("getSignRequestsServer", null);
+      if(srResult && srResult.requests){
+        S.signRequests = srResult.requests.map(function(r){
+          return {
+            id: r.id, date: r.date||r.createdAt||"",
+            techName: r.techName||"", techEmail: r.techEmail||"",
+            docName: r.docName||"", status: r.status||"Pending",
+            createdBy: r.createdBy||"", note: r.note||"",
+            isMultiSign: !!r.isMultiSign, multiSignId: r.multiSignId||"",
+            isQA: !!(r.formType==="QA"), isRA: !!(r.formType==="RA"),
+            fields: r.fields||[], _cachedFields: r.fields||[]
+          };
+        });
+        lsSet("hub:signRequests", S.signRequests);
+      }
+    } catch(e){ console.warn("Sign requests sync:", e.message); }
     if(pr&&pr.products&&pr.products.length){
       // Preserve local truckWarnAbove values when syncing
       pr.products.forEach(function(p){
@@ -643,7 +1046,6 @@ document.addEventListener("change",function(e){
       S.checkItems[idx][t.dataset.field]=t.value;
     }
   }
-  if(t.id&&t.id.startsWith("insp-field-")) S.inspData[t.id.slice("insp-field-".length)]=t.value;
   if(t.id==="insp-truck") S.inspData.truck=t.value;
   if(t.id==="insp-filter"){S.inspListFilter=t.value;render();}
   // Truck assignment dropdown
@@ -721,7 +1123,6 @@ document.addEventListener("change",function(e){
 
 document.addEventListener("input",function(e){
   const t=e.target;
-  if(t.id&&t.id.startsWith("insp-field-")) S.inspData[t.id.slice("insp-field-".length)]=t.value;
   if(t.id==="insp-mileage") S.inspData.mileage=t.value;
   if(t.id==="insp-inspector") S.inspData.inspector=t.value;
   if(t.id==="insp-notes") S.inspData.notes=t.value;
@@ -734,9 +1135,9 @@ function handleAction(a,v,el,e){
   if(a==="logout") { logout(); return; }
   if(a==="tab") { S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return; }
   if(a==="insp-view") { S.inspView=v; render(); return; }
-  if(a==="insp-start") { S._pendingInspectionRec=null; S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
-  if(a==="insp-next") { captureInspectionInfo_(); S.inspStep++; render(); return; }
-  if(a==="insp-back") { captureInspectionInfo_(); if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
+  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
+  if(a==="insp-next") { S.inspStep++; render(); return; }
+  if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
   if(a==="insp-save") { saveInsp(); return; }
   if(a==="insp-detail") { S.detailInsp=S.inspections.find(r=>r.id===v); S.inspView="detail"; render(); return; }
   if(a==="insp-del") { if(confirm("Delete this inspection?")){S.inspections=S.inspections.filter(r=>r.id!==v);save();} S.inspView="list"; render(); return; }
@@ -1061,8 +1462,8 @@ function handleAction(a,v,el,e){
     lsSet("hub:cats",S.cats); renderSettings();
     return;
   }
-  if(a==="add-insp-field") { S.inspFields.push({id:"custom_"+Date.now(),label:"New Field",type:"text",required:false,enabled:true,placeholder:""}); save(); saveAccountsToSheet(); renderSettings(); return; }
-  if(a==="del-insp-field") { var fi2=parseInt(v); if(confirm("Remove this field?")){S.inspFields.splice(fi2,1);save();saveAccountsToSheet();renderSettings();} return; }
+  if(a==="add-insp-field") { S.inspFields.push({id:"custom_"+Date.now(),label:"New Field",type:"text",required:false,enabled:true,placeholder:""}); save(); saveAccountsToSheet(); render(); return; }
+  if(a==="del-insp-field") { var fi2=parseInt(v); if(confirm("Remove this field?")){S.inspFields.splice(fi2,1);save();saveAccountsToSheet();render();} return; }
   if(a==="add-cat") { var cl=prompt("Category name:"); if(!cl)return; S.cats.push({id:uid(),label:cl.trim(),scale:10,items:[]}); lsSet("hub:cats",S.cats); renderSettings(); return; }
   if(a==="del-cat") { if(confirm("Remove category?")){S.cats.splice(parseInt(v),1);lsSet("hub:cats",S.cats);renderSettings();} return; }
   if(a==="add-cat-item") { const l=prompt("Item label:"); if(!l)return; const hc=confirm("Include comment field?"); const c=S.cats.find(x=>x.id===v); if(c){c.items.push({id:uid(),label:l.trim(),hc});save();render();} return; }
@@ -1163,7 +1564,7 @@ function inspList(){
     <option value="all">All Trucks</option>${trucks.map(t=>`<option value="${esc(t)}"${filter===t?" selected":""}>${esc(t)}</option>`).join("")}
   </select>
   ${filtered.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No records found.</div>`:
-    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">${ring(r.pct,52)}<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span><button class="btn bp" style="font-size:12px;padding:7px 12px;" data-a="insp-detail" data-v="${r.id}">View</button><button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
+    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,52)}<div style="flex:1"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span><button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
 }
 
 function inspForm(){
@@ -1260,7 +1661,6 @@ function inspDetail(){
   return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="insp-view" data-v="list">Back</button><button class="btn bd" data-a="insp-del" data-v="${r.id}">Delete</button></div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:20px;">${ring(r.pct,72)}<div><h2 style="font-size:20px;font-weight:700;">${esc(r.truck)}</h2><div style="color:#475569;font-size:13px;margin-top:3px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div>${r.mileage?`<div style="color:#64748b;font-size:12px;margin-top:2px;">${Number(r.mileage).toLocaleString()} miles</div>`:""}</div></div>
     ${r.notes?`<div class="card" style="margin-bottom:12px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:5px;">Notes</div><p style="font-size:13px;color:#cbd5e1;">${esc(r.notes)}</p></div>`:""}
-    ${r.pdfUrl?`<div class="card" style="margin-bottom:12px;"><a class="btn bp" style="display:block;text-align:center;text-decoration:none;" href="${esc(r.pdfUrl)}" target="_blank" rel="noopener noreferrer">View Inspection PDF</a></div>`:`<div class="card" style="margin-bottom:12px;color:#94a3b8;font-size:12px;">No archived PDF for this inspection.</div>`}
     ${cats}${photos}`;
 }
 
@@ -1296,49 +1696,78 @@ function captureItemPhoto(input){
   reader.readAsDataURL(file);
 }
 
-function captureInspectionInfo_(){
-  // Read every configurable first-page field before the form is re-rendered.
-  (S.inspFields||[]).forEach(function(f){
-    if(f.enabled===false||!f.id)return;
-    var input=document.getElementById("insp-field-"+f.id);
-    if(input)S.inspData[f.id]=input.value;
-  });
+async function saveInsp(){
+  const pct=calcPct();
+  const rec={id:uid(),date:new Date().toISOString(),...S.inspData,pct};
+  S.inspections.unshift(rec);
+  S.inspView="home"; save(); render();
+  const catH=S.cats.flatMap(c=>c.items.map(i=>c.label+": "+i.label+" (/"+c.scale+")"));
+  const headers=["Date","Truck","Inspector","Mileage","Overall %",...catH];
+  const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
+  const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
+  try { await gs("logInspectionServer",{headers,row}); } catch(e){}
+
+  // Generate PDF of inspection and save to Drive
+  try {
+    var pdfData = buildInspectionPdfData(rec);
+    gs("saveInspectionPdfServer", pdfData).then(function(res){
+      if(res&&res.ok) console.log("Inspection PDF saved:", res.fileId);
+    }).catch(function(e){ console.warn("PDF save failed:", e); });
+  } catch(e){ console.warn("PDF build failed:", e); }
 }
 
-async function saveInsp(){
-  // Block repeated taps while the server is creating the PDF and sheet record.
-  if(S._inspectionSaving) return;
-  captureInspectionInfo_();
-  S._inspectionSaving=true;
-  var submitButton=document.querySelector('[data-a="insp-save"]');
-  if(submitButton){submitButton.disabled=true;submitButton.textContent="Saving inspection... please wait";submitButton.style.opacity="0.65";}
-  var rec=S._pendingInspectionRec||{id:uid(),date:new Date().toISOString(),...S.inspData,pct:calcPct()};
-  // The logged-in manager is the inspecting manager only when a manager submits.
-  if(!rec.managerName&&S.role==="manager"&&S.currentUser)rec.managerName=S.currentUser.name||"";
-  S._pendingInspectionRec=rec;
-  try {
-    // One server transaction creates the PDF and saves its URL with the full record.
-    var result=await gs("saveFleetInspectionServer",{
-      record:rec,
-      categories:JSON.parse(JSON.stringify(S.cats)),
-      fields:JSON.parse(JSON.stringify(S.inspFields||[]))
+function buildInspectionPdfData(rec){
+  // Build HTML content for the inspection PDF
+  var dateStr = new Date(rec.date).toLocaleDateString("en-US");
+  var html = "<html><head><style>"
+    +"body{font-family:Arial,sans-serif;font-size:12px;color:#000;margin:20px;}"
+    +"h1{font-size:18px;margin-bottom:4px;}"
+    +"h2{font-size:14px;margin:12px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px;}"
+    +".header{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px;}"
+    +".meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;font-size:12px;}"
+    +".meta-item{padding:4px 0;}.meta-label{color:#666;font-size:11px;}"
+    +".score-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}"
+    +".score-val{font-weight:bold;min-width:60px;text-align:right;}"
+    +".cat-score{color:#666;font-size:11px;}"
+    +".overall{background:#f5f5f5;padding:10px;border-radius:4px;text-align:center;margin-bottom:14px;}"
+    +".overall-pct{font-size:28px;font-weight:bold;}"
+    +".comment{font-style:italic;color:#555;font-size:11px;margin-top:3px;padding-left:10px;}"
+    +"</style></head><body>"
+    +"<div class='header'><div>"
+    +"<h1>Fox Pest Control - Fleet Inspection</h1>"
+    +"<div style='color:#555;'>Willamette Valley Branch</div>"
+    +"</div><div style='text-align:right;'>"
+    +"<div style='font-size:11px;color:#666;'>Date: "+dateStr+"</div>"
+    +"<div style='font-size:11px;color:#666;'>Truck: "+esc(rec.truck||"")+"</div>"
+    +"<div style='font-size:11px;color:#666;'>Inspector: "+esc(rec.inspector||"")+"</div>"
+    +(rec.mileage?"<div style='font-size:11px;color:#666;'>Mileage: "+esc(rec.mileage)+"</div>":"")
+    +"</div></div>"
+    +"<div class='overall'><div class='overall-pct'>"+pct+"%</div><div style='color:#666;'>Overall Score</div></div>";
+
+  S.cats.forEach(function(c){
+    html += "<h2>"+esc(c.label)+"</h2>";
+    c.items.forEach(function(item){
+      var key = c.id+":"+item.id;
+      var score = rec.scores&&rec.scores[key]!==undefined ? rec.scores[key] : "—";
+      var comment = rec.comments&&rec.comments[key] ? rec.comments[key] : "";
+      html += "<div class='score-row'><span>"+esc(item.label)+"</span>"
+        +"<span class='score-val'>"+score+" <span class='cat-score'>/ "+c.scale+"</span></span></div>";
+      if(comment) html += "<div class='comment'>"+esc(comment)+"</div>";
     });
-    if(!result||!result.ok) throw new Error(result&&result.error||"Inspection archive failed");
-    rec.pdfUrl=result.url;
-    rec.pdfFileId=result.fileId;
-    // Keep images on this device; the spreadsheet stores the PDF link instead of large base64 images.
-    S.inspections.unshift(rec);
-    S._pendingInspectionRec=null;
-    S.inspView="home";
-    save(); render();
-    alert("Inspection saved. Open Fleet > View All Records > inspection to view its PDF.");
-  } catch(e) {
-    console.error("Inspection save failed",e);
-    alert("Inspection was NOT archived. Please retry while this form is open. Details: "+e.message);
-  } finally {
-    S._inspectionSaving=false;
-    if(submitButton&&submitButton.isConnected){submitButton.disabled=false;submitButton.textContent="Save Inspection";submitButton.style.opacity="";}
+  });
+
+  if(rec.notes){
+    html += "<h2>Additional Notes</h2><p style='font-size:12px;'>"+esc(rec.notes)+"</p>";
   }
+
+  html += "</body></html>";
+
+  return {
+    html: html,
+    fileName: rec.truck+"_"+dateStr.replace(/\//g,"-")+"_Inspection.pdf",
+    truck: rec.truck||"Unknown",
+    date: dateStr
+  };
 }
 
 // ─── Inventory ────────────────────────────────────────────────────────────────
@@ -1950,36 +2379,8 @@ function renderSettings(){
         +"</div></div>";
     }).join("");
 
-    // Restore the existing Inspection Details editor. Values and persistence handlers
-    // already exist; only the Settings UI had been omitted.
-    var detailRows = (S.inspFields||[]).map(function(f,fi){
-      var typeOptions = ["text","number","textarea"].map(function(type){
-        return "<option value='"+type+"'"+(f.type===type?" selected":"")+">"+(type==="textarea"?"Long text":type==="number"?"Number":"Text")+"</option>";
-      }).join("");
-      var typeControl = f.id==="truck"
-        ? "<span style='font-size:12px;color:#94a3b8;'>Truck dropdown (uses Settings → Trucks)</span>"
-        : "<select class='inp' style='font-size:12px;' data-fieldidx='"+fi+"' data-fieldprop='type'>"+typeOptions+"</select>";
-      return "<div class='card' style='margin-bottom:10px;padding:12px;'>"
-        +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:9px;'>"
-        +"<input class='inp' style='flex:1;' aria-label='Field label' value='"+esc(f.label||"")+"' data-fieldidx='"+fi+"' data-fieldprop='label'>"
-        +(f.id==="truck"?"":"<button class='btn bd' data-a='del-insp-field' data-v='"+fi+"'>Remove</button>")
-        +"</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px;'>"
-        +"<label style='font-size:12px;color:#94a3b8;'>Field type"+typeControl+"</label>"
-        +"<label style='font-size:12px;color:#94a3b8;'>Placeholder<input class='inp' style='font-size:12px;' value='"+esc(f.placeholder||"")+"' data-fieldidx='"+fi+"' data-fieldprop='placeholder'></label>"
-        +"</div><div style='display:flex;gap:18px;'>"
-        +"<label style='font-size:12px;color:#94a3b8;'><input type='checkbox' data-fieldidx='"+fi+"' data-fieldprop='enabled' "+(f.enabled!==false?"checked":"")+"> Show on form</label>"
-        +"<label style='font-size:12px;color:#94a3b8;'><input type='checkbox' data-fieldidx='"+fi+"' data-fieldprop='required' "+(f.required?"checked":"")+"> Required</label>"
-        +"</div></div>";
-    }).join("");
-    var detailEditor = "<div style='margin-bottom:22px;'>"
-      +"<h3 style='font-size:16px;font-weight:700;margin-bottom:5px;'>Inspection Details</h3>"
-      +"<p style='font-size:12px;color:#94a3b8;margin-bottom:12px;'>Edit the fields shown on the first page of a fleet inspection. Use Sync Inspection Settings to All Devices to publish changes.</p>"
-      +detailRows
-      +"<button class='btn bg' style='width:100%;padding:10px;' data-a='add-insp-field'>+ Add Detail Field</button>"
-      +"</div>";
-
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Inspection Settings</h2>"
-      +syncBtn+detailEditor+catRows
+      +syncBtn+catRows
       +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
   }
 
@@ -5154,25 +5555,8 @@ if(lo) lo.onclick = function(){ logout(); };
 
 if(dbg) dbg.textContent = "Ready - tap a number";
 
-// Distinguish a scrolling gesture from a tap. A touch that moves must never open
-// an inspection or activate another list action on release.
-var _actionTouchStart=null;
-document.body.addEventListener("touchstart",function(e){
-  if(e.touches.length===1)_actionTouchStart={x:e.touches[0].clientX,y:e.touches[0].clientY,moved:false};
-  else _actionTouchStart=null;
-},{passive:true});
-document.body.addEventListener("touchmove",function(e){
-  if(!_actionTouchStart||!e.touches.length)return;
-  if(Math.abs(e.touches[0].clientX-_actionTouchStart.x)>9||Math.abs(e.touches[0].clientY-_actionTouchStart.y)>9)_actionTouchStart.moved=true;
-},{passive:true});
 // Global click + touch handler for mobile compatibility
 function globalHandler(e){
-  if(e.type==="touchend"){
-    var moved=_actionTouchStart&&(_actionTouchStart.moved||(e.changedTouches.length&&(
-      Math.abs(e.changedTouches[0].clientX-_actionTouchStart.x)>9||Math.abs(e.changedTouches[0].clientY-_actionTouchStart.y)>9)));
-    _actionTouchStart=null;
-    if(moved)return;
-  }
   var t = e.target;
   while(t && t !== document.body){
     if(t.getAttribute && t.getAttribute("data-a")){
