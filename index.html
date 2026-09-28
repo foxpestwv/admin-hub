@@ -286,8 +286,21 @@ function initFirebase(){
           _db = firebase.firestore();
           _auth = firebase.auth();
         }
-        _fbReady = true;
-        resolve();
+        // Sign in anonymously so Firestore rules pass
+        if(!_auth.currentUser){
+          _auth.signInAnonymously().then(function(){
+            _fbReady = true;
+            resolve();
+          }).catch(function(e){
+            console.warn("Anonymous auth failed:", e.message);
+            // Still try to proceed
+            _fbReady = true;
+            resolve();
+          });
+        } else {
+          _fbReady = true;
+          resolve();
+        }
       }
     }, 50);
     setTimeout(function(){ clearInterval(check); reject(new Error("Firebase SDK timeout")); }, 10000);
