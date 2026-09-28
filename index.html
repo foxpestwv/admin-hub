@@ -876,12 +876,25 @@ function selectRole(role){
   showPinStep();
 }
 
-function checkEmail(){
+async function checkEmail(){
   var inp = document.getElementById("login-email");
   var email = (inp?inp.value:"").trim().toLowerCase();
   var err = document.getElementById("email-err");
   if(!email){ if(err) err.textContent="Please enter your email."; return; }
-  
+
+  // Show loading state
+  var btn = document.querySelector("[data-a='email-continue']") || document.querySelector("button[onclick*='checkEmail']");
+  if(btn){ btn.disabled=true; btn.textContent="Checking..."; }
+
+  // Make sure Firebase accounts are loaded
+  if(!S.managers||S.managers.length===0){
+    try {
+      await loadAccountsFromSheet();
+    } catch(e){ console.warn("Account load:", e); }
+  }
+
+  if(btn){ btn.disabled=false; btn.textContent="Continue"; }
+
   var isMgr = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
   var isTech = S.techAccounts.find(function(t){ return t.email.toLowerCase()===email; });
   
