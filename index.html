@@ -388,7 +388,19 @@ async function gs(fn, data){
       // ── PRODUCTS ────────────────────────────────────────────────────────────
       case "getProducts": {
         var prods = await fbGet("products");
-        return {products: prods||[]};
+        var parsedProds = (prods||[]).map(function(p){
+          return {
+            id: p.id||p._id||"",
+            name: p.name||"",
+            unit: p.unit||"each",
+            qty: Number(p.qty)||0,
+            lowAt: Number(p.lowAt)||0,
+            reorderNote: p.reorderNote||"",
+            truckWarnAbove: Number(p.truckWarnAbove)||0,
+            createdAt: p.createdAt||""
+          };
+        });
+        return {products: parsedProds};
       }
       case "updateQty": {
         await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
@@ -500,7 +512,13 @@ async function gs(fn, data){
       case "getRestockOrders": {
         await initFirebase();
         var roSnap = await _db.collection("restockOrders").orderBy("date","desc").get();
-        return {orders: roSnap.docs.map(function(d){ return d.data(); })};
+        var roData = roSnap.docs.map(function(d){
+          var rec = d.data();
+          if(typeof rec.items === "string") try{ rec.items = JSON.parse(rec.items); }catch(e){ rec.items=[]; }
+          if(typeof rec.receivedItems === "string") try{ rec.receivedItems = JSON.parse(rec.receivedItems); }catch(e){ rec.receivedItems={}; }
+          return rec;
+        });
+        return {orders: roData};
       }
       case "updateRestockOrder": {
         await fbUpdate("restockOrders", data.id, Object.assign({}, data, {updatedAt:new Date().toISOString()}));
@@ -530,7 +548,13 @@ async function gs(fn, data){
       case "getInspections": {
         await initFirebase();
         var inspSnap = await _db.collection("inspections").orderBy("date","desc").limit(200).get();
-        return {inspections: inspSnap.docs.map(function(d){ return d.data(); })};
+        var inspData = inspSnap.docs.map(function(d){
+          var rec = d.data();
+          if(typeof rec.scores === "string") try{ rec.scores = JSON.parse(rec.scores); }catch(e){ rec.scores={}; }
+          if(typeof rec.comments === "string") try{ rec.comments = JSON.parse(rec.comments); }catch(e){ rec.comments={}; }
+          return rec;
+        });
+        return {inspections: inspData};
       }
       case "saveInspectionPdf": {
         // Store PDF record in Firebase, keep Drive for actual file
@@ -557,6 +581,7 @@ async function gs(fn, data){
         var byTech = {};
         tiSnap.docs.forEach(function(d){
           var rec = d.data();
+          if(typeof rec.products === "string") try{ rec.products = JSON.parse(rec.products); }catch(e){ rec.products=[]; }
           if(!byTech[rec.techName]) byTech[rec.techName] = rec;
         });
         return {trucks: byTech};
@@ -700,37 +725,34 @@ async function gs(fn, data){
   }
 }
 
+function fbParseArray(val){
+  if(Array.isArray(val)) return val;
+  if(typeof val === "string" && val.trim().startsWith("[")) {
+    try { return JSON.parse(val); } catch(e){ return []; }
+  }
+  return [];
+}
+
 async function loadAccountsFromSheet(){
   try {
-    const result = await gs("getAccountsServer", null);  // maps to getAccounts in Firebase layer
-    if(result && result.managers && result.managers.length){
-      S.managers = result.managers;
-      lsSet("hub:managers", S.managers);
+    const result = await gs("getAccountsServer", null);
+    if(result){
+      var mgrs = fbParseArray(result.managers);
+      if(mgrs.length){ S.managers = mgrs; lsSet("hub:managers", S.managers); }
+
+      var techs = fbParseArray(result.techAccounts);
+      if(techs.length){ S.techAccounts = techs; lsSet("hub:techAccounts", S.techAccounts); }
+
+      var trucks = fbParseArray(result.trucks);
+      if(trucks.length){ S.trucks = trucks; lsSet("hub:trucks", S.trucks); }
+
+      var cats = fbParseArray(result.cats);
+      if(cats.length){ S.cats = cats; lsSet("hub:cats", S.cats); }
+
+      var inspFields = fbParseArray(result.inspFields);
+      if(inspFields.length){ S.inspFields = inspFields; lsSet("hub:inspFields", S.inspFields); }
     }
-    if(result && result.techAccounts && result.techAccounts.length){
-      S.techAccounts = result.techAccounts;
-      lsSet("hub:techAccounts", S.techAccounts);
-    }
-    if(result && result.trucks && result.trucks.length){
-      S.trucks = result.trucks;
-      lsSet("hub:trucks", S.trucks);
-    }
-    if(result && result.cats && result.cats.length){
-      S.cats = result.cats;
-      lsSet("hub:cats", S.cats);
-    }
-    if(result && result.signRequests){
-      S.signRequests = result.signRequests;
-      lsSet("hub:signRequests", S.signRequests);
-    }
-    if(result && result.inspFields && result.inspFields.length){
-      S.inspFields = result.inspFields;
-      lsSet("hub:inspFields", S.inspFields);
-    }
-    // Re-render if currently on settings page so truck assignments show correctly
-    if(S.role && S.tab === "settings"){
-      renderSettings();
-    }
+    if(S.role && S.tab === "settings") renderSettings();
   } catch(e){ console.warn("Load accounts:", e.message); }
 }
 
