@@ -472,7 +472,11 @@ async function gs(fn, data){
       // ── ORDERS ───────────────────────────────────────────────────────────────
       case "getPending": {
         var pend = await fbGet("pendingOrders");
-        return {orders: pend||[]};
+        var parsedPend = (pend||[]).map(function(o){
+          if(typeof o.items==="string") try{ o.items=JSON.parse(o.items); }catch(e){ o.items=[]; }
+          return o;
+        });
+        return {orders: parsedPend};
       }
       case "addPendingOrder": {
         var poId = "po_"+Date.now();
@@ -492,7 +496,12 @@ async function gs(fn, data){
       case "getOrderHistory": {
         await initFirebase();
         var ohSnap = await _db.collection("orderHistory").orderBy("date","desc").get();
-        return {orders: ohSnap.docs.map(function(d){ return d.data(); })};
+        var ohData = ohSnap.docs.map(function(d){
+          var rec = d.data();
+          if(typeof rec.items==="string") try{ rec.items=JSON.parse(rec.items); }catch(e){ rec.items=[]; }
+          return rec;
+        });
+        return {orders: ohData};
       }
       case "updateOrderStatus": {
         if(data.collection==="pendingOrders"){
