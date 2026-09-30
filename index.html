@@ -363,8 +363,14 @@ async function fbGet(collection, docId){
     var snap = await _db.collection(collection).doc(docId).get();
     return snap.exists ? snap.data() : null;
   } else {
-    var snap2 = await _db.collection(collection).orderBy("date","desc").get();
-    return snap2.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+    try {
+      var snap2 = await _db.collection(collection).orderBy("date","desc").get();
+      return snap2.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+    } catch(e){
+      // Fall back to unordered if date field missing or not indexable
+      var snap3 = await _db.collection(collection).get();
+      return snap3.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+    }
   }
 }
 
@@ -882,6 +888,15 @@ async function syncFromSheet(){
     if(ti&&ti.trucks){
       S.sheetTruckData=ti.trucks;
     }
+    // Load orders
+    try {
+      var ordResult = await gs("getPendingServer", null);
+      if(ordResult && ordResult.orders && ordResult.orders.length){
+        S.orders = ordResult.orders;
+        lsSet("hub:orders", S.orders);
+      }
+    } catch(e){ console.warn("Orders sync:", e.message); }
+
     badge("done");
   } catch(e){ console.warn("Sync:",e.message); badge("err"); }
   render();
