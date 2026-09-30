@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Cleanup Orders</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+<body style="font-family:Arial;background:#0d1117;color:#e2e8f0;padding:40px;max-width:600px;margin:0 auto;">
+<h2 style="color:#f59e0b;">Cleanup Bad Order Records</h2>
+<p style="color:#94a3b8;font-size:13px;">Deletes any order records that don't have a valid ORD- ID.</p>
+<button onclick="cleanup()" style="background:#ef4444;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px;">Delete Bad Records</button>
+<div id="log" style="margin-top:16px;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;min-height:100px;"></div>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAq_cRLmI0GZDxPqBPGiX2cTRGhesvvb0w",
+  authDomain: "fox-pest-admin-hub.firebaseapp.com",
+  projectId: "fox-pest-admin-hub",
+  storageBucket: "fox-pest-admin-hub.firebasestorage.app",
+  messagingSenderId: "834588931897",
+  appId: "1:834588931897:web:816b2f1456f8607d121ae8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+function log(msg, color){
+  var el = document.getElementById("log");
+  var line = document.createElement("div");
+  line.style.color = color||"#e2e8f0";
+  line.textContent = new Date().toLocaleTimeString()+" "+msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function cleanup(){
+  log("Signing in...");
+  await auth.signInAnonymously();
+  log("Cleaning pendingOrders...");
+  var snap1 = await db.collection("pendingOrders").get();
+  var deleted = 0;
+  for(var doc of snap1.docs){
+    var id = doc.id;
+    if(!id.startsWith("ORD-")){
+      await db.collection("pendingOrders").doc(id).delete();
+      log("Deleted pendingOrders/"+id, "#ef4444");
+      deleted++;
+    }
+  }
+  log("Cleaning orderHistory...");
+  var snap2 = await db.collection("orderHistory").get();
+  for(var doc2 of snap2.docs){
+    var id2 = doc2.id;
+    if(!id2.startsWith("ORD-")){
+      await db.collection("orderHistory").doc(id2).delete();
+      log("Deleted orderHistory/"+id2, "#ef4444");
+      deleted++;
+    }
+  }
+  log("Done — deleted "+deleted+" bad records", "#22c55e");
+}
+</script>
+</body>
+</html>
