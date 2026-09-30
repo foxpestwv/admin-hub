@@ -2159,6 +2159,7 @@ function getBaseId(orderId){
 
 function renderOrders(){
   const {orders,products}=S;
+  console.log("renderOrders: total orders="+orders.length+", first="+JSON.stringify(orders[0]||null));
   const filter=S.ordersFilter;
   const pend=orders.filter(o=>o.status==="Pending").length;
   function osc(st){return st==="Pending"?"#f59e0b":st==="Approved"?"#22c55e":"#ef4444";}
@@ -2167,11 +2168,32 @@ function renderOrders(){
   }).join("");
 
   // Group orders by base order ID
+  // Handle both formats: grouped (items array) and flat (one doc per item)
   var groups = {};
   orders.forEach(function(o){
     var baseId = getBaseId(o.id);
-    if(!groups[baseId]) groups[baseId]={tech:o.tech,techEmail:o.techEmail,date:o.date,status:o.status,items:[]};
-    groups[baseId].items.push(o);
+    if(!groups[baseId]) groups[baseId]={tech:o.tech||o.techName||"",techEmail:o.techEmail||"",date:o.date||"",status:o.status||"Pending",items:[]};
+
+    if(Array.isArray(o.items) && o.items.length>0){
+      // Grouped format from Firebase migration — expand items
+      o.items.forEach(function(item){
+        groups[baseId].items.push({
+          id: o.id+"-"+item.productId,
+          product: item.name||"",
+          requestedQty: item.qty||0,
+          approvedQty: item.approvedQty||0,
+          unit: item.unit||"",
+          notes: item.notes||"",
+          productId: item.productId||"",
+          status: o.status||"Pending",
+          approvedBy: o.approvedBy||"",
+          denyReason: o.denyReason||""
+        });
+      });
+    } else {
+      // Flat format (original pre-migration format)
+      groups[baseId].items.push(o);
+    }
     if(o.status==="Pending") groups[baseId].status="Pending";
   });
 
@@ -2205,13 +2227,13 @@ function renderOrders(){
           +(o.notes?"<div style='font-size:11px;color:#64748b;font-style:italic;margin-bottom:8px;'>"+esc(o.notes)+"</div>":"")
           +"<div style='display:flex;align-items:center;gap:8px;'>"
           +"<div style='font-size:12px;color:#94a3b8;'>Qty:</div>"
-          +"<input type='number' class='inp' id='aqty-"+o.id+"' value='"+o.requestedQty+"' style='width:70px;padding:5px;font-size:14px;font-weight:700;text-align:center;'>"
+          +"<input type='number' class='inp' id='aqty-"+o.id+"' value='"+((o.requestedQty||o.qty||0)||o.qty||0)+"' style='width:70px;padding:5px;font-size:14px;font-weight:700;text-align:center;'>"
           +"<div style='font-size:12px;color:#64748b;'>"+esc(o.unit)+stockInfo+"</div>"
           +"<div style='margin-left:auto;display:flex;gap:6px;'>"
           +"<button class='btn "+(itemDecision==="approve"?"bs":"bg")+"' style='padding:5px 12px;font-size:12px;' data-a='toggle-item-decision' data-v='"+o.id+"|approve'>Approve</button>"
           +"<button class='btn "+(itemDecision==="deny"?"bd":"bg")+"' style='padding:5px 12px;font-size:12px;' data-a='toggle-item-decision' data-v='"+o.id+"|deny'>Deny</button>"
           +"</div></div>"
-          +(prod&&parseInt(o.requestedQty)>prod.qty?"<div style='font-size:11px;color:#f97316;margin-top:4px;'>Only "+prod.qty+" in stock</div>":"")
+          +(prod&&parseInt((o.requestedQty||o.qty||0))>prod.qty?"<div style='font-size:11px;color:#f97316;margin-top:4px;'>Only "+prod.qty+" in stock</div>":"")
           +"</div>";
       } else {
         // Show read-only row
@@ -2221,7 +2243,7 @@ function renderOrders(){
           +"<div style='flex:1;'><div style='font-size:14px;font-weight:600;'>"+esc(o.product)+badge+"</div>"
           +(o.notes?"<div style='font-size:11px;color:#64748b;font-style:italic;'>"+esc(o.notes)+"</div>":"")
           +approvedInfo+"</div>"
-          +"<div style='text-align:right;font-weight:700;'>"+o.requestedQty+" "+esc(o.unit)+stockInfo+"</div>"
+          +"<div style='text-align:right;font-weight:700;'>"+(o.requestedQty||o.qty||0)+" "+esc(o.unit)+stockInfo+"</div>"
           +"</div>";
       }
     }).join("");
@@ -2245,7 +2267,7 @@ function renderOrders(){
     return "<div class='card' style='margin-bottom:12px;"+(anyPending?"border-color:#92400e30;":"")+"'>"
       +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
       +"<div><div style='font-weight:700;font-size:16px;'>"+esc(group.tech)+"</div>"
-      +"<div style='color:#64748b;font-size:12px;margin-top:2px;'>"+fd(group.date)+" &bull; "+group.items.length+" item"+(group.items.length>1?"s":"")+"</div></div>"
+      +"<div style='color:#64748b;font-size:12px;margin-top:2px;'>"+fd(group.date||"")+" &bull; "+group.items.length+" item"+(group.items.length>1?"s":"")+"</div></div>"
       +"<span class='sbdg' style='background:"+osc(groupStatus)+"22;color:"+osc(groupStatus)+";white-space:nowrap;'>"+groupStatus+"</span>"
       +"</div>"
       +itemRows+panel+"</div>";
@@ -3153,7 +3175,7 @@ function printSingleOrder(baseId){
   var itemRows = groupOrders.map(function(o){
     return "<tr>"
       +"<td style='padding:8px;border-bottom:1px solid #eee;'>"+esc(o.product)+"</td>"
-      +"<td style='padding:8px;border-bottom:1px solid #eee;text-align:center;'>"+o.requestedQty+" "+esc(o.unit)+"</td>"
+      +"<td style='padding:8px;border-bottom:1px solid #eee;text-align:center;'>"+(o.requestedQty||o.qty||0)+" "+esc(o.unit)+"</td>"
       +"<td style='padding:8px;border-bottom:1px solid #eee;text-align:center;font-weight:600;color:"+osc(o.status)+";'>"+o.status+"</td>"
       +"<td style='padding:8px;border-bottom:1px solid #eee;text-align:center;'>"+(o.approvedQty?o.approvedQty+" "+esc(o.unit):"--")+"</td>"
       +"<td style='padding:8px;border-bottom:1px solid #eee;'>"+(o.denyReason?esc(o.denyReason):"")+"</td>"
@@ -3278,7 +3300,7 @@ function doPrint(){
       var itemRows = g.items.map(function(o){
         var statusColor = o.status==="Approved"?"green":o.status==="Denied"?"red":"orange";
         return "<tr><td style='padding:6px 8px;border-bottom:1px solid #eee;'>"+o.product+"</td>"
-          +"<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:center;'>"+o.requestedQty+" "+o.unit+"</td>"
+          +"<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:center;'>"+(o.requestedQty||o.qty||0)+" "+o.unit+"</td>"
           +"<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:center;"+(o.status==="Approved"?"color:green;":o.status==="Denied"?"color:red;":"color:orange;")+"font-weight:600;'>"+o.status+"</td>"
           +"<td style='padding:6px 8px;border-bottom:1px solid #eee;text-align:center;'>"+(o.approvedQty?o.approvedQty+" "+o.unit:"—")+"</td>"
           +"<td style='padding:6px 8px;border-bottom:1px solid #eee;'>"+o.denyReason+"</td></tr>";
