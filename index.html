@@ -1311,7 +1311,7 @@ function handleAction(a,v,el,e){
     }
     return;
   }
-  if(a==="analytics-refresh") { renderAnalytics(); return; }
+  if(a==="analytics-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderAnalytics(); return; }
   if(a==="set-analytics-avg") { S.analyticsAvgDays=parseInt(v); renderAnalytics(); return; }
   if(a==="analytics-print") { printAnalytics(); return; }
   if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
@@ -3393,21 +3393,20 @@ async function renderAnalytics(){
     +navHtml+"<div style='text-align:center;padding:40px;color:#475569;'>&#x23F3; Loading...</div>";
 
   try {
-    var signData = await gs("getSignRequestsServer", null);
-    if(signData && signData.signRequests){
-      S.signRequests = signData.signRequests;
-      lsSet("hub:signRequests", S.signRequests);
+    // Use cached data if available, only reload on explicit refresh
+    var adjustments = S._cachedAdjLog || [];
+    var orders = S._cachedOrderHistory || [];
+
+    if(adjustments.length === 0){
+      var adjData = await gs("getAdjustmentLogServer", null);
+      adjustments = adjData && adjData.log ? adjData.log : [];
+      S._cachedAdjLog = adjustments;
     }
-    var adjData = await gs("getAdjustmentLogServer", null);
-    var orderData = await gs("getOrderHistoryServer", null);
-
-    var adjustments = adjData && adjData.rows ? adjData.rows : [];
-    var orders = orderData && orderData.rows ? orderData.rows : [];
-
-    // Debug - remove after testing
-    console.log("Adj rows:", adjustments.length, "Order rows:", orders.length);
-    if(adjustments.length>0) console.log("First adj row:", JSON.stringify(adjustments[0]));
-    if(orders.length>0) console.log("First order row:", JSON.stringify(orders[0]));
+    if(orders.length === 0){
+      var orderData = await gs("getOrderHistoryServer", null);
+      orders = orderData && orderData.orders ? orderData.orders : [];
+      S._cachedOrderHistory = orders;
+    }
 
     var now = new Date();
     var nowTs = now.getTime();
