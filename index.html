@@ -557,10 +557,14 @@ async function gs(fn, data){
         return {orders: ohData};
       }
       case "updateOrderStatus": {
-        if(data.collection==="pendingOrders"){
-          await fbUpdate("pendingOrders", data.id, {status:data.status, updatedAt:new Date().toISOString()});
-        } else {
-          await fbUpdate("orderHistory", data.id, {status:data.status, updatedAt:new Date().toISOString()});
+        var col2 = data.collection||"pendingOrders";
+        var updateData2 = {status:data.status, updatedAt:new Date().toISOString(), approvedBy:data.approvedBy||""};
+        if(data.approvedQty!==undefined) updateData2.approvedQty = data.approvedQty;
+        if(data.items) updateData2.items = data.items;
+        await fbUpdate(col2, data.id, updateData2);
+        // Delete from pendingOrders after approval/denial
+        if(col2==="pendingOrders" && (data.status==="Approved"||data.status==="Denied")){
+          try { await fbDelete("pendingOrders", data.id); } catch(e){}
         }
         return {ok:true};
       }
@@ -2153,8 +2157,12 @@ async function refreshOrders(){
 }
 
 function getBaseId(orderId){
+  if(!orderId) return "unknown";
   var parts = orderId.split("-");
-  return parts[0]+"-"+parts[1];
+  // Handle ORD-timestamp (2 parts) and ORD-timestamp-sheet_XX (3 parts)
+  // Always return just ORD-timestamp
+  if(parts.length>=2) return parts[0]+"-"+parts[1];
+  return orderId;
 }
 
 function renderOrders(){
@@ -2172,16 +2180,24 @@ function renderOrders(){
   var groups = {};
   orders.forEach(function(o){
     var baseId = getBaseId(o.id);
-    if(!groups[baseId]) groups[baseId]={tech:o.tech||o.techName||"",techEmail:o.techEmail||"",date:o.date||"",status:o.status||"Pending",items:[]};
+    if(!groups[baseId]) groups[baseId]={
+      id: baseId,
+      tech:o.tech||o.techName||"",
+      techEmail:o.techEmail||"",
+      date:o.date||o.createdAt||"",
+      status:o.status||"Pending",
+      approvedBy:o.approvedBy||"",
+      items:[]
+    };
 
     if(Array.isArray(o.items) && o.items.length>0){
-      // Grouped format from Firebase migration — expand items
+      // Already grouped format from Firebase — use items directly
       o.items.forEach(function(item){
         groups[baseId].items.push({
-          id: o.id+"-"+item.productId,
+          id: baseId+"-"+(item.productId||item.name||Math.random()),
           product: item.name||"",
-          requestedQty: item.qty||0,
-          approvedQty: item.approvedQty||0,
+          requestedQty: Number(item.qty)||0,
+          approvedQty: Number(item.approvedQty)||0,
           unit: item.unit||"",
           notes: item.notes||"",
           productId: item.productId||"",
@@ -2190,9 +2206,20 @@ function renderOrders(){
           denyReason: o.denyReason||""
         });
       });
-    } else {
-      // Flat format (original pre-migration format)
-      groups[baseId].items.push(o);
+    } else if(!o.items || o.items.length===0){
+      // Single flat item format
+      groups[baseId].items.push({
+        id: o.id,
+        product: o.product||o.name||"",
+        requestedQty: Number(o.requestedQty||o.qty)||0,
+        approvedQty: Number(o.approvedQty)||0,
+        unit: o.unit||"",
+        notes: o.notes||"",
+        productId: o.productId||"",
+        status: o.status||"Pending",
+        approvedBy: o.approvedBy||"",
+        denyReason: o.denyReason||""
+      });
     }
     if(o.status==="Pending") groups[baseId].status="Pending";
   });
@@ -2286,42 +2313,103 @@ function renderOrders(){
 }
 
 async function confirmApprove(baseId){
-  // Disable submit button immediately
   var submitBtn = document.querySelector("[data-a='approve-order']");
   if(submitBtn){ submitBtn.disabled=true; submitBtn.textContent="Processing..."; submitBtn.style.opacity="0.6"; }
-  var groupOrders = S.orders.filter(function(o){ return getBaseId(o.id)===baseId && o.status==="Pending"; });
-  if(!groupOrders.length) return;
-  var tech = groupOrders[0].tech;
-  var techEmail = groupOrders[0].techEmail||"";
-  var reason = (document.getElementById("deny-rsn-"+baseId)||{}).value||"";
-  var approvedItems=[], deniedItems=[], low=[], sheetWrites=[];
 
-  for(var i=0; i<groupOrders.length; i++){
-    var order = groupOrders[i];
-    var decision = (S._itemDecisions&&S._itemDecisions[order.id])||"approve";
-    var qtyInp = document.getElementById("aqty-"+order.id);
-    var qty = qtyInp ? (parseInt(qtyInp.value)||order.requestedQty) : order.requestedQty;
-    var prod = S.products.find(function(p){ return p.id===order.productId; });
+  // Find the grouped order - it may be stored as a single doc with items array
+  // or as multiple flat docs
+  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || getBaseId(o.id)===baseId; });
+  var flatOrders = S.orders.filter(function(o){ return getBaseId(o.id)===baseId && o.status==="Pending"; });
 
-    if(decision==="approve"){
-      if(prod){ var nq=Math.max(0,prod.qty-qty); prod.qty=nq; if(prod.qty<=prod.lowAt) low.push(prod); }
-      order.status="Approved"; order.approvedQty=qty; order.approvedBy=S.managerName;
-      approvedItems.push(order.product+" x "+qty+" "+esc(order.unit));
-      // Queue sheet writes to run in parallel later
-      sheetWrites.push(gs("updateOrderStatusServer",{orderId:order.id,status:"Approved",approvedQty:qty,approvedBy:S.managerName}));
-      sheetWrites.push(gs("addOrderHistoryServer",Object.assign({},order,{approvedQty:qty,approvedBy:S.managerName})));
-      if(prod&&prod.row) sheetWrites.push(gs("updateQtyServer",{row:prod.row,qty:prod.qty}));
-    } else {
-      order.status="Denied"; order.approvedQty=0; order.approvedBy=S.managerName; order.denyReason=reason;
-      deniedItems.push(order.product+" x "+order.requestedQty+" "+esc(order.unit));
-      sheetWrites.push(gs("updateOrderStatusServer",{orderId:order.id,status:"Denied",approvedQty:0,approvedBy:S.managerName}));
+  var tech="", techEmail="", reason="";
+  var approvedItems=[], deniedItems=[], low=[], writes=[];
+
+  reason = (document.getElementById("deny-rsn-"+baseId)||{}).value||"";
+
+  if(groupedOrder && Array.isArray(groupedOrder.items) && groupedOrder.items.length>0){
+    // Grouped format — process items array
+    tech = groupedOrder.tech||groupedOrder.techName||"";
+    techEmail = groupedOrder.techEmail||"";
+
+    var updatedItems = groupedOrder.items.map(function(item){
+      var itemId = baseId+"-"+(item.productId||item.name);
+      var decision = (S._itemDecisions&&S._itemDecisions[itemId])||"approve";
+      var qtyInp = document.getElementById("aqty-"+itemId);
+      var qty = qtyInp ? (parseInt(qtyInp.value)||item.requestedQty||item.qty||0) : (item.requestedQty||item.qty||0);
+      var prod = S.products.find(function(p){ return p.name===item.product||p.name===item.name; });
+
+      if(decision==="approve"){
+        if(prod){ var nq=Math.max(0,prod.qty-qty); prod.qty=nq; if(prod.qty<=prod.lowAt) low.push(prod);
+          writes.push(gs("updateQtyServer",{id:prod.id,qty:prod.qty,productId:prod.id})); }
+        approvedItems.push((item.product||item.name)+" x "+qty+" "+(item.unit||""));
+        return Object.assign({},item,{status:"Approved",approvedQty:qty,approvedBy:S.managerName});
+      } else {
+        deniedItems.push((item.product||item.name)+" x "+(item.qty||0)+" "+(item.unit||""));
+        return Object.assign({},item,{status:"Denied",approvedQty:0,approvedBy:S.managerName,denyReason:reason});
+      }
+    });
+
+    // Determine overall order status
+    var allDenied = updatedItems.every(function(i){ return i.status==="Denied"; });
+    var anyApproved = updatedItems.some(function(i){ return i.status==="Approved"; });
+    var overallStatus = allDenied?"Denied":anyApproved?"Approved":"Denied";
+
+    // Update Firebase
+    writes.push(gs("updateOrderStatusServer",{
+      id: baseId,
+      collection: "pendingOrders",
+      status: overallStatus,
+      approvedBy: S.managerName,
+      items: JSON.stringify(updatedItems)
+    }));
+
+    // Move to orderHistory
+    writes.push(gs("addOrderHistoryServer",{
+      id: baseId,
+      date: groupedOrder.date||new Date().toISOString(),
+      tech: tech, techEmail: techEmail,
+      status: overallStatus,
+      approvedBy: S.managerName,
+      items: JSON.stringify(updatedItems)
+    }));
+
+    // Update local state
+    groupedOrder.status = overallStatus;
+    groupedOrder.items = updatedItems;
+    // Remove from pendingOrders in local state
+    S.orders = S.orders.filter(function(o){ return o.id!==baseId; });
+
+  } else {
+    // Flat format
+    tech = flatOrders.length ? (flatOrders[0].tech||"") : "";
+    techEmail = flatOrders.length ? (flatOrders[0].techEmail||"") : "";
+
+    for(var i=0; i<flatOrders.length; i++){
+      var order = flatOrders[i];
+      var decision2 = (S._itemDecisions&&S._itemDecisions[order.id])||"approve";
+      var qtyInp2 = document.getElementById("aqty-"+order.id);
+      var qty2 = qtyInp2 ? (parseInt(qtyInp2.value)||order.requestedQty||0) : (order.requestedQty||0);
+      var prod2 = S.products.find(function(p){ return p.id===order.productId; });
+
+      if(decision2==="approve"){
+        if(prod2){ var nq2=Math.max(0,prod2.qty-qty2); prod2.qty=nq2; if(prod2.qty<=prod2.lowAt) low.push(prod2);
+          writes.push(gs("updateQtyServer",{id:prod2.id,qty:prod2.qty})); }
+        order.status="Approved"; order.approvedQty=qty2; order.approvedBy=S.managerName;
+        approvedItems.push(order.product+" x "+qty2+" "+esc(order.unit));
+        writes.push(gs("updateOrderStatusServer",{id:order.id,collection:"pendingOrders",status:"Approved",approvedQty:qty2,approvedBy:S.managerName}));
+        writes.push(gs("addOrderHistoryServer",Object.assign({},order,{approvedQty:qty2,approvedBy:S.managerName})));
+      } else {
+        order.status="Denied"; order.approvedQty=0; order.approvedBy=S.managerName; order.denyReason=reason;
+        deniedItems.push(order.product+" x "+(order.requestedQty||0)+" "+esc(order.unit));
+        writes.push(gs("updateOrderStatusServer",{id:order.id,collection:"pendingOrders",status:"Denied",approvedQty:0,approvedBy:S.managerName}));
+      }
     }
+    S.orders = S.orders.filter(function(o){ return getBaseId(o.id)!==baseId||o.status!=="Pending"; });
   }
 
-  S.editOrderId=null; S._itemDecisions={}; save(); renderOrders();
+  S.editOrderId=null; S._itemDecisions={}; lsSet("hub:orders",S.orders); renderOrders();
 
-  // Run ALL sheet writes in parallel - much faster than sequential
-  try { await Promise.all(sheetWrites); } catch(e){ console.warn("Sheet writes:", e); }
+  try { await Promise.all(writes); } catch(e){ console.warn("Order writes:", e); }
 
   // One email summarizing both approved and denied
   var te=techEmail; // Only send to tech on approval/denial
