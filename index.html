@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.0.3"; // Increment this with every update
+const APP_VERSION = "1.0.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -314,6 +314,10 @@ function initFirebase(){
 async function checkForUpdates(silent){
   try {
     await initFirebase();
+    // Make sure we're authenticated before querying
+    if(!_auth.currentUser){
+      await _auth.signInAnonymously();
+    }
     var vdoc = await _db.collection("config").doc("appVersion").get();
     if(!vdoc.exists){ return; }
     var latestVersion = vdoc.data().version;
