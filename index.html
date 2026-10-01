@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.0.1"; // Increment this with every update
+const APP_VERSION = "1.0.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -987,9 +987,10 @@ async function checkEmail(){
   if(!S.managers||S.managers.length===0){
     try {
       await loadAccountsFromSheet();
-  checkForUpdates(true); // Silent background check
     } catch(e){ console.warn("Account load:", e); }
   }
+  // Check for updates in background
+  checkForUpdates(true);
 
   if(btn){ btn.disabled=false; btn.textContent="Continue"; }
 
