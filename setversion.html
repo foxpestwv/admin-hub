@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Set App Version</title></head>
+<body style="font-family:Arial;background:#0d1117;color:#e2e8f0;padding:40px;max-width:500px;margin:0 auto;">
+<h2 style="color:#f59e0b;">Set App Version in Firebase</h2>
+<p style="color:#94a3b8;font-size:13px;">Run this whenever you push an update to notify all users.</p>
+<div style="margin-bottom:12px;">
+  <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Version</label>
+  <input id="ver" value="1.0.1" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-size:14px;box-sizing:border-box;">
+</div>
+<div style="margin-bottom:16px;">
+  <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Update note (optional)</label>
+  <input id="note" placeholder="e.g. Bug fixes and improvements" style="width:100%;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;color:#e2e8f0;font-size:14px;box-sizing:border-box;">
+</div>
+<button onclick="setVersion()" style="background:#f59e0b;color:#000;border:none;padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px;">Set Version</button>
+<div id="result" style="margin-top:12px;font-size:13px;"></div>
+<script>
+const SERVICE_ACCOUNT = {
+  client_email: "firebase-migration@fox-pest-admin-hub.iam.gserviceaccount.com",
+  private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCmwOov1NeAxQYp\nn8JJkC+Ivzp0g27liHKWZNL/pFjxOihlLeVxM8xIn+S4EXh5fgerNGyaITJ1TOsY\nmUpy1CIug+XkHeSF/HFHfLs9bmgPoCx+eB8LIkgNMnqafbAxsDlN3RQcXGXgeIX4\nGiIyhXPbQvf8LI5qpoePL5MGh5+gZ0xOo6PIxZ3MCSBkcG8MOvOBLxWJ0Z//2eSU\nUlQRbeJoK4UCFj3MM0KLKZz2cGIp7oZNm5Na6eZgYPjEQ3C4bYjOvydU5Zr0hAkI\nwqbGeH5W72I21djivX418d1Ty52ZnRH+q8A8UQsJ3DZxN9+wk7u5GZ+lAgH4Uz4w\nM9Ef3QzfAgMBAAECggEAGW9uqUoZbwpehMXaIFducLjehTwxE7Dq7ZbGenkKmg0J\ncVl9WHWSsPc2r372te1r5QjzkdUDedH4QEHNkdNavWagD9oha/CUJNfZRacMF2oS\nr13KOmwJun2bJuqKECI1s3NH6IWNgp5PrQbrdXJWuDiwU9ZGCO2K2uPiVMomJpSr\n6KPSUSS9YF8VUnPyPh89k/x6/MxBPwqKZlwTQ8K5g8Qn6A9cT0O5h5nvYTljfLrd\nxcAi3Fjz5usH7Jz7be/O7wynrC3O/dFUo5Vm9hG4hXlvE/k3WS0ahYZJEHJOz6ba\noyYIGsey5Pgc9HpLn52lqgz+C7jo/yn5e/HaATL/9QKBgQDdRNmLeXq+tBX59rcV\nroZrg633pCAFHsBuIXBqmchG/PW3nsHK7un6W83D2x9FaPJhcuJJtSd6Pww7VgkA\nq437SRQRwiIceZEItgljzQ4w0h4U0gYsFmPE7b2xKXaDeEvLMi+8BqDYQutr3Y2W\n20s+PhHUq8YxR1T6LOmX2oEWYwKBgQDA7X+ZfrtLVvy/ntkS1lLnm7pT8BW1lPTo\nS8PyQWUDpcK8nxTgtfnCNA8V78zjSMe8M0tyr7AN6wqu0SUxp/fE+BzLkVE1rv2+\nzgeft8ZaFnuGFOQTvHliWWEqSjtOp7jOYqasq5jTYSHIgArT5F9qcrQZrV5ENiXT\n5hzb1dhKVQKBgQCKla/HaouVW8eT6pFbNBceybexLgucCVmu4KS/L5g/1fm0SuvH\nxYGoe81RiTF50LRWkpTmY17ZcxmfJFC5KbnglDHMuZGR0hYjpZgV+P2VWFTc53pU\nLKXKVrkDeBuxVivqlYFOO7yMFsXKplYjETB8SHX0hK26eZngozafFIzbTwKBgGQr\n7JDaSI05wUoNRFCPj8RKC1kB04PQr8jdbgQfCD/4lUAyqThzxBadySdut0dbxrll\nOMt3hUX0wDs8xL8fo3pWCT15Wl0xWvbzKuo3FXo5KjHYLwRAXBZAqj63BEw2sbIX\nbstA3b0DNfNQ6E5UyWYP4ItkhQmNw95eIKXURtVxAoGADcWZBxFqWrV60M5WULXG\nf1NLJpKMLopTPvr8QB5vI6Jfs3n/FfYhtwm1CTuzVC5Wc0kqwWRIR0Omv7m+iveP\n4FuhXQhpdEm/C8q0i7hPmon9vie89B53a1e2iH7Ij+xxRzK30RRg3JZXjM+Kgipx\n/Sc/aKfjmJ/B13JN4/kkQBc=\n-----END PRIVATE KEY-----\n",
+  token_uri: "https://oauth2.googleapis.com/token"
+};
+const PROJECT_ID = "fox-pest-admin-hub";
+const FIRESTORE_URL = "https://firestore.googleapis.com/v1/projects/"+PROJECT_ID+"/databases/(default)/documents";
+
+async function getToken(){
+  const header = btoa(JSON.stringify({alg:"RS256",typ:"JWT"})).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+  const now = Math.floor(Date.now()/1000);
+  const claim = btoa(JSON.stringify({
+    iss: SERVICE_ACCOUNT.client_email,
+    scope: "https://www.googleapis.com/auth/datastore",
+    aud: SERVICE_ACCOUNT.token_uri,
+    exp: now+3600, iat: now
+  })).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+  const sigInput = header+"."+claim;
+  const pem = SERVICE_ACCOUNT.private_key.replace("-----BEGIN PRIVATE KEY-----","").replace("-----END PRIVATE KEY-----","").replace(/\n/g,"");
+  const der = Uint8Array.from(atob(pem), c=>c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der.buffer, {name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"}, false, ["sign"]);
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+  const jwt = sigInput+"."+sigB64;
+  const resp = await fetch(SERVICE_ACCOUNT.token_uri, {
+    method:"POST",
+    headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:"grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion="+jwt
+  });
+  const data = await resp.json();
+  if(!data.access_token) throw new Error("Auth failed: "+JSON.stringify(data));
+  return data.access_token;
+}
+
+async function setVersion(){
+  var ver = document.getElementById("ver").value.trim();
+  var note = document.getElementById("note").value.trim();
+  if(!ver){ alert("Enter a version"); return; }
+  document.getElementById("result").innerHTML = "<span style='color:#94a3b8;'>Setting version...</span>";
+  try {
+    const token = await getToken();
+    const url = FIRESTORE_URL+"/config/appVersion";
+    const fields = {
+      version: {stringValue: ver},
+      note: {stringValue: note},
+      updatedAt: {stringValue: new Date().toISOString()}
+    };
+    const resp = await fetch(url, {
+      method:"PATCH",
+      headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+      body: JSON.stringify({fields})
+    });
+    if(!resp.ok) throw new Error("Write failed: "+(await resp.text()).substring(0,200));
+    document.getElementById("result").innerHTML = "<span style='color:#22c55e;'>✓ Version set to "+ver+"</span>";
+  } catch(e){
+    document.getElementById("result").innerHTML = "<span style='color:#ef4444;'>Error: "+e.message+"</span>";
+  }
+}
+</script>
+</body>
+</html>
