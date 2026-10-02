@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.0.4"; // Increment this with every update
+const APP_VERSION = "1.0.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -536,8 +536,10 @@ async function gs(fn, data){
         return {orders: parsedPend};
       }
       case "addPendingOrder": {
-        var poId = "po_"+Date.now();
-        await fbSet("pendingOrders", poId, Object.assign({}, data, {id:poId, date:new Date().toISOString(), status:"Pending"}));
+        var poId = data.id || "po_"+Date.now();
+        var orderDoc = Object.assign({}, data, {id:poId, date:data.date||new Date().toISOString(), status:"Pending"});
+        if(Array.isArray(orderDoc.items)) orderDoc.items = JSON.stringify(orderDoc.items);
+        await fbSet("pendingOrders", poId, orderDoc);
         return {ok:true, id:poId};
       }
       case "writeToOrderSheet": {
@@ -2145,17 +2147,21 @@ async function submitCheckout(){
       return prod?(prod.name+" x "+item.qty+" "+prod.unit+(item.notes?" ("+item.notes+")":"")):item.productId;
     });
 
-    // Add each product as separate order record in sheet/app (for individual approval)
-    // but send only ONE combined email
-    const orders=[];
-    for(const item of valid){
-      const prod=S.products.find(p=>p.id===item.productId); if(!prod) continue;
-      const order={id:orderId+"-"+prod.id,date,tech,techEmail,product:prod.name,productId:prod.id,
-        requestedQty:parseInt(item.qty),unit:prod.unit,notes:item.notes||"",status:"Pending"};
-      S.orders.unshift(order);
-      orders.push(order);
-      try { await gs("addPendingOrderServer",order); } catch(e){}
-    }
+    // Save ALL items as ONE grouped order document
+    const orderItems = valid.map(function(item){
+      const prod=S.products.find(p=>p.id===item.productId); if(!prod) return null;
+      return {name:prod.name, productId:prod.id, qty:parseInt(item.qty),
+        unit:prod.unit, notes:item.notes||"", approvedQty:0, status:"Pending"};
+    }).filter(Boolean);
+
+    const groupedOrder = {
+      id: orderId, date, tech, techEmail,
+      status: "Pending", items: orderItems,
+      approvedBy: "", createdAt: new Date().toISOString()
+    };
+    S.orders.unshift(groupedOrder);
+    const orders = [groupedOrder];
+    try { await gs("addPendingOrderServer", groupedOrder); } catch(e){ console.warn("Order save:", e); }
 
     // Send ONE combined email for all items
     if(orders.length>0){
