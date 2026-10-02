@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.0.5"; // Increment this with every update
+const APP_VERSION = "1.0.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -367,14 +367,17 @@ async function fbGet(collection, docId){
     var snap = await _db.collection(collection).doc(docId).get();
     return snap.exists ? snap.data() : null;
   } else {
-    try {
-      var snap2 = await _db.collection(collection).orderBy("date","desc").get();
-      return snap2.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
-    } catch(e){
-      // Fall back to unordered if date field missing or not indexable
-      var snap3 = await _db.collection(collection).get();
-      return snap3.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
-    }
+    // Always use unordered fetch to avoid date format issues
+    // Sort in memory after fetching
+    var snap3 = await _db.collection(collection).get();
+    var docs = snap3.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+    // Sort by date descending in memory
+    docs.sort(function(a,b){
+      var da = new Date(a.date||a.createdAt||0);
+      var db2 = new Date(b.date||b.createdAt||0);
+      return db2-da;
+    });
+    return docs;
   }
 }
 
