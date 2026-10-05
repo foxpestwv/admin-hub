@@ -7,6 +7,8 @@
 <meta name="theme-color" content="#0a1628">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <!-- Barcode Scanner -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js"></script>
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -140,6 +142,25 @@ input,textarea,select,button{font-family:inherit;}
     <div id="nav"></div>
     <button class="nb" id="logout-btn">Exit</button>
   </div></div>
+  <!-- Barcode Scanner Overlay -->
+  <div id="scanner-overlay">
+    <div style="background:#0a1628;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:700;font-size:15px;" id="scanner-title">Scan Barcode</div>
+        <div style="font-size:12px;color:#64748b;" id="scanner-hint">Point camera at barcode</div>
+      </div>
+      <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;">Cancel</button>
+    </div>
+    <div style="position:relative;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+      <video id="scanner-video" playsinline autoplay muted></video>
+      <div class="scanner-aim"><div class="scanner-bar"></div></div>
+    </div>
+    <div style="background:#0a1628;padding:14px 16px;">
+      <div id="scanner-result" style="font-size:13px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
+      <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:6px;font-size:13px;cursor:pointer;">&#x270F; Enter manually instead</button>
+    </div>
+  </div>
+
   <div id="wrap">
     <div id="pg-dashboard" class="pg"></div>
     <div id="pg-inspect" class="pg"></div>
@@ -264,7 +285,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.6"; // Increment this with every update
+const APP_VERSION = "1.1.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -476,6 +497,16 @@ async function gs(fn, data){
       }
       case "updateQty": {
         await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
+        return {ok:true};
+      }
+      case "updateProductUpc": {
+        await fbUpdate("products", data.id, {upc: data.upc, updatedAt: new Date().toISOString()});
+        return {ok:true};
+      }
+      case "updateProductField": {
+        var fieldUpdate = {updatedAt: new Date().toISOString()};
+        fieldUpdate[data.field] = data.value;
+        await fbUpdate("products", data.id, fieldUpdate);
         return {ok:true};
       }
       case "updateLowAt": {
@@ -1645,6 +1676,7 @@ function render(){
   const pending=S.orders.filter(o=>o.status==="Pending").length;
   const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
   document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}${t.id==="sign"&&pendingSign>0?'<span class="bdg">'+pendingSign+'</span>':""}</button>`).join("")
+    + '<button class="nb" data-a="quick-scan" title="Scan product" style="font-size:18px;opacity:.8;">&#x1F4F7;</button>'
     + '<button class="nb" data-a="check-update" title="Check for updates v'+APP_VERSION+'" style="font-size:18px;opacity:.6;">&#x2B06;</button>';
   // Show version in header
   var vbadge = document.getElementById("version-badge");
@@ -1967,7 +1999,13 @@ function renderInv(){
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-weight:600;font-size:14px;">${esc(p.name)}</span>${isLow?`<span class="tag-low">LOW</span>`:""}</div><div style="color:#475569;font-size:12px;margin-top:2px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
         <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
-        <div style="display:flex;gap:5px;"><button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button><button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button></div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+  <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
+  <button class="btn bg" style="padding:5px 9px;font-size:12px;" title="${p.upc?'UPC: '+p.upc:'Scan barcode'}" data-a="inv-scan-upc" data-v="${p.id}">${p.upc?'✓📷':'📷'}</button>
+  <button class="btn bg" style="padding:5px 9px;font-size:12px;${p.sdsUrl?'color:#22c55e;':''}" title="${p.sdsUrl?'View SDS':'Add SDS URL'}" data-a="inv-sds" data-v="${p.id}">SDS${p.sdsUrl?'✓':''}</button>
+  <button class="btn bg" style="padding:5px 9px;font-size:12px;${p.labelUrl?'color:#22c55e;':''}" title="${p.labelUrl?'View Label':'Add Label URL'}" data-a="inv-label" data-v="${p.id}">Label${p.labelUrl?'✓':''}</button>
+  <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
+</div>
       </div>${panel}</div>`;
   }).join("");
   const addPanel = S._showAddProd ?
@@ -2486,6 +2524,215 @@ async function sendLowEmail(low){
   try { await gs("sendEmailServer",{to:getMGMT().join(","),subject:"[Fox Pest Control] Low Stock Alert - "+low.length+" item"+(low.length>1?"s":"")+" need restocking",body:"Low Stock Alert - Willamette Valley\n\n"+list+"\n\nPlease restock soon.\n\nAutomated notification."}); } catch(e){}
 }
 
+// ─── Barcode Scanner ─────────────────────────────────────────────────────────
+var _scannerActive = false;
+var _scannerStream = null;
+var _scannerCallback = null;
+var _scannerMode = null; // "register" or "pull"
+var _scannerProductId = null;
+var _codeReader = null;
+
+async function startScanner(mode, productId, callback){
+  _scannerMode = mode;
+  _scannerProductId = productId;
+  _scannerCallback = callback;
+
+  var overlay = document.getElementById("scanner-overlay");
+  overlay.style.display = "flex";
+  document.getElementById("scanner-result").textContent = "Ready to scan...";
+  document.getElementById("scanner-result").style.color = "#94a3b8";
+
+  if(mode==="register"){
+    document.getElementById("scanner-title").textContent = "Register Barcode";
+    var prod = S.products.find(function(p){ return p.id===productId; });
+    document.getElementById("scanner-hint").textContent = prod ? "Scanning for: "+prod.name : "Point camera at barcode";
+  } else {
+    document.getElementById("scanner-title").textContent = "Scan to Pull";
+    document.getElementById("scanner-hint").textContent = "Scan each item as you pull it";
+  }
+
+  try {
+    // Use ZXing if available
+    if(typeof ZXing !== "undefined"){
+      _codeReader = new ZXing.BrowserMultiFormatReader();
+      var videoEl = document.getElementById("scanner-video");
+      _scannerActive = true;
+      await _codeReader.decodeFromVideoDevice(null, videoEl, function(result, err){
+        if(result && _scannerActive){
+          var code = result.getText();
+          onBarcodeScanned(code);
+        }
+      });
+    } else {
+      // Fallback - use getUserMedia and canvas
+      document.getElementById("scanner-result").textContent = "Scanner loading... please wait";
+      _scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      var video = document.getElementById("scanner-video");
+      video.srcObject = _scannerStream;
+      video.play();
+      _scannerActive = true;
+      document.getElementById("scanner-result").textContent = "Camera ready - scanner library loading";
+    }
+  } catch(e){
+    document.getElementById("scanner-result").textContent = "Camera error: "+e.message;
+    document.getElementById("scanner-result").style.color = "#ef4444";
+  }
+}
+
+function stopScanner(){
+  _scannerActive = false;
+  if(_codeReader){ try{ _codeReader.reset(); }catch(e){} _codeReader=null; }
+  if(_scannerStream){ _scannerStream.getTracks().forEach(function(t){ t.stop(); }); _scannerStream=null; }
+  var video = document.getElementById("scanner-video");
+  if(video) video.srcObject = null;
+  document.getElementById("scanner-overlay").style.display = "none";
+  _scannerCallback = null;
+  _scannerMode = null;
+  _scannerProductId = null;
+}
+
+async function onBarcodeScanned(code){
+  if(!code||!_scannerActive) return;
+
+  if(_scannerMode==="register"){
+    // Save UPC to product
+    _scannerActive = false;
+    document.getElementById("scanner-result").textContent = "✓ Scanned: "+code;
+    document.getElementById("scanner-result").style.color = "#22c55e";
+    var prod = S.products.find(function(p){ return p.id===_scannerProductId; });
+    if(prod){
+      prod.upc = code;
+      try {
+        await gs("updateProductUpcServer", {id:prod.id, upc:code});
+        lsSet("hub:products", S.products);
+        setTimeout(function(){
+          stopScanner();
+          renderInv();
+          showToast("Barcode saved for "+prod.name);
+        }, 800);
+      } catch(e){
+        document.getElementById("scanner-result").textContent = "Error saving: "+e.message;
+        document.getElementById("scanner-result").style.color = "#ef4444";
+        _scannerActive = true;
+      }
+    }
+
+  } else if(_scannerMode==="lookup"){
+    // Quick product lookup
+    _scannerActive = false;
+    var matchedProd = S.products.find(function(p){ return p.upc===code; });
+    if(matchedProd){
+      document.getElementById("scanner-result").textContent = "✓ Found: "+matchedProd.name;
+      document.getElementById("scanner-result").style.color = "#22c55e";
+      setTimeout(function(){ showProductLookup(matchedProd.id); }, 500);
+    } else {
+      document.getElementById("scanner-result").textContent = "⚠ No product registered for this barcode";
+      document.getElementById("scanner-result").style.color = "#f59e0b";
+      _scannerActive = true;
+    }
+  } else if(_scannerMode==="pull"){
+    // Match scanned UPC to order items
+    var matched = S.products.find(function(p){ return p.upc===code; });
+    if(matched){
+      document.getElementById("scanner-result").textContent = "✓ "+matched.name;
+      document.getElementById("scanner-result").style.color = "#22c55e";
+      if(_scannerCallback) _scannerCallback(matched.id, matched.name, code);
+    } else {
+      document.getElementById("scanner-result").textContent = "⚠ Product not found for barcode: "+code;
+      document.getElementById("scanner-result").style.color = "#f59e0b";
+    }
+  }
+}
+
+function scannerManualOverride(){
+  var code = prompt("Enter barcode or product name:");
+  if(!code) return;
+  if(_scannerMode==="register"){
+    onBarcodeScanned(code);
+  } else if(_scannerMode==="pull"){
+    // Try matching by name
+    var matched = S.products.find(function(p){
+      return p.upc===code || p.name.toLowerCase().indexOf(code.toLowerCase())>=0;
+    });
+    if(matched){
+      if(_scannerCallback) _scannerCallback(matched.id, matched.name, code);
+    } else {
+      alert("No product found matching: "+code);
+    }
+  }
+}
+
+async function saveProductUrl(prod, field, url){
+  prod[field] = url;
+  try {
+    var updateData = {};
+    updateData[field] = url;
+    await gs("updateProductFieldServer", {id:prod.id, field:field, value:url});
+    lsSet("hub:products", S.products);
+    renderInv();
+    showToast(field==="sdsUrl"?"SDS URL saved":"Label URL saved");
+  } catch(e){ alert("Error saving: "+e.message); }
+}
+
+function showProductLookup(productId){
+  stopScanner();
+  var prod = S.products.find(function(p){ return p.id===productId; });
+  if(!prod){ showToast("Product not found"); return; }
+
+  var overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;";
+
+  var lowPct = prod.qty<=prod.lowAt ? "color:#ef4444;" : prod.qty<=prod.lowAt*1.5 ? "color:#f59e0b;" : "color:#22c55e;";
+
+  // Build popup using DOM to avoid quote nesting issues
+  var box = document.createElement("div");
+  box.style.cssText = "background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;width:100%;max-width:400px;padding:20px;";
+
+  var stockColor = prod.qty<=prod.lowAt?"#ef4444":prod.qty<=prod.lowAt*1.5?"#f59e0b":"#22c55e";
+
+  box.innerHTML = "<div style='display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;'>"
+    +"<div><div style='font-size:17px;font-weight:700;'>"+esc(prod.name)+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>"+esc(prod.unit)+"</div></div>"
+    +"<button id='lookup-close' style='background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;padding:0;line-height:1;'>&#x2715;</button>"
+    +"</div>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;'>"
+    +"<div style='background:#0a1628;padding:12px;border-radius:10px;text-align:center;'>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:4px;'>IN STOCK</div>"
+    +"<div style='font-size:32px;font-weight:700;color:"+stockColor+";'>"+prod.qty+"</div>"
+    +"<div style='font-size:11px;color:#64748b;'>"+esc(prod.unit)+"</div></div>"
+    +"<div style='background:#0a1628;padding:12px;border-radius:10px;text-align:center;'>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:4px;'>LOW AT</div>"
+    +"<div style='font-size:32px;font-weight:700;color:#64748b;'>"+prod.lowAt+"</div>"
+    +"<div style='font-size:11px;color:#64748b;'>"+esc(prod.unit)+"</div></div>"
+    +"</div>"
+    +(prod.reorderNote?"<div style='background:#0a1628;padding:10px;border-radius:8px;font-size:12px;color:#94a3b8;margin-bottom:14px;'>"+esc(prod.reorderNote)+"</div>":"")
+    +(prod.upc?"<div style='font-size:11px;color:#475569;margin-bottom:8px;'>UPC: "+esc(prod.upc)+"</div>":"")
+    +(prod.sdsUrl||prod.labelUrl?"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
+      +(prod.sdsUrl?"<a href='"+esc(prod.sdsUrl)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F4C4; SDS Sheet</a>":"")
+      +(prod.labelUrl?"<a href='"+esc(prod.labelUrl)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F3F7; Label</a>":"")
+      +"</div>":"")
+    +"<div style='display:flex;gap:8px;'>"
+    +"<button id='lookup-adjust' style='flex:1;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;'>Adjust Stock</button>"
+    +"<button id='lookup-scan-more' style='flex:1;background:#f59e0b;color:#000;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;'>Scan Another</button>"
+    +"</div>";
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  document.getElementById("lookup-close").onclick = function(){ overlay.remove(); };
+  document.getElementById("lookup-scan-more").onclick = function(){
+    overlay.remove();
+    startScanner("lookup", null, function(pid){ showProductLookup(pid); });
+  };
+  document.getElementById("lookup-adjust").onclick = function(){
+    overlay.remove();
+    S.tab="inventory"; render();
+  };
+
+  document.body.appendChild(overlay);
+}
+
+// Also handle lookup mode in onBarcodeScanned
 // ─── Settings ─────────────────────────────────────────────────────────────────
 function renderSettings(){
   const pg = document.getElementById("pg-settings");
