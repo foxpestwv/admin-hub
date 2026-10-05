@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.0.6"; // Increment this with every update
+const APP_VERSION = "1.0.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -367,15 +367,14 @@ async function fbGet(collection, docId){
     var snap = await _db.collection(collection).doc(docId).get();
     return snap.exists ? snap.data() : null;
   } else {
-    // Always use unordered fetch to avoid date format issues
-    // Sort in memory after fetching
     var snap3 = await _db.collection(collection).get();
-    var docs = snap3.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
-    // Sort by date descending in memory
-    docs.sort(function(a,b){
-      var da = new Date(a.date||a.createdAt||0);
-      var db2 = new Date(b.date||b.createdAt||0);
-      return db2-da;
+    var seen = {};
+    var docs = [];
+    snap3.docs.forEach(function(d){
+      if(!seen[d.id]){
+        seen[d.id] = true;
+        docs.push(Object.assign({_id:d.id}, d.data()));
+      }
     });
     return docs;
   }
@@ -1647,7 +1646,7 @@ function render(){
   const pending=S.orders.filter(o=>o.status==="Pending").length;
   const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
   document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}${t.id==="sign"&&pendingSign>0?'<span class="bdg">'+pendingSign+'</span>':""}</button>`).join("")
-    + '<button class="nb" data-a="check-update" title="Check for updates" style="font-size:18px;opacity:.6;">&#x2B06;</button>';
+    + '<button class="nb" data-a="check-update" title="Check for updates v'+APP_VERSION+'" style="font-size:18px;opacity:.6;">&#x2B06;</button>';
   setPage(S.tab);
   if(S.tab==="dashboard") renderDash();
   else if(S.tab==="inspect") renderInspect();
