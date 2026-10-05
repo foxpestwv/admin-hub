@@ -285,7 +285,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.9"; // Increment this with every update
+const APP_VERSION = "1.2.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1339,6 +1339,32 @@ function handleAction(a,v,el,e){
   }
   if(a==="inv-view") { S.invView=v; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
+  if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
+  if(a==="inv-sds"){
+    var ps = S.products.find(function(p){ return p.id===v; });
+    if(!ps) return;
+    if(ps.sdsUrl){
+      var c = confirm("SDS sheet saved for "+ps.name+"\n\nOK to view, Cancel to edit URL.");
+      if(c){ window.open(ps.sdsUrl,"_blank"); }
+      else { var u=prompt("Edit SDS URL:",ps.sdsUrl); if(u!==null) saveProductUrl(ps,"sdsUrl",u); }
+    } else {
+      var u2=prompt("Paste SDS sheet URL for "+ps.name+":"); if(u2) saveProductUrl(ps,"sdsUrl",u2);
+    }
+    return;
+  }
+  if(a==="inv-label"){
+    var pl = S.products.find(function(p){ return p.id===v; });
+    if(!pl) return;
+    if(pl.labelUrl){
+      var c2 = confirm("Label saved for "+pl.name+"\n\nOK to view, Cancel to edit URL.");
+      if(c2){ window.open(pl.labelUrl,"_blank"); }
+      else { var u3=prompt("Edit label URL:",pl.labelUrl); if(u3!==null) saveProductUrl(pl,"labelUrl",u3); }
+    } else {
+      var u4=prompt("Paste label URL for "+pl.name+":"); if(u4) saveProductUrl(pl,"labelUrl",u4);
+    }
+    return;
+  }
+  if(a==="quick-scan"){ startScanner("lookup", null, function(pid){ showProductLookup(pid); }); return; }
   if(a==="close-panel") { S._adjId=null; render(); return; }
   if(a==="do-restock") { doRestock(v); return; }
   if(a==="do-adj") { doAdj(v); return; }
