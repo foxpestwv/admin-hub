@@ -264,7 +264,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.5"; // Increment this with every update
+const APP_VERSION = "1.1.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -288,6 +288,8 @@ function initFirebase(){
         if(!_fbApp){
           _fbApp = firebase.initializeApp(firebaseConfig);
           _db = firebase.firestore();
+          // Disable real-time listeners - use one-time fetches only
+          _db.settings({experimentalForceLongPolling: true, merge: true});
           _auth = firebase.auth();
         }
         // Sign in anonymously so Firestore rules pass
@@ -919,13 +921,17 @@ async function syncFromSheet(){
     if(ti&&ti.trucks){
       S.sheetTruckData=ti.trucks;
     }
-    // Load orders
+    // Load pending orders + order history combined
     try {
       var ordResult = await gs("getPendingServer", null);
-      if(ordResult && ordResult.orders && ordResult.orders.length){
-        S.orders = ordResult.orders;
-        lsSet("hub:orders", S.orders);
-      }
+      var histResult = await gs("getOrderHistoryServer", null);
+      var pending = (ordResult && ordResult.orders) ? ordResult.orders : [];
+      var history = (histResult && histResult.orders) ? histResult.orders : [];
+      // Merge — pending first, then history
+      S.orders = pending.concat(history.filter(function(h){
+        return !pending.some(function(p){ return p.id===h.id; });
+      }));
+      lsSet("hub:orders", S.orders);
     } catch(e){ console.warn("Orders sync:", e.message); }
 
     badge("done");
@@ -2183,12 +2189,14 @@ async function submitCheckout(){
 // ─── Orders ───────────────────────────────────────────────────────────────────
 async function refreshOrders(){
   try {
-    const result = await gs("getPendingServer", null);
-    if(result && result.orders){
-      // Merge sheet orders with local - sheet is source of truth
-      S.orders = result.orders;
-      lsSet("hub:orders", S.orders);
-    }
+    var pendResult = await gs("getPendingServer", null);
+    var histResult = await gs("getOrderHistoryServer", null);
+    var pending = (pendResult && pendResult.orders) ? pendResult.orders : [];
+    var history = (histResult && histResult.orders) ? histResult.orders : [];
+    S.orders = pending.concat(history.filter(function(h){
+      return !pending.some(function(p){ return p.id===h.id; });
+    }));
+    lsSet("hub:orders", S.orders);
   } catch(e){ console.warn("Refresh orders:", e.message); }
   renderOrders();
 }
