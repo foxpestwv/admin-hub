@@ -264,7 +264,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.3"; // Increment this with every update
+const APP_VERSION = "1.1.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -313,15 +313,13 @@ function initFirebase(){
 
 // ─── Auto Update Check ───────────────────────────────────────────────────────
 async function checkForUpdates(silent){
-  // If we just updated, don't check again this session
-  var urlParams = new URLSearchParams(window.location.search);
-  if(urlParams.get("updated")==="1") return;
   try {
+    // Check localStorage FIRST before any network call
+    var dismissedVersion = "";
+    try { dismissedVersion = localStorage.getItem("hub:dismissedVersion")||""; } catch(e){}
+
     await initFirebase();
-    // Make sure we're authenticated before querying
-    if(!_auth.currentUser){
-      await _auth.signInAnonymously();
-    }
+    if(!_auth.currentUser){ await _auth.signInAnonymously(); }
     var vdoc = await _db.collection("config").doc("appVersion").get();
     if(!vdoc.exists){ return; }
     var latestVersion = vdoc.data().version;
@@ -329,11 +327,9 @@ async function checkForUpdates(silent){
     if(!latestVersion) return;
     window._latestVersion = latestVersion;
 
-    // Check if user already dismissed/updated to this version
-    var dismissedVersion = "";
-    try { dismissedVersion = localStorage.getItem("hub:dismissedVersion")||""; } catch(e){}
-    // Also don't show if app already IS the latest version
-    if(dismissedVersion === latestVersion || APP_VERSION === latestVersion) return;
+    // Don't show banner if: versions match, already dismissed, or app IS latest
+    if(APP_VERSION === latestVersion) return;
+    if(dismissedVersion === latestVersion) return;
 
     if(latestVersion !== APP_VERSION){
       var existing = document.getElementById("update-banner");
@@ -351,8 +347,7 @@ async function checkForUpdates(silent){
       banner.appendChild(btn);
       document.body.prepend(banner);
     } else {
-      // App is current - clear any dismissed version flag
-      localStorage.removeItem("hub:dismissedVersion");
+      try { localStorage.removeItem("hub:dismissedVersion"); } catch(e){}
       if(!silent) showToast("App is up to date ✓");
     }
   } catch(e){ console.warn("Update check failed:", e.message); }
@@ -367,9 +362,10 @@ function showToast(msg){
 }
 
 function updateApp(){
-  // Add updated=1 param so after reload we know not to show banner again
+  // Store dismissed version synchronously BEFORE redirect
+  try { localStorage.setItem("hub:dismissedVersion", window._latestVersion||APP_VERSION); } catch(e){}
   var base = window.location.pathname;
-  window.location.href = base + "?updated=1&v=" + Date.now();
+  window.location.href = base + "?v=" + Date.now();
 }
 
 
