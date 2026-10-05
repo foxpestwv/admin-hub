@@ -285,7 +285,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.8"; // Increment this with every update
+const APP_VERSION = "1.1.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -309,8 +309,6 @@ function initFirebase(){
         if(!_fbApp){
           _fbApp = firebase.initializeApp(firebaseConfig);
           _db = firebase.firestore();
-          // Disable real-time listeners - use one-time fetches only
-          _db.settings({experimentalForceLongPolling: true, merge: true});
           _auth = firebase.auth();
         }
         // Sign in anonymously so Firestore rules pass
