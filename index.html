@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.0"; // Increment this with every update
+const APP_VERSION = "1.1.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -325,10 +325,11 @@ async function checkForUpdates(silent){
     if(!latestVersion) return;
     window._latestVersion = latestVersion;
 
-    // Check if user already dismissed this version
+    // Check if user already dismissed/updated to this version
     var dismissedVersion = "";
     try { dismissedVersion = localStorage.getItem("hub:dismissedVersion")||""; } catch(e){}
-    if(dismissedVersion === latestVersion) return;
+    // Also don't show if app already IS the latest version
+    if(dismissedVersion === latestVersion || APP_VERSION === latestVersion) return;
 
     if(latestVersion !== APP_VERSION){
       var existing = document.getElementById("update-banner");
@@ -362,9 +363,9 @@ function showToast(msg){
 }
 
 function updateApp(){
-  // Store the latest version synchronously before reload
-  try { localStorage.setItem("hub:dismissedVersion", _latestVersion||APP_VERSION); } catch(e){}
-  window.location.href = window.location.pathname + "?v=" + Date.now();
+  try { localStorage.setItem("hub:dismissedVersion", window._latestVersion||APP_VERSION); } catch(e){}
+  // Force reload without changing URL so localStorage persists on iPhone
+  window.location.reload(true);
 }
 
 
