@@ -135,6 +135,7 @@ input,textarea,select,button{font-family:inherit;}
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="logo-app" style="height:30px;width:80px;"></div>
       <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
+      <span id="version-badge" style="font-size:10px;color:#475569;"></span>
     </div>
     <div id="nav"></div>
     <button class="nb" id="logout-btn">Exit</button>
@@ -263,7 +264,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.2"; // Increment this with every update
+const APP_VERSION = "1.1.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1661,6 +1662,9 @@ function render(){
   const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
   document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}${t.id==="sign"&&pendingSign>0?'<span class="bdg">'+pendingSign+'</span>':""}</button>`).join("")
     + '<button class="nb" data-a="check-update" title="Check for updates v'+APP_VERSION+'" style="font-size:18px;opacity:.6;">&#x2B06;</button>';
+  // Show version in header
+  var vbadge = document.getElementById("version-badge");
+  if(vbadge) vbadge.textContent = "v"+APP_VERSION;
   setPage(S.tab);
   if(S.tab==="dashboard") renderDash();
   else if(S.tab==="inspect") renderInspect();
