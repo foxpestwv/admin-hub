@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <!-- Barcode Scanner -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -285,7 +285,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.0"; // Increment this with every update
+const APP_VERSION = "1.2.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2563,39 +2563,66 @@ async function startScanner(mode, productId, callback){
 
   var overlay = document.getElementById("scanner-overlay");
   overlay.style.display = "flex";
-  document.getElementById("scanner-result").textContent = "Ready to scan...";
+  document.getElementById("scanner-result").textContent = "Starting camera...";
   document.getElementById("scanner-result").style.color = "#94a3b8";
 
   if(mode==="register"){
     document.getElementById("scanner-title").textContent = "Register Barcode";
     var prod = S.products.find(function(p){ return p.id===productId; });
     document.getElementById("scanner-hint").textContent = prod ? "Scanning for: "+prod.name : "Point camera at barcode";
+  } else if(mode==="lookup"){
+    document.getElementById("scanner-title").textContent = "Product Lookup";
+    document.getElementById("scanner-hint").textContent = "Scan any product barcode";
   } else {
     document.getElementById("scanner-title").textContent = "Scan to Pull";
     document.getElementById("scanner-hint").textContent = "Scan each item as you pull it";
   }
 
   try {
-    // Use ZXing if available
-    if(typeof ZXing !== "undefined"){
-      _codeReader = new ZXing.BrowserMultiFormatReader();
-      var videoEl = document.getElementById("scanner-video");
-      _scannerActive = true;
-      await _codeReader.decodeFromVideoDevice(null, videoEl, function(result, err){
-        if(result && _scannerActive){
-          var code = result.getText();
-          onBarcodeScanned(code);
+    // Get camera stream
+    _scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: "environment"}, width: {ideal: 1280}, height: {ideal: 720}}
+    });
+    var video = document.getElementById("scanner-video");
+    video.srcObject = _scannerStream;
+    video.setAttribute("playsinline", true);
+    await video.play();
+    _scannerActive = true;
+    document.getElementById("scanner-result").textContent = "Point at barcode...";
+
+    // Try native BarcodeDetector first (Chrome, Edge, Android Chrome)
+    if(typeof BarcodeDetector !== "undefined"){
+      var detector = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
+      var detect = async function(){
+        if(!_scannerActive) return;
+        try {
+          var codes = await detector.detect(video);
+          if(codes.length > 0){
+            onBarcodeScanned(codes[0].rawValue);
+            return;
+          }
+        } catch(e){}
+        if(_scannerActive) requestAnimationFrame(detect);
+      };
+      requestAnimationFrame(detect);
+    }
+    // Try Quagga as fallback
+    else if(typeof Quagga !== "undefined"){
+      Quagga.init({
+        inputStream:{type:"LiveStream", target: video, constraints:{facingMode:"environment"}},
+        decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader","code_39_reader"]}
+      }, function(err){
+        if(err){ document.getElementById("scanner-result").textContent = "Scanner error: "+err; return; }
+        Quagga.start();
+        _scannerActive = true;
+      });
+      Quagga.onDetected(function(result){
+        if(result&&result.codeResult&&_scannerActive){
+          onBarcodeScanned(result.codeResult.code);
         }
       });
     } else {
-      // Fallback - use getUserMedia and canvas
-      document.getElementById("scanner-result").textContent = "Scanner loading... please wait";
-      _scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-      var video = document.getElementById("scanner-video");
-      video.srcObject = _scannerStream;
-      video.play();
-      _scannerActive = true;
-      document.getElementById("scanner-result").textContent = "Camera ready - scanner library loading";
+      document.getElementById("scanner-result").textContent = "Scanner not supported on this browser. Use manual entry.";
     }
   } catch(e){
     document.getElementById("scanner-result").textContent = "Camera error: "+e.message;
@@ -2606,9 +2633,10 @@ async function startScanner(mode, productId, callback){
 function stopScanner(){
   _scannerActive = false;
   if(_codeReader){ try{ _codeReader.reset(); }catch(e){} _codeReader=null; }
+  if(typeof Quagga !== "undefined"){ try{ Quagga.stop(); }catch(e){} }
   if(_scannerStream){ _scannerStream.getTracks().forEach(function(t){ t.stop(); }); _scannerStream=null; }
   var video = document.getElementById("scanner-video");
-  if(video) video.srcObject = null;
+  if(video){ video.srcObject = null; }
   document.getElementById("scanner-overlay").style.display = "none";
   _scannerCallback = null;
   _scannerMode = null;
