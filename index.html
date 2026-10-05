@@ -285,7 +285,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.2"; // Increment this with every update
+const APP_VERSION = "1.2.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2579,10 +2579,12 @@ async function startScanner(mode, productId, callback){
   }
 
   try {
+    document.getElementById("scanner-result").textContent = "Requesting camera...";
     // Get camera stream
-    _scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: {facingMode: {ideal: "environment"}, width: {ideal: 1280}, height: {ideal: 720}}
-    });
+    var constraints = {video: {facingMode: {ideal: "environment"}}};
+    _scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+    document.getElementById("scanner-result").textContent = "Camera granted, loading...";
+    
     var video = document.getElementById("scanner-video");
     video.srcObject = _scannerStream;
     video.setAttribute("playsinline", "");
@@ -2590,11 +2592,14 @@ async function startScanner(mode, productId, callback){
     video.setAttribute("muted", "");
     video.muted = true;
     video.playsInline = true;
-    // iOS PWA needs the stream set before play
+    
+    document.getElementById("scanner-result").textContent = "Starting video...";
     try { await video.play(); } catch(e){
-      // Try again after a short delay for iOS
-      await new Promise(function(r){ setTimeout(r, 300); });
-      try { await video.play(); } catch(e2){ console.warn("Video play:", e2); }
+      document.getElementById("scanner-result").textContent = "Play error: "+e.message;
+      await new Promise(function(r){ setTimeout(r, 500); });
+      try { await video.play(); } catch(e2){
+        document.getElementById("scanner-result").textContent = "Video error: "+e2.message;
+      }
     }
     _scannerActive = true;
     document.getElementById("scanner-result").textContent = "Point at barcode...";
