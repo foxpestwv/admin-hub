@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Cleanup Products</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+<body style="font-family:Arial;background:#0d1117;color:#e2e8f0;padding:40px;max-width:600px;margin:0 auto;">
+<h2 style="color:#f59e0b;">Fix Duplicate Products</h2>
+<p style="color:#94a3b8;font-size:13px;">Deletes all duplicate products, keeping only one copy of each unique product name.</p>
+<button onclick="fixProducts()" style="background:#f59e0b;color:#000;border:none;padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px;">Fix Duplicates</button>
+<div id="log" style="margin-top:16px;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;min-height:100px;max-height:400px;overflow-y:auto;"></div>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAq_cRLmI0GZDxPqBPGiX2cTRGhesvvb0w",
+  authDomain: "fox-pest-admin-hub.firebaseapp.com",
+  projectId: "fox-pest-admin-hub",
+  storageBucket: "fox-pest-admin-hub.firebasestorage.app",
+  messagingSenderId: "834588931897",
+  appId: "1:834588931897:web:816b2f1456f8607d121ae8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+function log(msg, color){
+  var el = document.getElementById("log");
+  var line = document.createElement("div");
+  line.style.color = color||"#e2e8f0";
+  line.textContent = new Date().toLocaleTimeString()+" "+msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function fixProducts(){
+  log("Signing in...");
+  await auth.signInAnonymously();
+  log("Loading all products...");
+  
+  var snap = await db.collection("products").get();
+  var all = snap.docs.map(d => ({docId: d.id, ...d.data()}));
+  log("Found "+all.length+" total product documents");
+
+  // Group by name, keep the one with highest qty (most recent data)
+  var byName = {};
+  all.forEach(function(p){
+    var name = (p.name||"").trim();
+    if(!name) return;
+    if(!byName[name]){
+      byName[name] = p;
+    } else {
+      // Keep the one with better data (non-zero qty preferred)
+      if(Number(p.qty) > Number(byName[name].qty)){
+        byName[name] = p;
+      }
+    }
+  });
+
+  var keepers = Object.values(byName);
+  var keepIds = new Set(keepers.map(p => p.docId));
+  log("Keeping "+keepers.length+" unique products, deleting "+(all.length-keepers.length)+" duplicates");
+
+  // Delete duplicates
+  var deleted = 0;
+  for(var p of all){
+    if(!keepIds.has(p.docId)){
+      await db.collection("products").doc(p.docId).delete();
+      log("Deleted duplicate: "+p.name+" ("+p.docId+")", "#ef4444");
+      deleted++;
+    }
+  }
+
+  log("Done! Kept "+keepers.length+" products, deleted "+deleted+" duplicates", "#22c55e");
+  log("Refresh the app to see the correct inventory.", "#22c55e");
+}
+</script>
+</body>
+</html>
