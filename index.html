@@ -263,7 +263,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.1"; // Increment this with every update
+const APP_VERSION = "1.1.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -312,6 +312,9 @@ function initFirebase(){
 
 // ─── Auto Update Check ───────────────────────────────────────────────────────
 async function checkForUpdates(silent){
+  // If we just updated, don't check again this session
+  var urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get("updated")==="1") return;
   try {
     await initFirebase();
     // Make sure we're authenticated before querying
@@ -363,9 +366,9 @@ function showToast(msg){
 }
 
 function updateApp(){
-  try { localStorage.setItem("hub:dismissedVersion", window._latestVersion||APP_VERSION); } catch(e){}
-  // Force reload without changing URL so localStorage persists on iPhone
-  window.location.reload(true);
+  // Add updated=1 param so after reload we know not to show banner again
+  var base = window.location.pathname;
+  window.location.href = base + "?updated=1&v=" + Date.now();
 }
 
 
