@@ -264,7 +264,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.1.4"; // Increment this with every update
+const APP_VERSION = "1.1.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1542,16 +1542,7 @@ function handleAction(a,v,el,e){
     }
     return;
   }
-  if(a==="set-app-version") {
-    var newVer = (document.getElementById("new-app-version")||{}).value||"";
-    var newNote = (document.getElementById("new-app-note")||{}).value||"";
-    if(!newVer){ alert("Please enter a version number."); return; }
-    gs("saveAppVersionServer", {version:newVer, note:newNote}).then(function(res){
-      if(res&&res.ok) alert("Version set to "+newVer+" — all users will be notified on next app open.");
-      else alert("Error: "+(res?res.error:"failed"));
-    });
-    return;
-  }
+
   if(a==="add-tech") { const inp=document.getElementById("new-tech-inp"); if(inp&&inp.value.trim()){S.techs.push(inp.value.trim());save();render();} return; }
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
@@ -1566,16 +1557,7 @@ function handleAction(a,v,el,e){
     }
     return;
   }
-  if(a==="set-app-version") {
-    var newVer = (document.getElementById("new-app-version")||{}).value||"";
-    var newNote = (document.getElementById("new-app-note")||{}).value||"";
-    if(!newVer){ alert("Please enter a version number."); return; }
-    gs("saveAppVersionServer", {version:newVer, note:newNote}).then(function(res){
-      if(res&&res.ok) alert("Version set to "+newVer+" — all users will be notified on next app open.");
-      else alert("Error: "+(res?res.error:"failed"));
-    });
-    return;
-  }
+
   if(a==="add-tech") {
     var name2=(document.getElementById("new-tech-name")||{}).value||"";
     var email2=(document.getElementById("new-tech-email")||{}).value||"";
@@ -2553,14 +2535,8 @@ function renderSettings(){
       +"<input type='text' class='inp' id='new-tech-truck' placeholder='Truck # (optional)' style='margin-bottom:10px;'>"
       +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
       +"</div>"
-      +"<div class='card' style='margin-top:14px;padding:14px;border:1px solid #1e3a5f;'>"
-      +"<div style='font-size:13px;font-weight:600;margin-bottom:4px;'>&#x1F504; App Version Control</div>"
-      +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Current app version: <strong>"+APP_VERSION+"</strong>. After uploading a new version to GitHub, set the version here to notify all users.</div>"
-      +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;'>"
-      +"<input type='text' class='inp' id='new-app-version' placeholder='e.g. 1.0.4'>"
-      +"<input type='text' class='inp' id='new-app-note' placeholder='Update note (optional)'>"
-      +"</div>"
-      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='set-app-version'>Notify Users of Update</button>"
+      +"<div class='card' style='margin-top:14px;padding:12px 14px;background:#0a1628;'>"
+      +"<div style='font-size:12px;color:#475569;'>App version: <strong style='color:#64748b;'>v"+APP_VERSION+"</strong></div>"
       +"</div>";
 
   } else if(tab==="techs"){
