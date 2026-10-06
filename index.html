@@ -143,23 +143,27 @@ input,textarea,select,button{font-family:inherit;}
     <div id="nav"></div>
     <button class="nb" id="logout-btn">Exit</button>
   </div></div>
-  <!-- Barcode Scanner Overlay -->
+  <!-- Barcode Scanner - floating popup -->
   <div id="scanner-overlay">
-    <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline></video>
     <div id="scanner-ui">
-      <div style="background:rgba(10,22,40,0.85);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <div id="scanner-top">
         <div>
-          <div style="font-weight:700;font-size:15px;color:#fff;" id="scanner-title">Scan Barcode</div>
-          <div style="font-size:12px;color:#94a3b8;" id="scanner-hint">Point camera at barcode</div>
+          <div style="font-weight:700;font-size:15px;color:#e2e8f0;" id="scanner-title">Scan Barcode</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px;" id="scanner-hint">Point camera at barcode</div>
         </div>
-        <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px;">Cancel</button>
+        <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕ Cancel</button>
       </div>
-      <div style="flex:1;position:relative;">
-        <div class="scanner-aim"><div class="scanner-bar"></div></div>
+      <div id="scanner-middle">
+        <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline></video>
+        <div class="scanner-reticle">
+          <div class="scanner-corner-tr"></div>
+          <div class="scanner-corner-bl"></div>
+          <div class="scanner-line"></div>
+        </div>
       </div>
-      <div style="background:rgba(10,22,40,0.85);padding:14px 16px;">
-        <div id="scanner-result" style="font-size:13px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
-        <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:6px;font-size:13px;cursor:pointer;">&#x270F; Enter manually instead</button>
+      <div id="scanner-bottom">
+        <div id="scanner-result" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
+        <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">✏ Enter manually instead</button>
       </div>
     </div>
   </div>
@@ -288,7 +292,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.3.0"; // Increment this with every update
+const APP_VERSION = "1.3.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
