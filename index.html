@@ -288,7 +288,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.9"; // Increment this with every update
+const APP_VERSION = "1.3.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2031,7 +2031,7 @@ function renderInv(){
         <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
         <div style="display:flex;gap:5px;flex-wrap:wrap;">
   <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
-  <button class="btn bg" style="padding:5px 9px;font-size:12px;" title="${p.upc?'UPC: '+p.upc:'Scan barcode'}" data-a="inv-scan-upc" data-v="${p.id}">${p.upc?'✓📷':'📷'}</button>
+  <button class="btn bg" style="padding:5px 9px;font-size:12px;${p.upc?'color:#22c55e;':''}" title="${p.upc?'UPC: '+p.upc:'Scan barcode'}" data-a="inv-scan-upc" data-v="${p.id}">${p.upc?'✓📷':'📷'}</button>
   <button class="btn bg" style="padding:5px 9px;font-size:12px;${p.sdsUrl?'color:#22c55e;':''}" title="${p.sdsUrl?'View SDS':'Add SDS URL'}" data-a="inv-sds" data-v="${p.id}">SDS${p.sdsUrl?'✓':''}</button>
   <button class="btn bg" style="padding:5px 9px;font-size:12px;${p.labelUrl?'color:#22c55e;':''}" title="${p.labelUrl?'View Label':'Add Label URL'}" data-a="inv-label" data-v="${p.id}">Label${p.labelUrl?'✓':''}</button>
   <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
@@ -2672,13 +2672,19 @@ async function onBarcodeScanned(code){
   } else if(_scannerMode==="lookup"){
     // Quick product lookup
     _scannerActive = false;
-    var matchedProd = S.products.find(function(p){ return p.upc===code; });
+    document.getElementById("scanner-result").textContent = "Scanned: "+code+" — searching...";
+    // Reload products fresh from Firebase to get latest UPCs
+    try {
+      var fp2 = await gs("getProductsServer", null);
+      if(fp2&&fp2.products) { S.products=fp2.products; lsSet("hub:products",S.products); }
+    } catch(e){}
+    var matchedProd = S.products.find(function(p){ return p.upc && p.upc.trim()===code.trim(); });
     if(matchedProd){
       document.getElementById("scanner-result").textContent = "✓ Found: "+matchedProd.name;
       document.getElementById("scanner-result").style.color = "#22c55e";
       setTimeout(function(){ showProductLookup(matchedProd.id); }, 500);
     } else {
-      document.getElementById("scanner-result").textContent = "⚠ No product registered for this barcode";
+      document.getElementById("scanner-result").textContent = "⚠ No product for barcode: "+code+" ("+S.products.filter(function(p){return p.upc;}).length+" registered)";
       document.getElementById("scanner-result").style.color = "#f59e0b";
       _scannerActive = true;
     }
