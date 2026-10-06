@@ -9,6 +9,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <!-- Barcode Scanner -->
   <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -34,8 +35,8 @@ input,textarea,select,button{font-family:inherit;}
 .inp{background:#0a1628;color:#e2e8f0;border:1px solid #1e3a5f;border-radius:8px;padding:9px 12px;font-size:14px;width:100%;outline:none;}
 .inp:focus{border-color:#3b82f6;}
 #hdr{background:#0a1628;border-bottom:1px solid #1e3a5f;padding:0 16px;position:sticky;top:0;z-index:50;}
-#hdr-in{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:52px;}
-#nav{display:flex;gap:2px;}
+#hdr-in{max-width:760px;margin:0 auto;display:flex;align-items:center;height:52px;gap:8px;overflow:hidden;}
+#nav{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;} #nav::-webkit-scrollbar{display:none;}
 .nb{display:flex;align-items:center;gap:4px;padding:6px 9px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:#64748b;}
 .nb.on{background:#1e3a5f;color:#93c5fd;}
 .bdg{background:#ef4444;color:#fff;border-radius:50%;width:15px;height:15px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;}
@@ -287,7 +288,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.8"; // Increment this with every update
+const APP_VERSION = "1.2.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2575,67 +2576,8 @@ async function startScanner(mode, productId, callback){
     ? (S.products.find(function(p){return p.id===productId;})||{name:"product"}).name
     : "Scan any product barcode";
 
-  // iOS: use native camera input instead of video stream
-  if(isIOS()){
-    var input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.setAttribute("capture", "environment");
-    input.style.display = "none";
-    document.body.appendChild(input);
-
-    input.onchange = async function(e){
-      var file = e.target.files[0];
-      if(!file){ input.remove(); return; }
-      document.getElementById("scanner-overlay").style.display = "flex";
-      document.getElementById("scanner-title").textContent = title;
-      document.getElementById("scanner-hint").textContent = "Processing image...";
-      document.getElementById("scanner-result").textContent = "Decoding barcode...";
-
-      try {
-        var img = new Image();
-        img.src = URL.createObjectURL(file);
-        await new Promise(function(r){ img.onload=r; });
-
-        if(typeof BarcodeDetector !== "undefined"){
-          var det = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39"]});
-          var codes = await det.detect(img);
-          if(codes.length>0){
-            onBarcodeScanned(codes[0].rawValue);
-          } else {
-            document.getElementById("scanner-result").textContent = "No barcode found — try again or enter manually";
-          }
-        } else if(typeof Quagga !== "undefined"){
-          Quagga.decodeSingle({
-            decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader"]},
-            locate: true,
-            src: img.src
-          }, function(result){
-            if(result&&result.codeResult){
-              onBarcodeScanned(result.codeResult.code);
-            } else {
-              document.getElementById("scanner-result").textContent = "No barcode found — try again or enter manually";
-            }
-          });
-        } else {
-          document.getElementById("scanner-result").textContent = "Barcode detection not supported — use manual entry";
-        }
-      } catch(e){
-        document.getElementById("scanner-result").textContent = "Error: "+e.message;
-      }
-      input.remove();
-    };
-
-    // Show overlay with instructions first
-    document.getElementById("scanner-overlay").style.display = "flex";
-    document.getElementById("scanner-title").textContent = title;
-    document.getElementById("scanner-hint").textContent = hint;
-    document.getElementById("scanner-result").textContent = "Opening camera...";
-    document.getElementById("scanner-video").style.display = "none";
-
-    setTimeout(function(){ input.click(); }, 100);
-    return;
-  }
+  // Show overlay
+  document.getElementById("scanner-video").style.display = "";
 
   // Desktop/Android: use video stream
   document.getElementById("scanner-video").style.display = "";
@@ -6206,6 +6148,14 @@ function globalHandler(e){
 }
 document.body.onclick = globalHandler;
 document.body.addEventListener("touchend", globalHandler, {passive:false});
+
+// Prevent accidental clicks during scroll
+var _touchStartY = 0;
+var _touchStartX = 0;
+document.body.addEventListener("touchstart", function(e){
+  _touchStartY = e.touches[0].clientY;
+  _touchStartX = e.touches[0].clientX;
+}, {passive:true});
 </script>
 </body>
 </html>
