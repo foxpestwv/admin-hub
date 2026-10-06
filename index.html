@@ -287,7 +287,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.5"; // Increment this with every update
+const APP_VERSION = "1.2.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -490,7 +490,10 @@ async function gs(fn, data){
             lowAt: Number(p.lowAt)||0,
             reorderNote: p.reorderNote||"",
             truckWarnAbove: Number(p.truckWarnAbove)||0,
-            createdAt: p.createdAt||""
+            createdAt: p.createdAt||"",
+            upc: p.upc||"",
+            sdsUrl: p.sdsUrl||"",
+            labelUrl: p.labelUrl||""
           };
         });
         return {products: parsedProds};
@@ -2671,19 +2674,17 @@ async function onBarcodeScanned(code){
     if(prod){
       prod.upc = code;
       try {
-        await gs("updateProductUpcServer", {id:prod.id, upc:code});
+        // Update local state immediately
+        var prodIdx = S.products.findIndex(function(p){ return p.id===prod.id; });
+        if(prodIdx>=0) S.products[prodIdx].upc = code;
         lsSet("hub:products", S.products);
-        // Force fresh product load from Firebase to sync all devices
-        var freshProds = await gs("getProductsServer", null);
-        if(freshProds && freshProds.products){
-          S.products = freshProds.products;
-          lsSet("hub:products", S.products);
-        }
+        // Save to Firebase
+        await gs("updateProductUpcServer", {id:prod.id, upc:code});
         setTimeout(function(){
           stopScanner();
           renderInv();
           showToast("Barcode saved for "+prod.name);
-        }, 800);
+        }, 500);
       } catch(e){
         document.getElementById("scanner-result").textContent = "Error saving: "+e.message;
         document.getElementById("scanner-result").style.color = "#ef4444";
@@ -2739,15 +2740,14 @@ function scannerManualOverride(){
 async function saveProductUrl(prod, field, url){
   prod[field] = url;
   try {
-    var updateData = {};
-    updateData[field] = url;
-    await gs("updateProductFieldServer", {id:prod.id, field:field, value:url});
+    // Update local state immediately
+    var pidx = S.products.findIndex(function(p){ return p.id===prod.id; });
+    if(pidx>=0) S.products[pidx][field] = url;
     lsSet("hub:products", S.products);
-    // Reload products from Firebase to sync all devices
-    var fp = await gs("getProductsServer", null);
-    if(fp && fp.products){ S.products = fp.products; lsSet("hub:products", S.products); }
     renderInv();
     showToast(field==="sdsUrl"?"SDS URL saved":"Label URL saved");
+    // Save to Firebase in background
+    await gs("updateProductFieldServer", {id:prod.id, field:field, value:url});
   } catch(e){ alert("Error saving: "+e.message); }
 }
 
