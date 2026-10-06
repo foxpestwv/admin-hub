@@ -144,7 +144,7 @@ input,textarea,select,button{font-family:inherit;}
     <button class="nb" id="logout-btn">Exit</button>
   </div></div>
   <!-- Barcode Scanner - floating popup -->
-  <div id="scanner-overlay">
+  <div id="scanner-overlay" style="display:none;">
     <div id="scanner-ui">
       <div id="scanner-top">
         <div>
@@ -153,9 +153,9 @@ input,textarea,select,button{font-family:inherit;}
         </div>
         <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕</button>
       </div>
-      <div id="scanner-middle">
-        <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline></video>
-        <div class="scanner-reticle">
+      <div id="scanner-middle" style="position:relative;height:220px;overflow:hidden;background:#000;">
+        <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"></video>
+        <div class="scanner-reticle" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:90px;pointer-events:none;">
           <div class="scanner-corner-tr"></div>
           <div class="scanner-corner-bl"></div>
           <div class="scanner-line"></div>
@@ -292,7 +292,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.3.3"; // Increment this with every update
+const APP_VERSION = "1.3.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
