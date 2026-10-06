@@ -287,7 +287,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.6"; // Increment this with every update
+const APP_VERSION = "1.2.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2611,6 +2611,7 @@ async function startScanner(mode, productId, callback){
 
     // Try native BarcodeDetector first (Chrome, Edge, Android Chrome)
     if(typeof BarcodeDetector !== "undefined"){
+      document.getElementById("scanner-result").textContent = "Using native scanner...";
       var detector = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
       var detect = async function(){
         if(!_scannerActive) return;
@@ -2627,21 +2628,35 @@ async function startScanner(mode, productId, callback){
     }
     // Try Quagga as fallback
     else if(typeof Quagga !== "undefined"){
+      document.getElementById("scanner-result").textContent = "Using Quagga scanner...";
+      // Wait for video to be ready before starting Quagga
+      await new Promise(function(r){ setTimeout(r, 1000); });
       Quagga.init({
-        inputStream:{type:"LiveStream", target: video, constraints:{facingMode:"environment"}},
-        decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader","code_39_reader"]}
+        inputStream:{
+          type:"LiveStream",
+          target: document.getElementById("scanner-video"),
+          constraints:{facingMode:{ideal:"environment"}},
+          area:{top:"20%",right:"10%",left:"10%",bottom:"20%"}
+        },
+        decoder:{
+          readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader"]
+        },
+        locate: true
       }, function(err){
-        if(err){ document.getElementById("scanner-result").textContent = "Scanner error: "+err; return; }
+        if(err){
+          document.getElementById("scanner-result").textContent = "Quagga error — use manual entry";
+          return;
+        }
         Quagga.start();
-        _scannerActive = true;
+        document.getElementById("scanner-result").textContent = "Point at barcode...";
       });
       Quagga.onDetected(function(result){
-        if(result&&result.codeResult&&_scannerActive){
+        if(result&&result.codeResult&&result.codeResult.code&&_scannerActive){
           onBarcodeScanned(result.codeResult.code);
         }
       });
     } else {
-      document.getElementById("scanner-result").textContent = "Scanner not supported on this browser. Use manual entry.";
+      document.getElementById("scanner-result").textContent = "Auto-scan not available on this browser — use manual entry below";
     }
   } catch(e){
     document.getElementById("scanner-result").textContent = "Camera error: "+e.message;
