@@ -287,7 +287,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.2.7"; // Increment this with every update
+const APP_VERSION = "1.2.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2561,102 +2561,122 @@ var _scannerMode = null; // "register" or "pull"
 var _scannerProductId = null;
 var _codeReader = null;
 
+function isIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
 async function startScanner(mode, productId, callback){
   _scannerMode = mode;
   _scannerProductId = productId;
   _scannerCallback = callback;
 
-  var overlay = document.getElementById("scanner-overlay");
-  overlay.style.display = "flex";
-  document.getElementById("scanner-result").textContent = "Starting camera...";
-  document.getElementById("scanner-result").style.color = "#94a3b8";
+  var title = mode==="register" ? "Register Barcode" : mode==="lookup" ? "Product Lookup" : "Scan to Pull";
+  var hint = mode==="register"
+    ? (S.products.find(function(p){return p.id===productId;})||{name:"product"}).name
+    : "Scan any product barcode";
 
-  if(mode==="register"){
-    document.getElementById("scanner-title").textContent = "Register Barcode";
-    var prod = S.products.find(function(p){ return p.id===productId; });
-    document.getElementById("scanner-hint").textContent = prod ? "Scanning for: "+prod.name : "Point camera at barcode";
-  } else if(mode==="lookup"){
-    document.getElementById("scanner-title").textContent = "Product Lookup";
-    document.getElementById("scanner-hint").textContent = "Scan any product barcode";
-  } else {
-    document.getElementById("scanner-title").textContent = "Scan to Pull";
-    document.getElementById("scanner-hint").textContent = "Scan each item as you pull it";
+  // iOS: use native camera input instead of video stream
+  if(isIOS()){
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.setAttribute("capture", "environment");
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    input.onchange = async function(e){
+      var file = e.target.files[0];
+      if(!file){ input.remove(); return; }
+      document.getElementById("scanner-overlay").style.display = "flex";
+      document.getElementById("scanner-title").textContent = title;
+      document.getElementById("scanner-hint").textContent = "Processing image...";
+      document.getElementById("scanner-result").textContent = "Decoding barcode...";
+
+      try {
+        var img = new Image();
+        img.src = URL.createObjectURL(file);
+        await new Promise(function(r){ img.onload=r; });
+
+        if(typeof BarcodeDetector !== "undefined"){
+          var det = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39"]});
+          var codes = await det.detect(img);
+          if(codes.length>0){
+            onBarcodeScanned(codes[0].rawValue);
+          } else {
+            document.getElementById("scanner-result").textContent = "No barcode found — try again or enter manually";
+          }
+        } else if(typeof Quagga !== "undefined"){
+          Quagga.decodeSingle({
+            decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader"]},
+            locate: true,
+            src: img.src
+          }, function(result){
+            if(result&&result.codeResult){
+              onBarcodeScanned(result.codeResult.code);
+            } else {
+              document.getElementById("scanner-result").textContent = "No barcode found — try again or enter manually";
+            }
+          });
+        } else {
+          document.getElementById("scanner-result").textContent = "Barcode detection not supported — use manual entry";
+        }
+      } catch(e){
+        document.getElementById("scanner-result").textContent = "Error: "+e.message;
+      }
+      input.remove();
+    };
+
+    // Show overlay with instructions first
+    document.getElementById("scanner-overlay").style.display = "flex";
+    document.getElementById("scanner-title").textContent = title;
+    document.getElementById("scanner-hint").textContent = hint;
+    document.getElementById("scanner-result").textContent = "Opening camera...";
+    document.getElementById("scanner-video").style.display = "none";
+
+    setTimeout(function(){ input.click(); }, 100);
+    return;
   }
 
+  // Desktop/Android: use video stream
+  document.getElementById("scanner-video").style.display = "";
+  var overlay = document.getElementById("scanner-overlay");
+  overlay.style.display = "flex";
+  document.getElementById("scanner-title").textContent = title;
+  document.getElementById("scanner-hint").textContent = hint;
+  document.getElementById("scanner-result").textContent = "Starting camera...";
+
   try {
-    document.getElementById("scanner-result").textContent = "Requesting camera...";
-    // Get camera stream
-    var constraints = {video: {facingMode: {ideal: "environment"}}};
-    _scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
-    document.getElementById("scanner-result").textContent = "Camera granted, loading...";
-    
+    _scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});
     var video = document.getElementById("scanner-video");
     video.srcObject = _scannerStream;
-    video.setAttribute("playsinline", "");
-    video.setAttribute("autoplay", "");
-    video.setAttribute("muted", "");
     video.muted = true;
     video.playsInline = true;
-    
-    document.getElementById("scanner-result").textContent = "Starting video...";
-    try { await video.play(); } catch(e){
-      document.getElementById("scanner-result").textContent = "Play error: "+e.message;
-      await new Promise(function(r){ setTimeout(r, 500); });
-      try { await video.play(); } catch(e2){
-        document.getElementById("scanner-result").textContent = "Video error: "+e2.message;
-      }
-    }
+    await video.play();
     _scannerActive = true;
     document.getElementById("scanner-result").textContent = "Point at barcode...";
 
-    // Try native BarcodeDetector first (Chrome, Edge, Android Chrome)
     if(typeof BarcodeDetector !== "undefined"){
-      document.getElementById("scanner-result").textContent = "Using native scanner...";
-      var detector = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
-      var detect = async function(){
+      var detector2 = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
+      var detect2 = async function(){
         if(!_scannerActive) return;
         try {
-          var codes = await detector.detect(video);
-          if(codes.length > 0){
-            onBarcodeScanned(codes[0].rawValue);
-            return;
-          }
+          var codes2 = await detector2.detect(video);
+          if(codes2.length>0){ onBarcodeScanned(codes2[0].rawValue); return; }
         } catch(e){}
-        if(_scannerActive) requestAnimationFrame(detect);
+        if(_scannerActive) requestAnimationFrame(detect2);
       };
-      requestAnimationFrame(detect);
-    }
-    // Try Quagga as fallback
-    else if(typeof Quagga !== "undefined"){
-      document.getElementById("scanner-result").textContent = "Using Quagga scanner...";
-      // Wait for video to be ready before starting Quagga
-      await new Promise(function(r){ setTimeout(r, 1000); });
+      requestAnimationFrame(detect2);
+    } else if(typeof Quagga !== "undefined"){
+      await new Promise(function(r){ setTimeout(r,500); });
       Quagga.init({
-        inputStream:{
-          type:"LiveStream",
-          target: document.getElementById("scanner-video"),
-          constraints:{facingMode:{ideal:"environment"}},
-          area:{top:"20%",right:"10%",left:"10%",bottom:"20%"}
-        },
-        decoder:{
-          readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader"]
-        },
-        locate: true
+        inputStream:{type:"LiveStream",target:video,constraints:{facingMode:"environment"}},
+        decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader","code_128_reader"]}
       }, function(err){
-        if(err){
-          document.getElementById("scanner-result").textContent = "Quagga error — use manual entry";
-          return;
-        }
-        Quagga.start();
-        document.getElementById("scanner-result").textContent = "Point at barcode...";
+        if(!err){ Quagga.start(); document.getElementById("scanner-result").textContent = "Point at barcode..."; }
       });
-      Quagga.onDetected(function(result){
-        if(result&&result.codeResult&&result.codeResult.code&&_scannerActive){
-          onBarcodeScanned(result.codeResult.code);
-        }
+      Quagga.onDetected(function(r){
+        if(r&&r.codeResult&&_scannerActive) onBarcodeScanned(r.codeResult.code);
       });
-    } else {
-      document.getElementById("scanner-result").textContent = "Auto-scan not available on this browser — use manual entry below";
     }
   } catch(e){
     document.getElementById("scanner-result").textContent = "Camera error: "+e.message;
