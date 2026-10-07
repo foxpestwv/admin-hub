@@ -76,3 +76,4 @@ jobs:
           print(f"Done — version={version}")
           PYEOF
           python3 /tmp/update_firebase.py
+
