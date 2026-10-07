@@ -300,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.5.3"; // Increment this with every update
+const APP_VERSION = "1.5.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5330,9 +5330,12 @@ async function signSubmitManager(){
   }
 }
 
+var _techSigSubmitting = false;
 async function signSubmitTech(){
+  if(_techSigSubmitting){ console.warn("Already submitting"); return; }
+  _techSigSubmitting = true;
   var req = S._pendingSignReq;
-  if(!req){ alert("No document found."); return; }
+  if(!req){ _techSigSubmitting=false; alert("No document found."); return; }
 
   var sigData = null;
   if(S._savedTechSig && !document.getElementById("sig-canvas")){
@@ -5375,6 +5378,7 @@ async function signSubmitTech(){
       }
       S._pendingSignReq = null;
       S._signView = "list";
+      _techSigSubmitting = false;
       save();
       alert("Document signed successfully! The manager has been notified.");
       // Render immediately from local state without reloading from sheet
