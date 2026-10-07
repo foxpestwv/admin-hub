@@ -300,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.9"; // Increment this with every update
+const APP_VERSION = "1.5.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1850,11 +1850,7 @@ function renderDash(){
 
   var tilesHtml = tiles.map(function(t){
     var badgeHtml = t.badge>0 ? "<div style='position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;'>"+t.badge+"</div>" : "";
-    var tileDiv = document.createElement("div");
-    tileDiv.style.cssText = "position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;";
-    tileDiv.setAttribute("data-a","tab");
-    tileDiv.setAttribute("data-v",t.tab);
-    tileDiv.innerHTML =
+    return "<div data-a='tab' data-v='"+t.tab+"' style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;'>"
       +"<div style='font-size:28px;'>"+t.icon+"</div>"
       +"<div style='font-size:12px;font-weight:600;color:#e2e8f0;text-align:center;line-height:1.2;'>"+t.label+"</div>"
       +badgeHtml
