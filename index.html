@@ -300,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.5.6"; // Increment this with every update
+const APP_VERSION = "1.5.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -724,8 +724,10 @@ async function gs(fn, data){
       // ── SIGN REQUESTS ─────────────────────────────────────────────────────────
       case "getSignRequests": {
         await initFirebase();
-        var srSnap = await _db.collection("signRequests").orderBy("date","desc").get();
-        return {requests: srSnap.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); })};
+        var srSnap = await _db.collection("signRequests").get();
+        var srDocs = srSnap.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+        srDocs.sort(function(a,b){ return (b.createdAt||b.date||"").localeCompare(a.createdAt||a.date||""); });
+        return {signRequests: srDocs};
       }
       case "uploadSignRequest": {
         var srId = data.id || "sr_"+Date.now();
@@ -4432,9 +4434,15 @@ async function renderSign(skipReload){
   if(!skipReload){
     try {
       var signData = await gs("getSignRequestsServer", null);
-      if(signData && signData.signRequests){
-        // Merge - preserve any local "Signed" status that sheet might not have yet
-        var sheetReqs = signData.signRequests;
+      var rawReqs = signData && (signData.signRequests || signData.requests || []);
+      if(rawReqs && rawReqs.length >= 0){
+        // Parse any JSON string fields
+        rawReqs.forEach(function(sr){
+          if(typeof sr.qaData==="string") try{sr.qaData=JSON.parse(sr.qaData);}catch(e){sr.qaData=null;}
+          if(typeof sr.raData==="string") try{sr.raData=JSON.parse(sr.raData);}catch(e){sr.raData=null;}
+        });
+        // Merge - preserve any local "Signed" status
+        var sheetReqs = rawReqs;
         sheetReqs.forEach(function(sr){
           var local = S.signRequests.find(function(r){ return r.id===sr.id; });
           if(local && local.status==="Signed" && sr.status!=="Signed"){
