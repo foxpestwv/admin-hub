@@ -293,7 +293,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.1"; // Increment this with every update
+const APP_VERSION = "1.4.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -6107,20 +6107,28 @@ document.addEventListener("change",function(e){
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-load();
-// logo via CSS
-// Load accounts from sheet immediately on startup
-loadAccountsFromSheet();
+load(); // Load from localStorage immediately - fast
 
-// Run immediately
+// Show login right away from cached data
 var dbg = document.getElementById("debug");
 if(dbg) dbg.textContent = "Initializing...";
+
+// Initialize Firebase and sync accounts in background - don't block UI
+setTimeout(function(){
+  initFirebase().then(function(){
+    // Firebase ready - silently refresh accounts in background
+    loadAccountsFromSheet().catch(function(){});
+    checkForUpdates(true);
+  }).catch(function(e){
+    console.warn("Firebase init:", e.message);
+  });
+}, 100); // Small delay so UI renders first
 
 // Email step handlers
 var emailNextBtn = document.getElementById("email-next-btn");
 if(emailNextBtn){
   emailNextBtn.onclick = function(){ checkEmail(); };
-  emailNextBtn.addEventListener("touchend", function(e){ e.preventDefault(); checkEmail(); }, {passive:false});
+
 }
 var backBtn = document.getElementById("back-to-email-btn");
 if(backBtn){
