@@ -145,26 +145,27 @@ input,textarea,select,button{font-family:inherit;}
   </div></div>
   <!-- Barcode Scanner - floating popup -->
   <div id="scanner-overlay" style="display:none;">
-    <div id="scanner-ui">
-      <div id="scanner-top">
-        <div>
-          <div style="font-weight:700;font-size:15px;color:#e2e8f0;" id="scanner-title">Scan Barcode</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px;" id="scanner-hint">Point at barcode</div>
-        </div>
-        <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕</button>
+    <div style="padding:10px 14px;background:#0a1628;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e3a5f;">
+      <div>
+        <div style="font-weight:700;font-size:15px;color:#e2e8f0;" id="scanner-title">Scan Barcode</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;" id="scanner-hint">Point at barcode</div>
       </div>
-      <div id="scanner-middle" style="position:relative;height:220px;overflow:hidden;background:#000;">
-        <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"></video>
-        <div class="scanner-reticle" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:90px;pointer-events:none;">
-          <div class="scanner-corner-tr"></div>
-          <div class="scanner-corner-bl"></div>
-          <div class="scanner-line"></div>
-        </div>
+      <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕</button>
+    </div>
+    <div style="position:relative;height:240px;overflow:hidden;background:#000;">
+      <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;"></video>
+      <!-- Reticle corners - all inline styles -->
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:90px;pointer-events:none;">
+        <div style="position:absolute;top:0;left:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:3px 0 0 0;"></div>
+        <div style="position:absolute;top:0;right:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 3px 0 0;"></div>
+        <div style="position:absolute;bottom:0;left:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:0 0 0 3px;"></div>
+        <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 0 3px 0;"></div>
+        <div id="scanner-bar" style="position:absolute;left:0;right:0;height:2px;background:#f59e0b;top:0;"></div>
       </div>
-      <div id="scanner-bottom">
-        <div id="scanner-result" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
-        <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">✏ Enter manually</button>
-      </div>
+    </div>
+    <div style="padding:10px 14px;background:#0a1628;">
+      <div id="scanner-result" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
+      <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">✏ Enter manually</button>
     </div>
   </div>
 
@@ -292,7 +293,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.3.6"; // Increment this with every update
+const APP_VERSION = "1.3.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2600,6 +2601,18 @@ async function startScanner(mode, productId, callback){
     await video.play();
     _scannerActive = true;
     document.getElementById("scanner-result").textContent = "Point at barcode...";
+    // Animate scan bar with JS since CSS animations may not work on iOS PWA
+    var bar = document.getElementById("scanner-bar");
+    if(bar){
+      var barDir = 1; var barPos = 0;
+      var barAnim = setInterval(function(){
+        if(!_scannerActive){ clearInterval(barAnim); return; }
+        barPos += barDir * 3;
+        if(barPos >= 88) barDir = -1;
+        if(barPos <= 0) barDir = 1;
+        bar.style.top = barPos + "%";
+      }, 20);
+    }
 
     if(typeof BarcodeDetector !== "undefined"){
       var detector2 = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
