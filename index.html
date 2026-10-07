@@ -300,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.5.0"; // Increment this with every update
+const APP_VERSION = "1.5.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -785,31 +785,24 @@ async function gs(fn, data){
           signedDate: new Date().toISOString(),
           techSig: data.techSig||""
         });
-        // Generate PDF in browser and send to Drive via Apps Script
-        try {
-          var pdfBase64 = await generateQARAPdf(data);
-          if(pdfBase64){
-            var driveResp = await fetch(EMAIL_BRIDGE, {
-              method:"POST",
-              headers:{"Content-Type":"text/plain"},
-              body: JSON.stringify({
-                action: "savePdfToDrive",
-                pdfBase64: pdfBase64,
-                fileName: data.docName||"Signed Document.pdf",
-                techName: data.techName||"",
-                managerEmail: data.managerEmail||"john.kluttz@fox-marketingservices.com",
-                isQA: data.isQA||false,
-                isRA: data.isRA||false
-              })
-            }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; });
-            if(driveResp && driveResp.fileId) return {ok:true, signedFileId:driveResp.fileId};
-          }
-        } catch(pdfErr){ console.warn("PDF generation:", pdfErr.message); }
-        // Email manager directly if PDF fails
-        sendEmail(data.managerEmail||"john.kluttz@fox-marketingservices.com",
-          "[Fox Pest Control] "+(data.isQA?"QA":"Ride Along")+" Form Signed: "+data.techName,
-          data.techName+" has signed the "+(data.isQA?"QA":"Ride Along")+" form.\n\nFox Pest Control - Willamette Valley"
-        );
+        // Call Apps Script to insert tech sig into sheet, export PDF, email manager
+        var tsResp = await fetch(EMAIL_BRIDGE, {
+          method:"POST", headers:{"Content-Type":"text/plain"},
+          body: JSON.stringify({
+            action: "submitTechSignature",
+            techName: data.techName||"",
+            techEmail: data.techEmail||"",
+            techSig: data.techSig||"",
+            managerSig: data.managerSig||"",
+            managerEmail: data.managerEmail||"john.kluttz@fox-marketingservices.com",
+            isQA: data.isQA||false,
+            isRA: data.isRA||false,
+            formType: data.formType||"",
+            docName: data.docName||"",
+            createdBy: data.createdBy||""
+          })
+        }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
+        if(tsResp && tsResp.signedFileId) return {ok:true, signedFileId:tsResp.signedFileId};
         return {ok:true};
       }
       case "submitMultiSign": {
@@ -854,34 +847,40 @@ async function gs(fn, data){
 
       // ── QA / RA FORMS ─────────────────────────────────────────────────────────
       case "writeQAData": {
-        // Save QA form data to Firebase
+        // Save to Firebase for record keeping
         var qaId2 = "qa_"+Date.now();
         await fbSet("qaForms", qaId2, {
-          id: qaId2,
-          type: "QA",
+          id: qaId2, type: "QA",
           date: new Date().toISOString(),
           manager: data.manager||"",
-          managerSig: data.managerSig||"",
           formData: JSON.stringify(data.qaData||{}),
           status: "Pending",
           techName: (data.qaData||{}).tech||""
         });
-        return {ok:true, id:qaId2};
+        // Also write to Google Sheet via Apps Script for PDF generation
+        var qaResp = await fetch(EMAIL_BRIDGE, {
+          method:"POST", headers:{"Content-Type":"text/plain"},
+          body: JSON.stringify({action:"writeQAData", qaData:data.qaData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
+        }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
+        return qaResp.ok ? {ok:true, id:qaId2} : qaResp;
       }
       case "writeRAData": {
-        // Save RA form data to Firebase
+        // Save to Firebase for record keeping
         var raId2 = "ra_"+Date.now();
         await fbSet("raForms", raId2, {
-          id: raId2,
-          type: "RA",
+          id: raId2, type: "RA",
           date: new Date().toISOString(),
           manager: data.manager||"",
-          managerSig: data.managerSig||"",
           formData: JSON.stringify(data.raData||{}),
           status: "Pending",
           techName: (data.raData||{}).tech||""
         });
-        return {ok:true, id:raId2};
+        // Also write to Google Sheet via Apps Script for PDF generation
+        var raResp = await fetch(EMAIL_BRIDGE, {
+          method:"POST", headers:{"Content-Type":"text/plain"},
+          body: JSON.stringify({action:"writeRAData", raData:data.raData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
+        }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
+        return raResp.ok ? {ok:true, id:raId2} : raResp;
       }
 
       // ── EMAIL ─────────────────────────────────────────────────────────────────
@@ -4238,76 +4237,192 @@ async function generateQARAPdf(data){
   try {
     if(typeof PDFLib === "undefined") return null;
     var doc = await PDFLib.PDFDocument.create();
-    var page = doc.addPage([612, 792]);
     var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
     var boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-    var y = 750;
     var margin = 50;
+    var pageW = 612;
+    var pageH = 792;
 
-    function drawText(text, x, yPos, size, bold){
-      page.drawText(String(text||""), {x:x, y:yPos, size:size||11, font:bold?boldFont:font, color:PDFLib.rgb(0,0,0)});
+    var pages = [doc.addPage([pageW, pageH])];
+    var y = pageH - 50;
+
+    function curPage(){ return pages[pages.length-1]; }
+    function checkY(needed){
+      if(y < needed){ pages.push(doc.addPage([pageW,pageH])); y=pageH-50; }
     }
-    function drawLine(yPos){
-      page.drawLine({start:{x:margin,y:yPos},end:{x:562,y:yPos},thickness:0.5,color:PDFLib.rgb(0.7,0.7,0.7)});
+    function drawText(text, x, yPos, size, bold, color){
+      curPage().drawText(String(text||"").substring(0,90), {
+        x:x, y:yPos, size:size||10,
+        font: bold?boldFont:font,
+        color: color||PDFLib.rgb(0,0,0)
+      });
+    }
+    function drawLine(yPos, color){
+      curPage().drawLine({start:{x:margin,y:yPos},end:{x:pageW-margin,y:yPos},thickness:0.5,color:color||PDFLib.rgb(0.8,0.8,0.8)});
+    }
+    function drawRect(x,yPos,w,h,color){
+      curPage().drawRectangle({x,y:yPos,width:w,height:h,color,borderWidth:0});
     }
 
     var isQA = data.isQA;
-    var formData = {};
-    // Try to get form data from Firebase
+    var fd = {};
     try {
       var fKey = isQA ? "qaForms" : "raForms";
       var forms = await fbGet(fKey);
-      var match = (forms||[]).find(function(f){ return f.techName===data.techName; });
-      if(match && match.formData) formData = JSON.parse(match.formData);
-    } catch(e){}
+      if(forms && forms.length){
+        var match = forms.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); })
+          .find(function(f){ return f.techName===data.techName; });
+        if(match && match.formData) fd = JSON.parse(match.formData);
+      }
+    } catch(e){ console.warn("PDF form data:", e.message); }
 
-    // Header
-    drawText("FOX PEST CONTROL - WILLAMETTE VALLEY", margin, y, 14, true); y-=20;
-    drawText(isQA ? "Quality Assurance Evaluation" : "Ride Along Evaluation", margin, y, 12, true); y-=30;
-    drawLine(y); y-=15;
+    // ── Header ──
+    drawRect(margin, y-5, pageW-margin*2, 30, PDFLib.rgb(0.06,0.13,0.25));
+    drawText("FOX PEST CONTROL — WILLAMETTE VALLEY", margin+8, y+4, 13, true, PDFLib.rgb(0.96,0.62,0.04));
+    y -= 35;
+    drawText(isQA ? "QUALITY ASSURANCE EVALUATION" : "RIDE ALONG EVALUATION", margin, y, 12, true);
+    y -= 25; drawLine(y); y -= 15;
 
-    // Info
-    drawText("Technician: "+(formData.tech||data.techName||""), margin, y, 11); y-=18;
-    drawText("Date: "+(formData.date||new Date().toLocaleDateString()), margin, y, 11); y-=18;
-    drawText("Manager: "+(formData.manager||data.createdBy||""), margin, y, 11); y-=25;
-    drawLine(y); y-=15;
+    // ── Info block ──
+    drawText("Technician: "+(fd.tech||data.techName||""), margin, y, 11, true); y-=16;
+    drawText("Date: "+(fd.date||""), margin, y, 11); y-=16;
+    drawText("Manager: "+(fd.manager||data.createdBy||""), margin, y, 11); y-=16;
+    if(fd.timein||fd.timeout) { drawText("Time: "+(fd.timein||"")+" — "+(fd.timeout||""), margin, y, 11); y-=16; }
+    y -= 8; drawLine(y); y -= 15;
 
-    if(isQA && formData.total !== undefined){
-      drawText("QA Score: "+formData.total+"/100", margin, y, 12, true); y-=25;
+    function drawSection(title, color){
+      checkY(40);
+      drawRect(margin, y-3, pageW-margin*2, 18, PDFLib.rgb(0.06,0.13,0.25));
+      drawText(title, margin+6, y+1, 10, true, PDFLib.rgb(0.96,0.62,0.04));
+      y -= 22;
     }
 
-    // Form fields
-    Object.keys(formData).forEach(function(k){
-      if(["tech","date","manager","total","managerSig","techSig"].includes(k)) return;
-      if(y < 100){ page = doc.addPage([612,792]); y=750; }
-      drawText(k+": "+String(formData[k]||""), margin, y, 10);
-      y-=16;
-    });
+    function drawItem(label, field){
+      checkY(20);
+      var val = fd[field]||"";
+      var col = val==="exceeds"?PDFLib.rgb(0.13,0.69,0.3):val==="meets"?PDFLib.rgb(0.15,0.47,0.92):val==="below"?PDFLib.rgb(0.87,0.15,0.15):PDFLib.rgb(0.5,0.5,0.5);
+      drawText(label, margin+4, y, 9, false, PDFLib.rgb(0.1,0.1,0.1));
+      drawText(val?val.toUpperCase():"—", pageW-margin-60, y, 9, true, col);
+      y -= 14;
+    }
 
-    y-=20; drawLine(y); y-=20;
+    function drawComment(label, val){
+      if(!val) return;
+      checkY(25);
+      drawText(label+": "+val, margin+4, y, 9, false, PDFLib.rgb(0.3,0.3,0.3));
+      y -= 14;
+    }
 
-    // Signatures
-    drawText("Manager Signature:", margin, y, 11, true); y-=15;
+    if(isQA){
+      // QA Form sections
+      drawSection("CUSTOMER INTERVIEW");
+      drawItem("Were you home when tech arrived?","D9");
+      drawItem("Did you know the tech's name?","D10");
+      drawItem("Did tech arrive on time?","D11");
+      drawItem("Did tech ask about your pest concerns?","D12");
+      drawItem("Did tech discuss service expectations?","D13");
+      drawComment("Comments", fd.comments1);
+      y -= 6;
+
+      drawSection("QUALITY SERVICE");
+      drawItem("Asked questions / listened / took notes","D16");
+      drawItem("Thorough investigation","D17");
+      drawItem("Pest activity addressed","D18");
+      drawItem("Used websters / removed wasp nests","D19");
+      drawItem("Checked rodent / bait stations","D20");
+      drawItem("Liquid application","D21");
+      drawItem("Granular application","D22");
+      drawComment("Comments", fd.comments2);
+      y -= 6;
+
+      drawSection("SERVICE WRAP UP");
+      drawItem("Reported back to customer","D26");
+      drawItem("Left service note","D27");
+      drawItem("Start / end times correct","D28");
+      drawItem("Discussed additional services","D29");
+      drawItem("Work order signed","D30");
+      drawItem("Photos added","D31");
+      drawItem("Yard sign / stickers placed","D32");
+      drawComment("Comments", fd.comments3);
+      y -= 6;
+
+      drawSection("REQUIRED DOCUMENTATION");
+      drawItem("Proper pesticide application","D35");
+      drawItem("Product usage recorded correctly","D36");
+      drawComment("Comments", fd.comments4);
+      y -= 10;
+
+      if(fd.total !== undefined){
+        checkY(30);
+        var scoreColor = fd.total>=80?PDFLib.rgb(0.13,0.69,0.3):fd.total>=60?PDFLib.rgb(0.96,0.62,0.04):PDFLib.rgb(0.87,0.15,0.15);
+        drawRect(margin, y-5, pageW-margin*2, 25, PDFLib.rgb(0.94,0.94,0.94));
+        drawText("TOTAL SCORE: "+fd.total+"/100", margin+8, y+5, 13, true, scoreColor);
+        y -= 35;
+      }
+    } else {
+      // RA Form sections
+      drawSection("PROFESSIONALISM");
+      drawItem("Uniform clean / well groomed","R9");
+      drawItem("Truck clean and organized","R10");
+      drawItem("Properly equipped and supplied","R11");
+      drawItem("Greeted customer warmly","R12");
+      drawComment("Comments", fd.comments1);
+      y -= 6;
+
+      drawSection("QUALITY SERVICE");
+      drawItem("Was expected / arrived on time","R15");
+      drawItem("Asked questions / listened / took notes","R16");
+      drawItem("Completed thorough investigation","R17");
+      drawItem("Showed value / WOW'd the customer","R18");
+      drawItem("Focused on seasonal targets","R19");
+      drawItem("Demonstrated knowledge and skill","R20");
+      drawComment("Comments", fd.comments2);
+      y -= 6;
+
+      drawSection("SERVICE WRAP UP");
+      drawItem("Reported back to customer","R23");
+      drawItem("Explained inspection details","R24");
+      drawItem("Entered details into iPad","R25");
+      drawItem("Discussed additional services","R26");
+      drawComment("Comments", fd.comments3);
+      y -= 6;
+
+      drawSection("REQUIRED DOCUMENTATION");
+      drawItem("Equipment","R29");
+      drawItem("Product Safety / Handling / Usage","R30");
+      drawItem("Inspections — Interior / Exterior","R31");
+      y -= 10;
+    }
+
+    // ── Signatures ──
+    checkY(120);
+    y -= 10; drawLine(y); y -= 20;
+    drawText("SIGNATURES", margin, y, 11, true); y -= 20;
+
+    drawText("Manager: "+(data.createdBy||""), margin, y, 10, true); y -= 15;
     if(data.managerSig){
       try {
-        var mgSigData = data.managerSig.replace(/^data:image\/png;base64,/,"");
-        var mgSigImg = await doc.embedPng(Uint8Array.from(atob(mgSigData),function(c){return c.charCodeAt(0);}));
-        page.drawImage(mgSigImg, {x:margin, y:y-50, width:150, height:50});
-        y-=60;
-      } catch(e){ y-=60; }
-    }
-
-    y-=20; drawText("Technician Signature:", margin, y, 11, true); y-=15;
-    if(data.techSig){
-      try {
-        var tSigData = data.techSig.replace(/^data:image\/png;base64,/,"");
-        var tSigImg = await doc.embedPng(Uint8Array.from(atob(tSigData),function(c){return c.charCodeAt(0);}));
-        page.drawImage(tSigImg, {x:margin, y:y-50, width:150, height:50});
+        var mgd = data.managerSig.replace(/^data:image\/\w+;base64,/,"");
+        var mgImg = await doc.embedPng(Uint8Array.from(atob(mgd),function(c){return c.charCodeAt(0);}));
+        curPage().drawImage(mgImg, {x:margin, y:y-45, width:160, height:45});
       } catch(e){}
     }
+    drawText("Date: "+new Date().toLocaleDateString(), margin+170, y-25, 10);
+    y -= 60; drawLine(y, PDFLib.rgb(0.7,0.7,0.7)); y -= 20;
+
+    drawText("Technician: "+(data.techName||""), margin, y, 10, true); y -= 15;
+    if(data.techSig){
+      try {
+        var tsd = data.techSig.replace(/^data:image\/\w+;base64,/,"");
+        var tsImg = await doc.embedPng(Uint8Array.from(atob(tsd),function(c){return c.charCodeAt(0);}));
+        curPage().drawImage(tsImg, {x:margin, y:y-45, width:160, height:45});
+      } catch(e){}
+    }
+    drawText("Date: "+new Date().toLocaleDateString(), margin+170, y-25, 10);
+    y -= 60;
 
     var pdfBytes = await doc.save();
-    return btoa(String.fromCharCode.apply(null, pdfBytes));
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(pdfBytes)));
   } catch(e){
     console.warn("generateQARAPdf:", e.message);
     return null;
