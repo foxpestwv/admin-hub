@@ -113,7 +113,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.5"; // Increment this with every update
+const APP_VERSION = "1.4.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1211,6 +1211,32 @@ function handleAction(a,v,el,e){
   if(a==="inv-view") { S.invView=v; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
+  if(a==="open-profile-photo"){
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*"; inp.style.display = "none";
+    document.body.appendChild(inp);
+    inp.onchange = async function(e){
+      var file = e.target.files[0]; if(!file){ inp.remove(); return; }
+      var reader = new FileReader();
+      reader.onload = async function(ev){
+        var dataUrl = ev.target.result;
+        // Save to current account
+        var acctArr = S.role==="manager" ? S.managers : S.techAccounts;
+        var acct2 = acctArr.find(function(a2){ return a2.name===(S.managerName||S.currentTech); });
+        if(acct2){ acct2.photo = dataUrl; }
+        S._userPhoto = dataUrl;
+        // Save accounts to Firebase
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:managers", S.managers);
+        lsSet("hub:techAccounts", S.techAccounts);
+        renderDash();
+        inp.remove();
+      };
+      reader.readAsDataURL(file);
+    };
+    inp.click();
+    return;
+  }
   if(a==="inv-sds"){
     var ps = S.products.find(function(p){ return p.id===v; });
     if(!ps) return;
@@ -1591,33 +1617,93 @@ function render(){
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function renderDash(){
-  const {inspections,products,orders}=S;
-  const mo=inspections.filter(i=>new Date(i.date).getMonth()===new Date().getMonth()).length;
-  const avg=inspections.length?Math.round(inspections.reduce((a,b)=>a+b.pct,0)/inspections.length):0;
-  const low=products.filter(p=>p.qty<=p.lowAt);
-  const pend=orders.filter(o=>o.status==="Pending").length;
-  const tot=products.reduce((a,p)=>a+Math.max(0,p.qty),0);
-  document.getElementById("pg-dashboard").innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <div><h1 style="font-size:20px;font-weight:700;">Admin Hub</h1><p style="color:#475569;font-size:13px;margin-top:2px;">Willamette Valley Branch</p></div>
-    </div>
-    ${pend>0?`<div class="al-a" data-a="tab" data-v="orders"><span style="color:#f59e0b;font-size:18px;">!</span><div><div style="color:#f59e0b;font-weight:600;font-size:14px;">${pend} pending request${pend>1?"s":""}</div><div style="color:#78350f;font-size:12px;">Tap to review</div></div></div>`:""}
-    ${low.length>0?`<div class="al-o" data-a="tab" data-v="inventory"><span style="color:#fb923c;font-size:18px;">!</span><div><div style="color:#fb923c;font-weight:600;">Low Stock Alert</div><div style="color:#9a3412;font-size:12px;">${low.map(p=>esc(p.name)).join(", ")}</div></div></div>`:""}
-    <div class="g2" style="margin-bottom:20px;">
-      <div class="sc"><div style="font-size:24px;font-weight:700;color:#3b82f6;">${mo}</div><div style="font-size:11px;color:#475569;margin-top:4px;">Inspections This Month</div></div>
-      <div class="sc"><div style="font-size:24px;font-weight:700;color:${avg?sc(avg):"#475569"};">${inspections.length?avg+"%":"N/A"}</div><div style="font-size:11px;color:#475569;margin-top:4px;">Avg Score</div></div>
-      <div class="sc"><div style="font-size:24px;font-weight:700;color:#8b5cf6;">${tot.toLocaleString()}</div><div style="font-size:11px;color:#475569;margin-top:4px;">Total Inventory</div></div>
-      <div class="sc"><div style="font-size:24px;font-weight:700;color:${low.length>0?"#f97316":"#22c55e"};">${low.length}</div><div style="font-size:11px;color:#475569;margin-top:4px;">Low Stock Items</div></div>
-      <div class="sc"><div style="font-size:24px;font-weight:700;color:${pend>0?"#f59e0b":"#22c55e"};">${pend}</div><div style="font-size:11px;color:#475569;margin-top:4px;">Pending Requests</div></div>
-    </div>
-    <div class="g2" style="margin-bottom:20px;">
-      <button class="btn bp" style="padding:16px;border-radius:12px;" data-a="tab" data-v="inspect">Fleet Inspect</button>
-      <button class="btn bs" style="padding:16px;border-radius:12px;" data-a="tab" data-v="inventory">Inventory</button>
-    </div>
-    ${inspections.length>0?`<div style="font-size:12px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-weight:600;">Recent Inspections</div>${inspections.slice(0,3).map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,48)}<div style="flex:1"><div style="font-weight:600;font-size:14px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span></div>`).join("")}`:""}`;
+  var pg = document.getElementById("pg-dashboard");
+  if(!pg) return;
+  var name = S.managerName || S.currentTech || "";
+  var role = S.role === "manager" ? "Branch Manager" : "Technician";
+  var branch = "Willamette Valley";
+  var photo = S._userPhoto || "";
+
+  // Get current account photo
+  var acct = (S.managers||[]).find(function(m){ return m.name===name; })
+    || (S.techAccounts||[]).find(function(t){ return t.name===name; });
+  if(acct && acct.photo) photo = acct.photo;
+
+  // Stats for manager dashboard
+  var low = (S.products||[]).filter(function(p){ return p.qty<=p.lowAt; });
+  var pend = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
+  var pendSign = (S.signRequests||[]).filter(function(r){ return r.status==="Pending"; }).length;
+
+  // Manager tiles
+  var mgrTiles = [
+    {icon:"📦", label:"Inventory", tab:"inventory", color:"#1e3a5f", accent:"#3b82f6", badge: low.length>0?low.length:0},
+    {icon:"🛒", label:"Orders", tab:"orders", color:"#1a2f1a", accent:"#22c55e", badge: pend},
+    {icon:"🚛", label:"Fleet", tab:"inspect", color:"#2d1f00", accent:"#f59e0b", badge:0},
+    {icon:"📝", label:"Sign", tab:"sign", color:"#2d001a", accent:"#ec4899", badge: pendSign},
+    {icon:"📊", label:"Analytics", tab:"analytics", color:"#1a1a2d", accent:"#8b5cf6", badge:0},
+    {icon:"🔄", label:"Restock", tab:"restock", color:"#001a2d", accent:"#06b6d4", badge:0},
+    {icon:"🚐", label:"Truck Inv", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
+    {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
+    {icon:"⚙️", label:"Settings", tab:"settings", color:"#1a1a1a", accent:"#94a3b8", badge:0}
+  ];
+
+  // Tech tiles
+  var techTiles = [
+    {icon:"🛒", label:"My Request", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:0},
+    {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
+    {icon:"📝", label:"Sign", tab:"sign", color:"#2d001a", accent:"#ec4899", badge: (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===name; }).length}
+  ];
+
+  var tiles = S.role==="manager" ? mgrTiles : techTiles;
+  var cols = S.role==="manager" ? 3 : 3;
+
+  var photoHtml = photo
+    ? "<img src='"+photo+"' style='width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid #f59e0b;'>"
+    : "<div style='width:64px;height:64px;border-radius:50%;background:#1e3a5f;border:3px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:28px;'>"+name.charAt(0).toUpperCase()+"</div>";
+
+  var tilesHtml = tiles.map(function(t){
+    var badgeHtml = t.badge>0 ? "<div style='position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;'>"+t.badge+"</div>" : "";
+    return "<div onclick="S.tab='"+t.tab+"';S.inspView='home';render();" style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;' onmouseenter="this.style.borderColor='"+t.accent+"'" onmouseleave="this.style.borderColor='"+t.accent+"33'">"
+      +"<div style='font-size:28px;'>"+t.icon+"</div>"
+      +"<div style='font-size:12px;font-weight:600;color:#e2e8f0;text-align:center;line-height:1.2;'>"+t.label+"</div>"
+      +badgeHtml
+      +"</div>";
+  }).join("");
+
+  pg.innerHTML = ""
+    // Header card
+    +"<div style='background:linear-gradient(135deg,#0f1f38 0%,#1e3a5f 100%);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid #2563eb33;display:flex;align-items:center;gap:16px;'>"
+    +"<div data-a='open-profile-photo' style='cursor:pointer;'>"+photoHtml+"</div>"
+    +"<div style='flex:1;'>"
+    +"<div style='font-size:20px;font-weight:700;color:#e2e8f0;'>"+esc(name)+"</div>"
+    +"<div style='font-size:13px;color:#f59e0b;font-weight:600;margin-top:2px;'>"+role+"</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>Fox Pest Control — "+branch+"</div>"
+    +"</div>"
+    +(S.role==="manager"&&low.length>0?"<div style='text-align:center;'><div style='font-size:22px;font-weight:700;color:#ef4444;'>"+low.length+"</div><div style='font-size:10px;color:#94a3b8;'>Low Stock</div></div>":"")
+    +"</div>"
+
+    // Quick stats for manager
+    +(S.role==="manager"
+      ?"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;'>"
+        +"<div style='background:#0a1628;border:1px solid #1e3a5f;border-radius:12px;padding:12px;text-align:center;'>"
+        +"<div style='font-size:22px;font-weight:700;color:#3b82f6;'>"+S.products.length+"</div>"
+        +"<div style='font-size:11px;color:#64748b;'>Products</div></div>"
+        +"<div style='background:#0a1628;border:1px solid #1e3a5f;border-radius:12px;padding:12px;text-align:center;'>"
+        +"<div style='font-size:22px;font-weight:700;color:#22c55e;'>"+pend+"</div>"
+        +"<div style='font-size:11px;color:#64748b;'>Pending Orders</div></div>"
+        +"<div style='background:#0a1628;border:1px solid #1e3a5f;border-radius:12px;padding:12px;text-align:center;'>"
+        +"<div style='font-size:22px;font-weight:700;color:#ec4899;'>"+pendSign+"</div>"
+        +"<div style='font-size:11px;color:#64748b;'>Pending Signatures</div></div>"
+        +"</div>"
+      :"")
+
+    // Nav grid
+    +"<div style='display:grid;grid-template-columns:repeat("+cols+",1fr);gap:12px;'>"
+    +tilesHtml
+    +"</div>";
 }
 
-// ─── Inspections ──────────────────────────────────────────────────────────────
+
 function renderInspect(){
   const pg=document.getElementById("pg-inspect");
   if(S.inspView==="home") pg.innerHTML=inspHome();
@@ -6396,7 +6482,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.5"; // Increment this with every update
+const APP_VERSION = "1.4.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -7454,6 +7540,32 @@ function handleAction(a,v,el,e){
   if(a==="inv-view") { S.invView=v; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
+  if(a==="open-profile-photo"){
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*"; inp.style.display = "none";
+    document.body.appendChild(inp);
+    inp.onchange = async function(e){
+      var file = e.target.files[0]; if(!file){ inp.remove(); return; }
+      var reader = new FileReader();
+      reader.onload = async function(ev){
+        var dataUrl = ev.target.result;
+        // Save to current account
+        var acctArr = S.role==="manager" ? S.managers : S.techAccounts;
+        var acct2 = acctArr.find(function(a2){ return a2.name===(S.managerName||S.currentTech); });
+        if(acct2){ acct2.photo = dataUrl; }
+        S._userPhoto = dataUrl;
+        // Save accounts to Firebase
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:managers", S.managers);
+        lsSet("hub:techAccounts", S.techAccounts);
+        renderDash();
+        inp.remove();
+      };
+      reader.readAsDataURL(file);
+    };
+    inp.click();
+    return;
+  }
   if(a==="inv-sds"){
     var ps = S.products.find(function(p){ return p.id===v; });
     if(!ps) return;
