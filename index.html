@@ -96,6 +96,10 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
   ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Parse any arrays that got stored as JSON strings
+  ["managers","techAccounts","trucks","cats","inspFields","inspections","products","orders","restockOrders"].forEach(function(k){
+    if(typeof S[k]==="string") try{ S[k]=JSON.parse(S[k]); }catch(e){ S[k]=[]; }
+  });
   if(!S.products||!S.products.length) S.products=JSON.parse(JSON.stringify(SEED));
   if(!S.managers||!S.managers.length) S.managers=[
     {id:"mgr1",name:"John Kluttz",email:"john.kluttz@fox-marketingservices.com",pin:"",tempPin:"1234",isTemp:true}
@@ -113,7 +117,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.7"; // Increment this with every update
+const APP_VERSION = "1.4.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5914,7 +5918,7 @@ input,textarea,select,button{font-family:inherit;}
         <div></div>
         <button class="pk" id="pk0">0</button>
         <button class="pk del" id="pkdel">&larr;</button>
-      </div> 
+      </div>
       <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:12px;width:100%;text-align:center;" id="back-to-email-btn">Use a different email</button>
     </div>
   </div>
