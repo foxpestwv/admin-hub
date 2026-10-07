@@ -5,7 +5,190 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0a1628">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <!-- Barcode Scanner -->
+  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFlM2E1ZiIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2Y5NzMxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RlA8L3RleHQ+PC9zdmc+">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fox Admin">
+<link rel="manifest" href="manifest.json">
+<title>Fox Pest Control Admin Hub</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a1628;color:#e2e8f0;font-family:'Segoe UI',sans-serif;min-height:100vh;font-size:15px;}
+input,textarea,select,button{font-family:inherit;}
+.btn{cursor:pointer;border:none;border-radius:8px;font-weight:600;transition:all .15s;padding:10px 18px;font-size:14px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.btn:active{transform:scale(.97);}
+.bp{background:#2563eb;color:#fff;} .bp:hover{background:#1d4ed8;}
+.bg{background:transparent;color:#94a3b8;border:1px solid #1e3a5f;} .bg:hover{border-color:#3b82f6;color:#e2e8f0;}
+.bs{background:#16a34a;color:#fff;} .bs:hover{background:#15803d;}
+.bd{background:#dc2626;color:#fff;padding:6px 12px;font-size:12px;} .bd:hover{background:#b91c1c;}
+.card{background:#0f1f38;border-radius:12px;border:1px solid #1e3a5f;padding:16px;}
+.inp{background:#0a1628;color:#e2e8f0;border:1px solid #1e3a5f;border-radius:8px;padding:9px 12px;font-size:14px;width:100%;outline:none;}
+.inp:focus{border-color:#3b82f6;}
+#hdr{background:#0a1628;border-bottom:1px solid #1e3a5f;padding:0 16px;position:sticky;top:0;z-index:50;}
+#hdr-in{max-width:760px;margin:0 auto;display:flex;align-items:center;height:52px;gap:8px;overflow:hidden;}
+#nav{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;} #nav::-webkit-scrollbar{display:none;}
+.nb{display:flex;align-items:center;gap:4px;padding:6px 9px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:#64748b;touch-action:manipulation;}
+.nb.on{background:#1e3a5f;color:#93c5fd;}
+.bdg{background:#ef4444;color:#fff;border-radius:50%;width:15px;height:15px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;}
+#wrap{max-width:760px;margin:0 auto;padding:20px 14px;}
+.pg{display:none;} .pg.on{display:block;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.sc{background:#0f1f38;border-radius:12px;border:1px solid #1e3a5f;padding:16px;}
+.al-o{background:#431407;border:1px solid #c2410c;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;cursor:pointer;}
+.al-a{background:#1c1100;border:1px solid #92400e;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;cursor:pointer;}
+.sbdg{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+.pb{height:3px;background:#0f1f38;border-radius:2px;margin-bottom:16px;}
+.pf{height:100%;background:#2563eb;border-radius:2px;transition:width .3s;}
+.skb{width:34px;height:34px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-weight:700;font-size:13px;background:#0a1628;color:#64748b;}
+.skb.on{color:#fff;}
+.fb{padding:5px 12px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:#64748b;}
+.fb.on{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd;}
+.stb{padding:6px 12px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#64748b;}
+.stb.on{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd;}
+#login{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;}
+.pd{width:14px;height:14px;border-radius:50%;background:#1e3a5f;transition:background .15s;display:inline-block;}
+.pd.on{background:#3b82f6;}
+.pk{background:#162235;color:#e2e8f0;border:1px solid #1e3a5f;border-radius:10px;padding:20px 0;font-size:24px;font-weight:600;cursor:pointer;width:100%;text-align:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;min-height:64px;display:flex;align-items:center;justify-content:center;}
+.pk:active{background:#1e3a5f;}
+.pk.del{background:#1e293b;color:#94a3b8;font-size:16px;}
+.tag-low{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#431407;color:#fb923c;}
+@media print{
+  body{background:#fff;color:#000;}
+  #hdr,#login,#app>div:not(#wrap){display:none!important;}
+  #wrap{padding:0;max-width:100%;}
+  .pg{display:none!important;}
+  #print-area{display:block!important;}
+  .no-print{display:none!important;}
+  .print-card{border:1px solid #ccc;border-radius:4px;padding:10px;margin-bottom:10px;break-inside:avoid;}
+  .print-header{border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:16px;}
+}
+#print-area{display:none;}
+#logo-login,#logo-app{background-image:url("data:image/png;base64,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");background-size:contain;background-repeat:no-repeat;background-position:center;}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div id="logo-login" style="height:80px;width:200px;margin-bottom:32px;"></div>
+  <div style="background:#0f1f38;border-radius:16px;padding:32px;width:100%;max-width:340px;border:1px solid #1e3a5f;">
+    <h2 style="text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;">Admin Hub</h2>
+    <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Fox Pest Control - Willamette Valley</p>
+
+    <!-- Step 1: Email -->
+    <div id="login-step-email">
+      <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Your Email</label>
+      <input type="email" id="login-email" class="inp" placeholder="yourname@fox-marketingservices.com" style="margin-bottom:12px;">
+      <div id="email-err" style="text-align:center;color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;"></div>
+      <button class="btn bp" id="email-next-btn" style="width:100%;padding:12px;font-size:15px;">Continue</button>
+    </div>
+
+    <!-- Step 2: Role Selection -->
+    <div id="login-step-role" style="display:none;">
+      <div id="login-role-email" style="text-align:center;color:#94a3b8;font-size:13px;margin-bottom:20px;"></div>
+      <p style="text-align:center;color:#e2e8f0;font-size:15px;font-weight:600;margin-bottom:16px;">How are you logging in today?</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn bp" id="role-admin-btn" style="padding:16px;font-size:15px;border-radius:10px;">Administrator</button>
+        <button class="btn bg" id="role-tech-btn" style="padding:16px;font-size:15px;border-radius:10px;">Technician</button>
+      </div>
+      <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:16px;width:100%;text-align:center;" id="back-from-role-btn">Use a different email</button>
+    </div>
+
+    <!-- Step 3: PIN -->
+    <div id="login-step-pin" style="display:none;">
+      <div id="login-email-display" style="text-align:center;color:#94a3b8;font-size:13px;margin-bottom:4px;"></div>
+      <div id="login-role-display" style="text-align:center;color:#3b82f6;font-size:12px;font-weight:600;margin-bottom:16px;text-transform:uppercase;letter-spacing:.05em;"></div>
+      <div style="display:flex;justify-content:center;gap:10px;margin-bottom:20px;" id="dots">
+        <span class="pd" id="d0"></span><span class="pd" id="d1"></span><span class="pd" id="d2"></span><span class="pd" id="d3"></span>
+      </div>
+      <div id="debug" style="text-align:center;color:#64748b;font-size:12px;margin-bottom:4px;"></div>
+      <div id="pin-err" style="text-align:center;color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;" id="pinpad">
+        <button class="pk" id="pk1">1</button>
+        <button class="pk" id="pk2">2</button>
+        <button class="pk" id="pk3">3</button>
+        <button class="pk" id="pk4">4</button>
+        <button class="pk" id="pk5">5</button>
+        <button class="pk" id="pk6">6</button>
+        <button class="pk" id="pk7">7</button>
+        <button class="pk" id="pk8">8</button>
+        <button class="pk" id="pk9">9</button>
+        <div></div>
+        <button class="pk" id="pk0">0</button>
+        <button class="pk del" id="pkdel">&larr;</button>
+      </div>
+      <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:12px;width:100%;text-align:center;" id="back-to-email-btn">Use a different email</button>
+    </div>
+  </div>
+  <p style="color:#334155;font-size:12px;margin-top:24px;">Fox Pest Control - Willamette Valley Branch</p>
+</div>
+
+<div id="app" style="display:none;">
+  <div id="hdr"><div id="hdr-in">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="logo-app" style="height:30px;width:80px;"></div>
+      <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
+      <span id="version-badge" style="font-size:10px;color:#475569;"></span>
+    </div>
+    <div id="nav"></div>
+    <button class="nb" id="logout-btn">Exit</button>
+  </div></div>
+  <!-- Barcode Scanner - floating popup -->
+  <div id="scanner-overlay" style="display:none;">
+    <div style="padding:10px 14px;background:#0a1628;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e3a5f;">
+      <div>
+        <div style="font-weight:700;font-size:15px;color:#e2e8f0;" id="scanner-title">Scan Barcode</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;" id="scanner-hint">Point at barcode</div>
+      </div>
+      <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕</button>
+    </div>
+    <div style="position:relative;height:240px;overflow:hidden;background:#000;">
+      <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;"></video>
+      <!-- Reticle corners - all inline styles -->
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:90px;pointer-events:none;">
+        <div style="position:absolute;top:0;left:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:3px 0 0 0;"></div>
+        <div style="position:absolute;top:0;right:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 3px 0 0;"></div>
+        <div style="position:absolute;bottom:0;left:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:0 0 0 3px;"></div>
+        <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 0 3px 0;"></div>
+        <div id="scanner-bar" style="position:absolute;left:0;right:0;height:2px;background:#f59e0b;top:0;"></div>
+      </div>
+    </div>
+    <div style="padding:10px 14px;background:#0a1628;">
+      <div id="scanner-result" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
+      <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">✏ Enter manually</button>
+    </div>
+  </div>
+
+  <div id="wrap">
+    <div id="pg-dashboard" class="pg"></div>
+    <div id="pg-inspect" class="pg"></div>
+    <div id="pg-inventory" class="pg"></div>
+    <div id="pg-orders" class="pg"></div>
+    <div id="pg-checkout" class="pg"></div>
+    <div id="pg-truckinv" class="pg"></div>
+    <div id="pg-restock" class="pg"></div>
+    <div id="pg-analytics" class="pg"></div>
+    <div id="pg-sign" class="pg"></div>
+    <div id="pg-settings" class="pg"></div>
+  </div>
+</div>
+<!-- Print Area (hidden until print) -->
+<div id="print-area"></div>
+
+
+<script>
+
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 // MGMT emails pulled dynamically from manager accounts
@@ -117,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.8"; // Increment this with every update
+const APP_VERSION = "1.4.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1667,7 +1850,11 @@ function renderDash(){
 
   var tilesHtml = tiles.map(function(t){
     var badgeHtml = t.badge>0 ? "<div style='position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;'>"+t.badge+"</div>" : "";
-    return "<div onclick="S.tab='"+t.tab+"';S.inspView='home';render();" style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;' onmouseenter="this.style.borderColor='"+t.accent+"'" onmouseleave="this.style.borderColor='"+t.accent+"33'">"
+    var tileDiv = document.createElement("div");
+    tileDiv.style.cssText = "position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;";
+    tileDiv.setAttribute("data-a","tab");
+    tileDiv.setAttribute("data-v",t.tab);
+    tileDiv.innerHTML =
       +"<div style='font-size:28px;'>"+t.icon+"</div>"
       +"<div style='font-size:12px;font-weight:600;color:#e2e8f0;text-align:center;line-height:1.2;'>"+t.label+"</div>"
       +badgeHtml
@@ -5790,195 +5977,30 @@ function tap(id, k){
   if(!el){ if(dbg) dbg.textContent = "Missing: "+id; return; }
   // onclick for desktop
   el.onclick = function(){ pinTap(k); };
-YPE html>
-<!-- Fox Admin Hub v2 -->
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<meta name="theme-color" content="#0a1628">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-  <!-- Barcode Scanner -->
-  <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFlM2E1ZiIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2Y5NzMxNiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RlA8L3RleHQ+PC9zdmc+">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Fox Admin">
-<link rel="manifest" href="manifest.json">
-<title>Fox Pest Control Admin Hub</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{background:#0a1628;color:#e2e8f0;font-family:'Segoe UI',sans-serif;min-height:100vh;font-size:15px;}
-input,textarea,select,button{font-family:inherit;}
-.btn{cursor:pointer;border:none;border-radius:8px;font-weight:600;transition:all .15s;padding:10px 18px;font-size:14px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
-.btn:active{transform:scale(.97);}
-.bp{background:#2563eb;color:#fff;} .bp:hover{background:#1d4ed8;}
-.bg{background:transparent;color:#94a3b8;border:1px solid #1e3a5f;} .bg:hover{border-color:#3b82f6;color:#e2e8f0;}
-.bs{background:#16a34a;color:#fff;} .bs:hover{background:#15803d;}
-.bd{background:#dc2626;color:#fff;padding:6px 12px;font-size:12px;} .bd:hover{background:#b91c1c;}
-.card{background:#0f1f38;border-radius:12px;border:1px solid #1e3a5f;padding:16px;}
-.inp{background:#0a1628;color:#e2e8f0;border:1px solid #1e3a5f;border-radius:8px;padding:9px 12px;font-size:14px;width:100%;outline:none;}
-.inp:focus{border-color:#3b82f6;}
-#hdr{background:#0a1628;border-bottom:1px solid #1e3a5f;padding:0 16px;position:sticky;top:0;z-index:50;}
-#hdr-in{max-width:760px;margin:0 auto;display:flex;align-items:center;height:52px;gap:8px;overflow:hidden;}
-#nav{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;} #nav::-webkit-scrollbar{display:none;}
-.nb{display:flex;align-items:center;gap:4px;padding:6px 9px;border-radius:7px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:#64748b;touch-action:manipulation;}
-.nb.on{background:#1e3a5f;color:#93c5fd;}
-.bdg{background:#ef4444;color:#fff;border-radius:50%;width:15px;height:15px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;}
-#wrap{max-width:760px;margin:0 auto;padding:20px 14px;}
-.pg{display:none;} .pg.on{display:block;}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
-.sc{background:#0f1f38;border-radius:12px;border:1px solid #1e3a5f;padding:16px;}
-.al-o{background:#431407;border:1px solid #c2410c;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;cursor:pointer;}
-.al-a{background:#1c1100;border:1px solid #92400e;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;cursor:pointer;}
-.sbdg{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
-.pb{height:3px;background:#0f1f38;border-radius:2px;margin-bottom:16px;}
-.pf{height:100%;background:#2563eb;border-radius:2px;transition:width .3s;}
-.skb{width:34px;height:34px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-weight:700;font-size:13px;background:#0a1628;color:#64748b;}
-.skb.on{color:#fff;}
-.fb{padding:5px 12px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:#64748b;}
-.fb.on{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd;}
-.stb{padding:6px 12px;border-radius:7px;border:1px solid #1e3a5f;cursor:pointer;font-size:13px;font-weight:500;background:transparent;color:#64748b;}
-.stb.on{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd;}
-#login{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;}
-.pd{width:14px;height:14px;border-radius:50%;background:#1e3a5f;transition:background .15s;display:inline-block;}
-.pd.on{background:#3b82f6;}
-.pk{background:#162235;color:#e2e8f0;border:1px solid #1e3a5f;border-radius:10px;padding:20px 0;font-size:24px;font-weight:600;cursor:pointer;width:100%;text-align:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;min-height:64px;display:flex;align-items:center;justify-content:center;}
-.pk:active{background:#1e3a5f;}
-.pk.del{background:#1e293b;color:#94a3b8;font-size:16px;}
-.tag-low{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#431407;color:#fb923c;}
-@media print{
-  body{background:#fff;color:#000;}
-  #hdr,#login,#app>div:not(#wrap){display:none!important;}
-  #wrap{padding:0;max-width:100%;}
-  .pg{display:none!important;}
-  #print-area{display:block!important;}
-  .no-print{display:none!important;}
-  .print-card{border:1px solid #ccc;border-radius:4px;padding:10px;margin-bottom:10px;break-inside:avoid;}
-  .print-header{border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:16px;}
+
 }
-#print-area{display:none;}
-#logo-login,#logo-app{background-image:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAABYlBMVEUOIjr////rIigAEjD///38//4NIzoADCwLIDkOIjsACCz//v////wAEy4AACbU2t8AGzV8hJDCx8yvs7iVoKsOIzcAHTeIlKAAACAAFjPw9fQAACjL0dcAACMAEzEAAB8AFS0AHjUAACwAIze0u8IAABtMWmYAGzkAEjQAESkSKD01Qk/wICbd4ucAHTPpIy/xIR4AJTRodH8fMUWdpqx4fopSX29odoUYKkWEjJwTKz8OIkGvuMM2SFYrPE0sO1KCjJJCUWNvcYdbITN0IjIxHC04S2TeKCbXKS/BJTORITRNIzOiJDAcLDklFiznJyB0LDazJTMnIjPM2NVXXXhYIzSGJipSFhvcTkx+IjVKHTQWHDEnABp/Dh64ECHaPkrktb3gop/lSUSnFBbea2rsZm713eH04tzzzMzxo6W1JS3hXlrhhoLskZj2urreJDj1AAqaGyPneoA0HzoAAABcZm3aALsiAAAAhGVYSWZNTQAqAAAACAAFARIAAwAAAAEAAQAAARoABQAAAAEAAABKARsABQAAAAEAAABSASgAAwAAAAEAAgAAh2kABAAAAAEAAABaAAAAAAAAAEgAAAABAAAASAAAAAEAA6ABAAMAAAABAAEAAKACAAQAAAABAAAA4aADAAQAAAABAAAA4QAAAADrpavEAAAACXBIWXMAAAsTAAALEwEAmpwYAAAQKklEQVR4Ae1bC1cbR5ZWIXV1t17datQtq5GEhAQCjGQQQtiAZJj4ATYeZyab2STeSTKO13bGs85md/z/96uqfkggsMBwzpw9t46Dqrvr9X33Vt26tyqJBCVigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYmAWBgy7XBMpeS7J17VkLmdMtCMqnCsbvEAztbIdF7dVu7XyZBNxAZkrB7XLZ97fwCPndtpb6e0ULk8vgvFxzk1Pd1d6lxXf6a2UkwaK8kTCHgQld++3XTyfTyhmlD8FpXY4n17qfL1Z3+yn7/Y77LPpQVI1aCZ4ejT/+QpWaW/NFQjTUVnLaO+bU4YFTPmDaABDb1qZKdVmfWV3ixmWSqU0lVIp0VUm6k/k8SrFSrpqkdvdebzKZGQZjWkoGtaVOVlffPULaw0grPW0bIplMqks+4a3pw2L87UDlkUjGAebr3N3WqFrv7NHlkIEkEgC67SUkQjR9375LioIGmQx5CaLB68FTMZadciD6wUN/EnmHLvhnhm/aZr71T6qaSAlyw7SRuJGtdTejnRIDeqCv5pCyBPth50JCV9QXr7WWEvH7DXSJUhIiDzLWnkAmBAHEOZLWjZoxzmzok0Uvc6DwS0pj8vGGQxWaqlpJGesIGulWH/N3OdmvsiyAiEU9WDVOIOQrx1qam4wBoBT16LrYBN1OF+Aeoyhi5RP9hion1BEzDaFUMdYVY2UBlliaEhCYwOtDTNBoyltpb0PpUsX8R3vMsB8Bx2PjZjrOwHADKsY7YlvY8Wul+XdkWBWJTnS8GHKb0mspfbQj0tnfT+T8acksWIoGhirpAUcjrVSvUmxoi6NSDjktV2xVslk7Y1Z0fD7F/1ySCROWse6JFWOPPQVVUhlNecPo737e3t76+swCpyvh4nzYaGjtBKC0wZi1K6Ra0Hg6CyT0kqLZjMatz7wA6VgnZF9w3aCc29smTk4smu5C1N9VQzUyEUV/N10/atHXz1u2g3PMyaTrdv9YDmCVgor45pe3cFCIxBmtcJSM9BTM/nEzyq7w/xRe1x7Iw6+JGOvRAqSKVRtY5LB+Ak5taHx7solEaLJDpa+fzq3sTF3fPLs+astD/sQM67AG3eiCW4lE6ZYPhu5CstmlfbuLMHIY+S8fhRoPaznMPclWKbXze0EOgqm8/H4phcWb8s9JRrY5bVHcxtzgLixuTl3fPpVo+2J/UuYeGMtkHaqs244zX188F4IQwpNTTG/p7Y79rATmgl/5RY2pIlcKUToNxvh4C77rRUkQi2rHf3x+CUQinRPivIvz7d41IbJXdhAtbT4D5uPmwKhaa9jegqEWJpX1kCIMMaqEPMHuUkjctkwZv+WDBGy+fxM7ScLkhIt1bGlCIUYkTaELOdOnj1u8n1oH8bOXe8IM0BMgr797Gtl5Ex71IFFlBD9laTpbUe2NdPTb3ivpliIER7WxlTsYoqAUM3cSv5ZIEEJUcLcmHv6p+//3PU8zEg4CyM/i7Lf/Fv693vfeluqzfLdcNql/KGerIQqxHr6LJPk4oFd9GUMYe4qCDVWuXO6GWELMmJavrx38pfnrxpew2yMOh1r/snCvx9/91QIViaeexLaU6wsTgSwsHA7ABNjCGsJN0rCumGtQ1I58VctlLEMq+dkCJwvhbZu3Ds+/f6HV83GaE//j7/++NPPfztF9QBhIrniy6mMLQH2BUohsF26JYBjCAtVPR0lXSU8Bzn8pPUupJwrqJUhVcmfntXSMZFubLz+7cdffvnl5Lc3H33tPx+ZofkDzuRKvI2SMsyyInbjt5RiGXacz6Yh9jQhQnY5wrm5N2/ffvz55/fv4PK9O/kzb8Yy4nrvDMT+wq0BHJNhMCMu+xH70jGE07Q0FuPL1++FN5yCXfn1tGFsCWuhkoud9kQ389imhh9v+pdH9nCiy6kPyrcAQpWwlmKlgYmYlrAJ2Jz77q10ejPaT18JR388VQvBPk06jNXbk2DiSxAuPP/7vc3pAO99+Md/fXwLEAKH9vHHM5tBYF2OVlEYVrGhv610RYQTWrrUbD4+fXrOYkiRvnkHQQNdCv9lv/s69iMCIPpuNBPhEd/iLEzweKVRupdKhY5MnAvUUkWioKWBxa8295tNyHEDFuKspm4e//oOcSWWQWziby db8SojEGIe9gIjIZqW7uJtiRArd7RrCxGGjivMVbBhDBAy6ePH9jCPUZlm8+vfNjZfhhvUCOnG5tMPv77X4NC/O3n+ZDQx0XhuEO5rgqZv0VicQxihmZZ5AD9vEuHWK950vwfGCFqQwT71v4/fpzKa/9OzLWcSYfkoUlHVS4odpm9NiLEMrfnPphGWhEmEJgKDJqbjvU34FxNp4+UbYQr9N78v9/2HsQw5r8EhlBBF6Efm4Pnv6DcbnYkJixEeLo7taaLNzURGrHmTCFVDhvftydxmaDjuCY/x6RuoaEZ7++HvSwXmb8cIXTvcemsp/yhcUZnWS09O1niIX5iLEZZWZ4rCCoRihcSeJurabXqNR8ehccSG7X8+vmMZWMOPr39fQJRpHKE3CqMgWf9I74pYNFImqw2wUN9GihEers7qH8p1MGXFEQexSW82gVGtqRu/fffhzYfX/3j/4fjR4h8QJR1DaO8FmGAnB2uuF0ajIdBBcGZwwzBjhA/qMyGMfHx/6E0I3Ww0vv2TjNsApwhsvH761+XmvAg8hQgR92orgLBJGhApH1+Jkfkrs/lvV2TgygjLu2pxgD9QNSc5MZuNx1+fnkCUcJ9+PH30x/Ku0kjEaeSweLcbeLxYZHZUWAjhV2GBhd77w6mHNldEdLZ4vC+dUYb2MIi1IdCSbk4sgNKZbG69+t8ffngM53Ch8A3Om4SArJrq1sg5gYlNsUK4spTDCLPGOndvOhyMfmOEhZniQDjH7IQbAX+w1I18ZmSa+Nd0+RZSs1GrFbPCtRB7lnmxiPCEoeMADS80cHS4GHGdW8G+AP9QsLM3qflRmS/IxAgPyxPT6qI2zXQ/mDcY1sHR6oQ5iR/2dy2gCczeJyEansABmowIw0z2l8c6G3MXLfesF3LROGZ+f2WEvHEkxw2YgndtypmFeKWJ0G9AhSU3LIaIEMuNIPbaVSy/8RjH9uEVftOOBhAGA55NSxEnhK6pHauoGLl5AZrwB+fDspDANCgnuMmrOEEU8W78ay2gmTGEOEANmsTh2trNHq6Nz8PZrAWi+zjqkKMP0Vz2i4LzEKFr3Ckh7CRKZplT9yYX4URi4UF4jsNauZtV1NhaFGZFmCgjWBZq4GXoFJ5KF6aCVw8x+1Sq5Dw3CJ7GipoP4+NgpDom3rjEdXPXQZhYBcRZk5MQRk7fFVcVJC3WXgNHOGfHG9/EyLD+TUY1+FopuEXBCrOtpXJo5fuOvJ4R1A3uYUz+iKsXzC9J/73cExcV4BBnGI5Ap4rIWBDTWzbB+riLMbXQWV5meY7X0hlXGtWotzpofV6OneJIXFMYv0/Tud8eX2PGhmjorUgv7t7gVDRGpaJMpe0r0Wa29RefCqrq9L+lnRWuBzd/7F5fFSps2xcAxApW7wUtHbrhGcAYA9fM8oSXVFHtpDgvulIy7FwcEJ+Sy9mxV2gH35PGxTyaiXpQCl7LVQdzpZH/vyuM8/cIkzyLj5/GtheTX8IihhfXxbuJR/Ul+M7VKX9QTzyETYhfY0zak1/GS10vzznOpr1k3jOlinLDw50D0RQ32/nRsJaUD6ZhI7Un4Ziml28O1xeCyxOuaaS94XY1WClhDqSfAGjIcqPZtb2GZ4j5ZXpeo9HIr+KEUfbk5deHe3nVDCZgVxa6HpxptXIHYhfZGnnozaw5yGdawtdu2kcWFvtCXYwvV5R3ZjK9etSEmTDLIyynGWdYliN129vzeLQGyvUv72pO2TW2O444F7QHohc/4wgf1+6JfGcnOKzIDR3c/UMzKJdwV4v+UePcfiDq9uoZM91i/dI8s9bQtbFqZfulYg/kuwm3o5UOfSauwvDGpyIwHhblfRrVicm78OucogPXXNLvvejgESB3JMQazl5wL3FbsxZFyw9LpQ466omi8KGtIi579qS429jIt/otLbMiZO7CcxnYZ/d0V8cV1+DJFitXFx0m3GuzZvnltC7IdNt3mfPP/KAoELrcS+f8zj/XxPlhkHBbssJ6+bV8Qavo4lgJ1uxwIX3nrp9pC81GsINltu3tTEW68l56uaXt6dKS4zZHf7G6knLSQmd1i+3m9YVPmlVHPYFw5UY9fRcybOtVIMSqIhDexxE8T5j7xgtf663n812FyFj3O4vjDr3rDRFtg34mq/JOF87sO3dwIxj7y52ca4qgY993lrb9SlW1gI6CmCIQFpcXBqwFhKZ9hGMLlMAQpLroQDi2wKm6X/JXIOz3HVYRh8wmLh1ihoieYJt2fOa3VuqqdYEQ1+3ixO1PrC+xqXcYaUsUqPdwPVQhLBTYDvetoNoYwl1WOSx2gAgE1XaZvC2H/bFQb34rCDHr+y8aAULsKobQFqhjcr3nIOInZgcm0jSE80tiitmyBETqiMBEDgLSFcLDZcsf+pXzCHvgkXUQWUN1TMqiWNlwW24X94VuHiEHtSa2JtLrNOuWb+s5oSS4DrN9P7m4I5xVkc4hdD2ope4lPHMwEOuwsdfx97ouvzMvZCO19DA91KzMOEJ1nUiA2st0GvK+tzHSrFyXG2lLe4KOBcJB+7zrIQdxrT9CS9elyUJ1gXCtWhVhI9N46FvV5U9QOdnueYQmxnLQXey22IEMc0LNnPX8wiGzcIdZBv8fJMWV0nEtVZNaIFwuspK6XoKIwXy6muxjWqKaQHi0vHjx5lWO5ip/hAzXjeDCHVYaZlWsImJ/ZiI3zzqO5g8v0FLcQgE4yIg5KnjE8308+swSxzdA+ADzy6yiwVhLH0YID5a4z4Zd0a/RcGBFNeYkoQkSoeVUdi9yQK6CTZXl5cMKD8+gzXZfXMcoivmQSLQLjjV/FEQ6E7x1IKZLlDCHGmu9VsXZsXEpEa9x7PnpoOI8cJUq2ruVXdu1jxx58xLfayVnW2AQ5r9SqNV7lQdiN4HbfOUdx0Iz8t4lLxcwgkrvJu8Jl6VSia6QaiIcGFwQNJK4S6MkiC+GPuXgpJxeTcf/F4xZTif1mlBRJBMXTMXfdEhRoqyHTHo6upDfZVEjl66lo9vrZTGEG7UXspPoj2Q1eprIKAFMvDrzADt65o1Q94vThd8u/HBxW/SFGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBggBogBYoAYIAaIAWKAGCAGiAFigBj4V2Hg/wAe8H48PZyewwAAAABJRU5ErkJggg==");background-size:contain;background-repeat:no-repeat;background-position:center;}
-</style>
-</head>
-<body>
+tap("pk1","1"); tap("pk2","2"); tap("pk3","3");
+tap("pk4","4"); tap("pk5","5"); tap("pk6","6");
+tap("pk7","7"); tap("pk8","8"); tap("pk9","9");
+tap("pk0","0"); tap("pkdel","del");
 
-<div id="login">
-  <div id="logo-login" style="height:80px;width:200px;margin-bottom:32px;"></div>
-  <div style="background:#0f1f38;border-radius:16px;padding:32px;width:100%;max-width:340px;border:1px solid #1e3a5f;">
-    <h2 style="text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;">Admin Hub</h2>
-    <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Fox Pest Control - Willamette Valley</p>
+var lo = document.getElementById("logout-btn");
+if(lo) lo.onclick = function(){ logout(); };
 
-    <!-- Step 1: Email -->
-    <div id="login-step-email">
-      <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Your Email</label>
-      <input type="email" id="login-email" class="inp" placeholder="yourname@fox-marketingservices.com" style="margin-bottom:12px;">
-      <div id="email-err" style="text-align:center;color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;"></div>
-      <button class="btn bp" id="email-next-btn" style="width:100%;padding:12px;font-size:15px;">Continue</button>
-    </div>
+if(dbg) dbg.textContent = "Ready - tap a number";
 
-    <!-- Step 2: Role Selection -->
-    <div id="login-step-role" style="display:none;">
-      <div id="login-role-email" style="text-align:center;color:#94a3b8;font-size:13px;margin-bottom:20px;"></div>
-      <p style="text-align:center;color:#e2e8f0;font-size:15px;font-weight:600;margin-bottom:16px;">How are you logging in today?</p>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <button class="btn bp" id="role-admin-btn" style="padding:16px;font-size:15px;border-radius:10px;">Administrator</button>
-        <button class="btn bg" id="role-tech-btn" style="padding:16px;font-size:15px;border-radius:10px;">Technician</button>
-      </div>
-      <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:16px;width:100%;text-align:center;" id="back-from-role-btn">Use a different email</button>
-    </div>
-
-    <!-- Step 3: PIN -->
-    <div id="login-step-pin" style="display:none;">
-      <div id="login-email-display" style="text-align:center;color:#94a3b8;font-size:13px;margin-bottom:4px;"></div>
-      <div id="login-role-display" style="text-align:center;color:#3b82f6;font-size:12px;font-weight:600;margin-bottom:16px;text-transform:uppercase;letter-spacing:.05em;"></div>
-      <div style="display:flex;justify-content:center;gap:10px;margin-bottom:20px;" id="dots">
-        <span class="pd" id="d0"></span><span class="pd" id="d1"></span><span class="pd" id="d2"></span><span class="pd" id="d3"></span>
-      </div>
-      <div id="debug" style="text-align:center;color:#64748b;font-size:12px;margin-bottom:4px;"></div>
-      <div id="pin-err" style="text-align:center;color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;" id="pinpad">
-        <button class="pk" id="pk1">1</button>
-        <button class="pk" id="pk2">2</button>
-        <button class="pk" id="pk3">3</button>
-        <button class="pk" id="pk4">4</button>
-        <button class="pk" id="pk5">5</button>
-        <button class="pk" id="pk6">6</button>
-        <button class="pk" id="pk7">7</button>
-        <button class="pk" id="pk8">8</button>
-        <button class="pk" id="pk9">9</button>
-        <div></div>
-        <button class="pk" id="pk0">0</button>
-        <button class="pk del" id="pkdel">&larr;</button>
-      </div>
-      <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:12px;width:100%;text-align:center;" id="back-to-email-btn">Use a different email</button>
-    </div>
-  </div>
-  <p style="color:#334155;font-size:12px;margin-top:24px;">Fox Pest Control - Willamette Valley Branch</p>
-</div>
-
-<div id="app" style="display:none;">
-  <div id="hdr"><div id="hdr-in">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div id="logo-app" style="height:30px;width:80px;"></div>
-      <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
-      <span id="version-badge" style="font-size:10px;color:#475569;"></span>
-    </div>
-    <div id="nav"></div>
-    <button class="nb" id="logout-btn">Exit</button>
-  </div></div>
-  <!-- Barcode Scanner - floating popup -->
-  <div id="scanner-overlay" style="display:none;">
-    <div style="padding:10px 14px;background:#0a1628;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e3a5f;">
-      <div>
-        <div style="font-weight:700;font-size:15px;color:#e2e8f0;" id="scanner-title">Scan Barcode</div>
-        <div style="font-size:11px;color:#64748b;margin-top:2px;" id="scanner-hint">Point at barcode</div>
-      </div>
-      <button onclick="stopScanner()" style="background:#ef4444;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">✕</button>
-    </div>
-    <div style="position:relative;height:240px;overflow:hidden;background:#000;">
-      <video id="scanner-video" playsinline autoplay muted webkit-playsinline x5-playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;"></video>
-      <!-- Reticle corners - all inline styles -->
-      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:220px;height:90px;pointer-events:none;">
-        <div style="position:absolute;top:0;left:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:3px 0 0 0;"></div>
-        <div style="position:absolute;top:0;right:0;width:24px;height:24px;border-top:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 3px 0 0;"></div>
-        <div style="position:absolute;bottom:0;left:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:0 0 0 3px;"></div>
-        <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-bottom:3px solid #f59e0b;border-right:3px solid #f59e0b;border-radius:0 0 3px 0;"></div>
-        <div id="scanner-bar" style="position:absolute;left:0;right:0;height:2px;background:#f59e0b;top:0;"></div>
-      </div>
-    </div>
-    <div style="padding:10px 14px;background:#0a1628;">
-      <div id="scanner-result" style="font-size:12px;color:#94a3b8;text-align:center;margin-bottom:10px;">Ready to scan...</div>
-      <button onclick="scannerManualOverride()" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;">✏ Enter manually</button>
-    </div>
-  </div>
-
-  <div id="wrap">
-    <div id="pg-dashboard" class="pg"></div>
-    <div id="pg-inspect" class="pg"></div>
-    <div id="pg-inventory" class="pg"></div>
-    <div id="pg-orders" class="pg"></div>
-    <div id="pg-checkout" class="pg"></div>
-    <div id="pg-truckinv" class="pg"></div>
-    <div id="pg-restock" class="pg"></div>
-    <div id="pg-analytics" class="pg"></div>
-    <div id="pg-sign" class="pg"></div>
-    <div id="pg-settings" class="pg"></div>
-  </div>
-</div>
-<!-- Print Area (hidden until print) -->
-<div id="print-area"></div>
-
-
-<script>
+// Global click handler
+function globalHandler(e){
+  var t = e.target;
+  while(t && t !== document.body){
+    if(t.getAttribute && t.getAttribute("data-a")){
+      handleAction(t.getAttribute("data-a"), t.getAttribute("data-v")||"", t, e);
+      return;
+    }
+    t = t.parentElement;
+  }
+}
+document.body.addEventListener("click", globalHandler);
 </script>
 </body>
 </html>
