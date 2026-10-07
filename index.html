@@ -293,7 +293,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.4.0"; // Increment this with every update
+const APP_VERSION = "1.4.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -6125,12 +6125,10 @@ if(emailNextBtn){
 var backBtn = document.getElementById("back-to-email-btn");
 if(backBtn){
   backBtn.onclick = function(){ showEmailStep(); };
-  backBtn.addEventListener("touchend", function(e){ e.preventDefault(); showEmailStep(); }, {passive:false});
 }
 var backFromRoleBtn = document.getElementById("back-from-role-btn");
 if(backFromRoleBtn){
   backFromRoleBtn.onclick = function(){ showEmailStep(); };
-  backFromRoleBtn.addEventListener("touchend", function(e){ e.preventDefault(); showEmailStep(); }, {passive:false});
 }
 // Role selection buttons
 var roleAdminBtn = document.getElementById("role-admin-btn");
@@ -6184,17 +6182,9 @@ function globalHandler(e){
   }
 }
 document.body.onclick = globalHandler;
-document.body.addEventListener("touchend", globalHandler, {passive:false});
+document.body.addEventListener("click", globalHandler);
 
-// Prevent accidental clicks during scroll
-var _touchStartY = 0;
-var _touchStartX = 0;
-var _touchStartTime = 0;
-document.body.addEventListener("touchstart", function(e){
-  _touchStartY = e.touches[0].clientY;
-  _touchStartX = e.touches[0].clientX;
-  _touchStartTime = Date.now();
-}, {passive:true});
+
 </script>
 </body>
 </html>
