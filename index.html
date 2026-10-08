@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.6"; // Increment this with every update
+const APP_VERSION = "1.7.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3068,7 +3068,17 @@ async function onBarcodeScanned(code){
       var fp2 = await gs("getProductsServer", null);
       if(fp2&&fp2.products) { S.products=fp2.products; lsSet("hub:products",S.products); }
     } catch(e){}
-    var matchedProd = S.products.find(function(p){ return p.upc && p.upc.trim()===code.trim(); });
+    // Normalize UPC for comparison - strip whitespace and leading zeros
+    function normalizeUpc(u){ return String(u||"").trim().replace(/^0+/,""); }
+    var codeNorm = normalizeUpc(code);
+    var matchedProd = S.products.find(function(p){
+      return p.upc && (
+        p.upc.trim()===code.trim() ||           // exact match
+        normalizeUpc(p.upc)===codeNorm ||        // leading-zero insensitive
+        p.upc.trim()===codeNorm ||               // stored without zeros
+        normalizeUpc(p.upc)===code.trim()        // scanned without zeros
+      );
+    });
     if(matchedProd){
       document.getElementById("scanner-result").textContent = "✓ Found: "+matchedProd.name;
       document.getElementById("scanner-result").style.color = "#22c55e";
@@ -3157,9 +3167,9 @@ function showProductLookup(productId){
     +"</div>"
     +(prod.reorderNote?"<div style='background:#0a1628;padding:10px;border-radius:8px;font-size:12px;color:#94a3b8;margin-bottom:14px;'>"+esc(prod.reorderNote)+"</div>":"")
     +(prod.upc?"<div style='font-size:11px;color:#475569;margin-bottom:8px;'>UPC: "+esc(prod.upc)+"</div>":"")
-    +(prod.sdsUrl||prod.labelUrl?"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
-      +(prod.sdsUrl?"<a href='"+esc(prod.sdsUrl)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F4C4; SDS Sheet</a>":"")
-      +(prod.labelUrl?"<a href='"+esc(prod.labelUrl)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F3F7; Label</a>":"")
+    +(prod.sdsUrl||prod.labelUrl||prod.SDS||prod.Label?"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
+      +((prod.sdsUrl||prod.SDS)?"<a href='"+esc(prod.sdsUrl||prod.SDS)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F4C4; SDS Sheet</a>":"")
+      +((prod.labelUrl||prod.Label)?"<a href='"+esc(prod.labelUrl||prod.Label)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F3F7; Label</a>":"")
       +"</div>":"")
     +"<div style='display:flex;gap:8px;'>"
     +"<button id='lookup-adjust' style='flex:1;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;'>Adjust Stock</button>"
