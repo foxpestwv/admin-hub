@@ -142,12 +142,12 @@ input,textarea,select,button{font-family:inherit;}
       <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <button id="hamburger-btn" onclick="toggleDrawer()" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
+      <button id="hamburger-btn" data-a="toggle-drawer" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
     </div>
   </div></div>
 
   <!-- Slide-out drawer -->
-  <div id="drawer-backdrop" onclick="closeDrawer()"></div>
+  <div id="drawer-backdrop" data-a="close-drawer"></div>
   <div id="drawer">
     <div style="padding:16px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;gap:10px;">
       <div id="drawer-logo" style="height:28px;width:70px;"></div>
@@ -314,7 +314,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.2"; // Increment this with every update
+const APP_VERSION = "1.6.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1402,6 +1402,8 @@ function handleAction(a,v,el,e){
   }
   if(a==="inv-view") { S.invView=v; render(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
+  if(a==="toggle-drawer"){ toggleDrawer(); return; }
+  if(a==="close-drawer"){ closeDrawer(); return; }
   if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
   if(a==="open-profile-photo"){
     var inp = document.createElement("input");
