@@ -310,7 +310,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.3"; // Increment this with every update
+const APP_VERSION = "1.7.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -632,10 +632,14 @@ async function gs(fn, data){
         await fbSet("pendingOrders", poId, orderDoc);
         return {ok:true, id:poId};
       }
-      case "writeToOrderSheet": {
-        var ohId = "oh_"+Date.now();
-        await fbSet("orderHistory", ohId, Object.assign({}, data, {id:ohId, date:new Date().toISOString()}));
-        return {ok:true, id:ohId};
+      case "writeToOrderSheet":
+      case "writeToOrderSheetServer": {
+        // Call Apps Script to write quantities to order spreadsheet
+        var bridgeResp = await fetch(EMAIL_BRIDGE, {
+          method:"POST", headers:{"Content-Type":"text/plain"},
+          body: JSON.stringify({action:"writeToOrderSheet", items:data.items||data})
+        }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
+        return bridgeResp;
       }
       case "addOrderHistory": {
         var ohId2 = "oh_"+Date.now();
