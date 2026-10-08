@@ -310,7 +310,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.2"; // Increment this with every update
+const APP_VERSION = "1.7.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -581,8 +581,26 @@ async function gs(fn, data){
       }
       case "getAdjustmentLog": {
         await initFirebase();
-        var logSnap = await _db.collection("adjustmentLog").orderBy("date","desc").limit(500).get();
-        return {log: logSnap.docs.map(function(d){ return d.data(); })};
+        var logSnap = await _db.collection("adjustmentLog").get();
+        var logDocs = logSnap.docs.map(function(d){ return d.data(); });
+        // Sort by date descending in memory
+        logDocs.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+        if(logDocs.length > 500) logDocs = logDocs.slice(0,500);
+        // Convert Firebase doc format to array format analytics expects
+        // [date, product, unit, qty_before, qty_after, change, tech, reason]
+        var logRows = logDocs.map(function(doc){
+          return [
+            doc.date||"",
+            doc.product||doc.name||"",
+            doc.unit||"",
+            doc.qtyBefore||0,
+            doc.qtyAfter||0,
+            doc.change||doc.qty||0,
+            doc.tech||"",
+            doc.reason||doc.note||""
+          ];
+        });
+        return {log: logRows};
       }
 
       // ── CHECKOUT ─────────────────────────────────────────────────────────────
@@ -626,13 +644,26 @@ async function gs(fn, data){
       }
       case "getOrderHistory": {
         await initFirebase();
-        var ohSnap = await _db.collection("orderHistory").orderBy("date","desc").get();
-        var ohData = ohSnap.docs.map(function(d){
-          var rec = d.data();
-          if(typeof rec.items==="string") try{ rec.items=JSON.parse(rec.items); }catch(e){ rec.items=[]; }
-          return rec;
+        var ohSnap = await _db.collection("orderHistory").get();
+        var ohDocs = ohSnap.docs.map(function(d){ return d.data(); });
+        ohDocs.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+        // Convert to array format analytics expects: [date, orderId, tech, product, qty, unit]
+        var ohRows = [];
+        ohDocs.forEach(function(doc){
+          var items = doc.items;
+          if(typeof items==="string") try{ items=JSON.parse(items); }catch(e){ items=[]; }
+          (items||[]).forEach(function(item){
+            ohRows.push([
+              doc.date||"",
+              doc.id||"",
+              doc.tech||doc.requestedBy||"",
+              item.name||item.product||"",
+              item.qty||item.approvedQty||0,
+              item.unit||""
+            ]);
+          });
         });
-        return {orders: ohData};
+        return {orders: ohRows};
       }
       case "updateOrderStatus": {
         var col2 = data.collection||"pendingOrders";
