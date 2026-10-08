@@ -138,12 +138,26 @@ input,textarea,select,button{font-family:inherit;}
   <div id="hdr"><div id="hdr-in">
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="logo-app" style="height:30px;width:80px;"></div>
-      <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
       <span id="version-badge" style="font-size:10px;color:#475569;"></span>
+      <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
     </div>
-    <div id="nav"></div>
-    <button class="nb" id="logout-btn">Exit</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button id="hamburger-btn" onclick="toggleDrawer()" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
+    </div>
   </div></div>
+
+  <!-- Slide-out drawer -->
+  <div id="drawer-backdrop" onclick="closeDrawer()"></div>
+  <div id="drawer">
+    <div style="padding:16px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;gap:10px;">
+      <div id="drawer-logo" style="height:28px;width:70px;"></div>
+      <span style="font-size:11px;color:#475569;" id="drawer-version"></span>
+    </div>
+    <div id="drawer-nav"></div>
+    <div style="padding:16px 20px;margin-top:8px;border-top:1px solid #1e3a5f;">
+      <button onclick="logout();closeDrawer();" style="width:100%;background:#1e3a5f;color:#e2e8f0;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;touch-action:manipulation;">Exit / Logout</button>
+    </div>
+  </div>
   <!-- Barcode Scanner - floating popup -->
   <div id="scanner-overlay" style="display:none;">
     <div style="padding:10px 14px;background:#0a1628;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e3a5f;">
@@ -300,7 +314,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.1"; // Increment this with every update
+const APP_VERSION = "1.6.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1780,9 +1794,17 @@ function render(){
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
   const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
-  document.getElementById("nav").innerHTML=tabs.map(t=>`<button class="nb${S.tab===t.id?" on":""}" data-a="tab" data-v="${t.id}">${t.l}${t.id==="orders"&&pending>0?'<span class="bdg">'+pending+'</span>':""}${t.id==="sign"&&pendingSign>0?'<span class="bdg">'+pendingSign+'</span>':""}</button>`).join("")
-    + '<button class="nb" data-a="quick-scan" title="Scan product" style="font-size:18px;opacity:.8;">&#x1F4F7;</button>'
-    + '<button class="nb" data-a="check-update" title="Check for updates v'+APP_VERSION+'" style="font-size:18px;opacity:.6;">&#x2B06;</button>';
+  // Update version badge in header
+  var vb = document.getElementById("version-badge");
+  if(vb) vb.textContent = "v"+APP_VERSION;
+  // Show quick action buttons in header area via hamburger
+  var hb = document.getElementById("hamburger-btn");
+  if(hb){
+    var totalBadge = pending + pendingSign;
+    hb.innerHTML = totalBadge > 0
+      ? "☰ <span style='background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;'>"+totalBadge+"</span>"
+      : "☰";
+  }
   // Show version in header
   var vbadge = document.getElementById("version-badge");
   if(vbadge) vbadge.textContent = "v"+APP_VERSION;
@@ -2955,6 +2977,55 @@ function showProductLookup(productId){
 }
 
 // Also handle lookup mode in onBarcodeScanned
+// ─── Drawer Menu ─────────────────────────────────────────────────────────────
+function toggleDrawer(){
+  var drawer = document.getElementById("drawer");
+  var backdrop = document.getElementById("drawer-backdrop");
+  if(drawer.classList.contains("open")){
+    closeDrawer();
+  } else {
+    renderDrawerNav();
+    drawer.classList.add("open");
+    backdrop.style.display = "block";
+  }
+}
+
+function closeDrawer(){
+  var drawer = document.getElementById("drawer");
+  var backdrop = document.getElementById("drawer-backdrop");
+  drawer.classList.remove("open");
+  backdrop.style.display = "none";
+}
+
+function renderDrawerNav(){
+  var vbadge = document.getElementById("drawer-version");
+  if(vbadge) vbadge.textContent = "v"+APP_VERSION;
+
+  var tabs = S.role==="manager" ? mgrTabs : techTabs;
+  var pending = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
+  var pendSign = S.role==="manager" ? 0 : (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===(S.currentTech||S.managerName); }).length;
+
+  var icons = {
+    dashboard:"🏠", inspect:"🚛", inventory:"📦", orders:"🛒",
+    checkout:"🛍", truckinv:"🚐", restock:"🔄", analytics:"📊",
+    sign:"📝", settings:"⚙️"
+  };
+
+  var nav = document.getElementById("drawer-nav");
+  if(!nav) return;
+  nav.innerHTML = tabs.map(function(t){
+    var badge = (t.id==="orders"&&pending>0) ? pending : (t.id==="sign"&&pendSign>0) ? pendSign : 0;
+    var isActive = S.tab===t.id;
+    var div = document.createElement("div");
+    div.className = "drawer-item" + (isActive?" active":"");
+    div.innerHTML = "<span style='font-size:18px;'>"+(icons[t.id]||"•")+"</span>"
+      +"<span>"+t.l+"</span>"
+      +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"");
+    div.onclick = (function(tabId){ return function(){ S.tab=tabId; S.inspView="home"; S.invView="list"; render(); closeDrawer(); }; })(t.id);
+    return div.outerHTML;
+  }).join("");
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 function renderSettings(){
   const pg = document.getElementById("pg-settings");
