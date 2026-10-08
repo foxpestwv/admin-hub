@@ -149,9 +149,9 @@ input,textarea,select,button{font-family:inherit;}
   <!-- Slide-out drawer -->
   <div id="drawer-backdrop" data-a="close-drawer"></div>
   <div id="drawer">
-    <div style="padding:16px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;gap:10px;">
-      <div id="drawer-logo" style="height:28px;width:70px;"></div>
-      <span style="font-size:11px;color:#475569;" id="drawer-version"></span>
+    <div style="padding:16px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-weight:700;font-size:15px;color:#f59e0b;">Fox Pest Admin Hub</span>
+      <button data-a="close-drawer" style="background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;padding:0;touch-action:manipulation;">✕</button>
     </div>
     <div id="drawer-nav"></div>
     <div style="padding:16px 20px;margin-top:8px;border-top:1px solid #1e3a5f;">
@@ -314,7 +314,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.3"; // Increment this with every update
+const APP_VERSION = "1.6.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2988,7 +2988,7 @@ function toggleDrawer(){
   } else {
     renderDrawerNav();
     drawer.classList.add("open");
-    backdrop.style.display = "block";
+    backdrop.classList.add("open");
   }
 }
 
@@ -2996,13 +2996,10 @@ function closeDrawer(){
   var drawer = document.getElementById("drawer");
   var backdrop = document.getElementById("drawer-backdrop");
   drawer.classList.remove("open");
-  backdrop.style.display = "none";
+  backdrop.classList.remove("open");
 }
 
 function renderDrawerNav(){
-  var vbadge = document.getElementById("drawer-version");
-  if(vbadge) vbadge.textContent = "v"+APP_VERSION;
-
   var tabs = S.role==="manager" ? mgrTabs : techTabs;
   var pending = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
   var pendSign = S.role==="manager" ? 0 : (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===(S.currentTech||S.managerName); }).length;
