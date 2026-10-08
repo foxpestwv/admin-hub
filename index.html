@@ -147,11 +147,11 @@ input,textarea,select,button{font-family:inherit;}
   </div></div>
 
   <!-- Slide-out drawer -->
-  <div id="drawer-backdrop" data-a="close-drawer"></div>
+  <div id="drawer-backdrop" onclick="closeDrawer()"></div>
   <div id="drawer">
     <div style="padding:16px 20px;border-bottom:1px solid #1e3a5f;display:flex;align-items:center;justify-content:space-between;">
       <span style="font-weight:700;font-size:15px;color:#f59e0b;">Fox Pest Admin Hub</span>
-      <button data-a="close-drawer" style="background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;padding:0;touch-action:manipulation;">✕</button>
+      <button onclick="closeDrawer()" style="background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;padding:0;touch-action:manipulation;">✕</button>
     </div>
     <div id="drawer-nav"></div>
     <div style="padding:16px 20px;margin-top:8px;border-top:1px solid #1e3a5f;">
@@ -314,7 +314,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.7"; // Increment this with every update
+const APP_VERSION = "1.6.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
