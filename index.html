@@ -314,7 +314,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.6"; // Increment this with every update
+const APP_VERSION = "1.6.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3000,7 +3000,13 @@ function closeDrawer(){
 }
 
 function renderDrawerNav(){
-  var tabs = S.role==="manager" ? mgrTabs : techTabs;
+  var mTabs=[
+    {id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},
+    {id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},
+    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}
+  ];
+  var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"}];
+  var tabs = S.role==="manager" ? mTabs : tTabs;
   var pending = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
   var pendSign = S.role==="manager" ? 0 : (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===(S.currentTech||S.managerName); }).length;
 
