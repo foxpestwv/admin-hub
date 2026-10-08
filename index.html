@@ -300,7 +300,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.5.9"; // Increment this with every update
+const APP_VERSION = "1.6.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1217,7 +1217,7 @@ var _refreshInterval = null;
 
 function login(role){
   S.role=role;
-  S.tab=role==="tech"?"checkout":"dashboard";
+  S.tab="dashboard";
   if(S.currentUser) S.managerName=S.currentUser.name;
   if(role==="tech" && S.currentUser){ S.checkTech=S.currentUser.name; S.currentTech=S.currentUser.name; }
   if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
@@ -1832,10 +1832,11 @@ function renderDash(){
   ];
 
   // Tech tiles
+  var pendingTechSign = (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===name; }).length;
   var techTiles = [
-    {icon:"🛒", label:"My Request", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:0},
+    {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:0},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
-    {icon:"📝", label:"Sign", tab:"sign", color:"#2d001a", accent:"#ec4899", badge: (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===name; }).length}
+    {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign}
   ];
 
   var tiles = S.role==="manager" ? mgrTiles : techTiles;
