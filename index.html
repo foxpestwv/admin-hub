@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.7"; // Increment this with every update
+const APP_VERSION = "1.7.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2920,6 +2920,9 @@ async function sendLowEmail(low){
 
 // ─── Barcode Scanner ─────────────────────────────────────────────────────────
 var _scannerActive = false;
+var _lastScannedCode = "";
+var _scanConfirmCount = 0;
+var _scanConfirmNeeded = 3; // Must read same barcode 3 times consecutively
 var _scannerStream = null;
 var _scannerCallback = null;
 var _scannerMode = null; // "register" or "pull"
@@ -2973,6 +2976,8 @@ async function startScanner(mode, productId, callback){
     video.playsInline = true;
     await video.play();
     _scannerActive = true;
+    _lastScannedCode = "";
+    _scanConfirmCount = 0;
     document.getElementById("scanner-result").textContent = "Point at barcode...";
     // Animate scan bar with JS since CSS animations may not work on iOS PWA
     var bar = document.getElementById("scanner-bar");
@@ -3031,6 +3036,22 @@ function stopScanner(){
 
 async function onBarcodeScanned(code){
   if(!code||!_scannerActive) return;
+  // Require same code 3 times in a row to avoid false reads
+  if(code === _lastScannedCode){
+    _scanConfirmCount++;
+  } else {
+    _lastScannedCode = code;
+    _scanConfirmCount = 1;
+    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
+    return;
+  }
+  if(_scanConfirmCount < _scanConfirmNeeded){
+    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
+    return;
+  }
+  // Reset for next scan
+  _lastScannedCode = "";
+  _scanConfirmCount = 0;
 
   if(_scannerMode==="register"){
     // Save UPC to product
