@@ -136,12 +136,14 @@ input,textarea,select,button{font-family:inherit;}
 
 <div id="app" style="display:none;">
   <div id="hdr"><div id="hdr-in">
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button id="back-btn" data-a="nav-back" style="display:none;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">←</button>
       <div id="logo-app" style="height:30px;width:80px;"></div>
       <span id="version-badge" style="font-size:10px;color:#475569;"></span>
       <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
     </div>
     <div style="display:flex;align-items:center;gap:4px;">
+      <button data-a="tab" data-v="dashboard" style="background:none;border:none;color:#f59e0b;font-size:18px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;" title="Home">🏠</button>
       <button id="hamburger-btn" data-a="toggle-drawer" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
     </div>
   </div></div>
@@ -310,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.4"; // Increment this with every update
+const APP_VERSION = "1.7.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -640,6 +642,10 @@ async function gs(fn, data){
           body: JSON.stringify({action:"writeToOrderSheet", items:data.items||data})
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return bridgeResp;
+      }
+      case "updateRestockOrder": {
+        if(data.id) await fbUpdate("restockOrders", data.id, {status:data.status||"Cancelled"});
+        return {ok:true};
       }
       case "addOrderHistory": {
         var ohId2 = "oh_"+Date.now();
@@ -1414,7 +1420,15 @@ document.addEventListener("input",function(e){
 function handleAction(a,v,el,e){
   if(a==="pin") { pinTap(v); return; }
   if(a==="logout") { logout(); return; }
-  if(a==="tab") { S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return; }
+  if(a==="tab") {
+    if(S.tab && S.tab!==v){ S._prevTab=S.tab; }
+    S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return;
+  }
+  if(a==="nav-back"){
+    if(S._prevTab){ var t=S._prevTab; S._prevTab=null; S.tab=t; render(); }
+    else { S.tab="dashboard"; render(); }
+    return;
+  }
   if(a==="insp-view") { S.inspView=v; render(); return; }
   if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
   if(a==="insp-next") { S.inspStep++; render(); return; }
@@ -1527,7 +1541,12 @@ function handleAction(a,v,el,e){
   if(a==="restock-cancel-order") {
     if(confirm("Cancel this restock order? It will be marked as Cancelled.")){
       var ord = S.restockOrders.find(function(o){ return o.id===v; });
-      if(ord){ ord.status="Cancelled"; save(); renderRestock(); }
+      if(ord){
+        ord.status="Cancelled";
+        gs("updateRestockOrder", {id:v, status:"Cancelled"}).catch(function(){});
+        save();
+        renderRestock();
+      }
     }
     return;
   }
@@ -1708,6 +1727,79 @@ function handleAction(a,v,el,e){
   if(a==="save-pins") { savePins(); return; }
   if(a==="add-mgr") { addManager(); return; }
   if(a==="del-mgr") { delManager(parseInt(v)); return; }
+  if(a==="edit-mgr") {
+    var mi = parseInt(v);
+    var mgr = S.managers[mi];
+    if(!mgr) return;
+    var newName = prompt("Name:", mgr.name||"");
+    if(newName===null) return;
+    var newTitle = prompt("Title:", mgr.title||"Manager");
+    if(newTitle===null) return;
+    mgr.name = newName.trim()||mgr.name;
+    mgr.title = newTitle.trim()||"Manager";
+    // Photo upload
+    if(confirm("Update photo?")){
+      var inp = document.createElement("input");
+      inp.type="file"; inp.accept="image/*"; inp.style.display="none";
+      document.body.appendChild(inp);
+      inp.onchange = function(e){
+        var file = e.target.files[0]; if(!file){ inp.remove(); return; }
+        var reader = new FileReader();
+        reader.onload = async function(ev){
+          mgr.photo = ev.target.result;
+          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          lsSet("hub:managers", S.managers);
+          renderSettings();
+          inp.remove();
+        };
+        reader.readAsDataURL(file);
+      };
+      inp.click();
+    } else {
+      (async function(){
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:managers", S.managers);
+        renderSettings();
+      })();
+    }
+    return;
+  }
+  if(a==="edit-tech-acct") {
+    var ti = parseInt(v);
+    var tech = S.techAccounts[ti];
+    if(!tech) return;
+    var tName = prompt("Name:", tech.name||"");
+    if(tName===null) return;
+    var tTitle = prompt("Title:", tech.title||"Technician");
+    if(tTitle===null) return;
+    tech.name = tName.trim()||tech.name;
+    tech.title = tTitle.trim()||"Technician";
+    if(confirm("Update photo?")){
+      var inp2 = document.createElement("input");
+      inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
+      document.body.appendChild(inp2);
+      inp2.onchange = function(e){
+        var file2 = e.target.files[0]; if(!file2){ inp2.remove(); return; }
+        var reader2 = new FileReader();
+        reader2.onload = async function(ev){
+          tech.photo = ev.target.result;
+          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          lsSet("hub:techAccounts", S.techAccounts);
+          renderSettings();
+          inp2.remove();
+        };
+        reader2.readAsDataURL(file2);
+      };
+      inp2.click();
+    } else {
+      (async function(){
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:techAccounts", S.techAccounts);
+        renderSettings();
+      })();
+    }
+    return;
+  }
   if(a==="reset-mgr-pin") { resetMgrPin(parseInt(v)); return; }
   if(a==="add-tech-account") { addTechAccount(); return; }
   if(a==="del-tech-account") { delTechAccount(parseInt(v)); return; }
@@ -1773,6 +1865,79 @@ function handleAction(a,v,el,e){
     if(tp&&tp.length===4&&!isNaN(tp)){
       S.techAccounts[parseInt(v)].pin=""; S.techAccounts[parseInt(v)].tempPin=tp; S.techAccounts[parseInt(v)].isTemp=true;
       save(); alert("PIN reset. Tech will be prompted to set a new PIN on next login.");
+    }
+    return;
+  }
+  if(a==="edit-mgr") {
+    var mi = parseInt(v);
+    var mgr = S.managers[mi];
+    if(!mgr) return;
+    var newName = prompt("Name:", mgr.name||"");
+    if(newName===null) return;
+    var newTitle = prompt("Title:", mgr.title||"Manager");
+    if(newTitle===null) return;
+    mgr.name = newName.trim()||mgr.name;
+    mgr.title = newTitle.trim()||"Manager";
+    // Photo upload
+    if(confirm("Update photo?")){
+      var inp = document.createElement("input");
+      inp.type="file"; inp.accept="image/*"; inp.style.display="none";
+      document.body.appendChild(inp);
+      inp.onchange = function(e){
+        var file = e.target.files[0]; if(!file){ inp.remove(); return; }
+        var reader = new FileReader();
+        reader.onload = async function(ev){
+          mgr.photo = ev.target.result;
+          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          lsSet("hub:managers", S.managers);
+          renderSettings();
+          inp.remove();
+        };
+        reader.readAsDataURL(file);
+      };
+      inp.click();
+    } else {
+      (async function(){
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:managers", S.managers);
+        renderSettings();
+      })();
+    }
+    return;
+  }
+  if(a==="edit-tech-acct") {
+    var ti = parseInt(v);
+    var tech = S.techAccounts[ti];
+    if(!tech) return;
+    var tName = prompt("Name:", tech.name||"");
+    if(tName===null) return;
+    var tTitle = prompt("Title:", tech.title||"Technician");
+    if(tTitle===null) return;
+    tech.name = tName.trim()||tech.name;
+    tech.title = tTitle.trim()||"Technician";
+    if(confirm("Update photo?")){
+      var inp2 = document.createElement("input");
+      inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
+      document.body.appendChild(inp2);
+      inp2.onchange = function(e){
+        var file2 = e.target.files[0]; if(!file2){ inp2.remove(); return; }
+        var reader2 = new FileReader();
+        reader2.onload = async function(ev){
+          tech.photo = ev.target.result;
+          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          lsSet("hub:techAccounts", S.techAccounts);
+          renderSettings();
+          inp2.remove();
+        };
+        reader2.readAsDataURL(file2);
+      };
+      inp2.click();
+    } else {
+      (async function(){
+        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        lsSet("hub:techAccounts", S.techAccounts);
+        renderSettings();
+      })();
     }
     return;
   }
@@ -3090,24 +3255,37 @@ function renderSettings(){
   if(tab==="access"){
     // Manager accounts
     var mgrRows = (S.managers||[]).map(function(m,i){
+      var photoHtml = m.photo
+        ? "<img src='"+m.photo+"' style='width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #f59e0b;margin-right:10px;'>"
+        : "<div style='width:40px;height:40px;border-radius:50%;background:#1e3a5f;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:10px;'>"+esc(m.name.charAt(0))+"</div>";
       return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;'>"
-        +"<div><div style='font-weight:600;font-size:14px;'>"+esc(m.name)+"</div>"
+        +"<div style='display:flex;align-items:center;'>"
+        +photoHtml
+        +"<div style='flex:1;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(m.name)+"</div>"
         +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
-        +"<div style='font-size:12px;color:#94a3b8;'>Role: Manager</div></div>"
+        +"<div style='font-size:12px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
+        +"<div style='display:flex;flex-direction:column;gap:4px;'>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-mgr' data-v='"+i+"'>Edit</button>"
         +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='reset-mgr-pin' data-v='"+i+"'>Reset PIN</button>"
-        +"</div></div>";
+        +"</div></div></div>";
     }).join("");
 
     var techRows = (S.techAccounts||[]).map(function(t,i){
+      var photoHtml = t.photo
+        ? "<img src='"+t.photo+"' style='width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #3b82f6;margin-right:10px;'>"
+        : "<div style='width:40px;height:40px;border-radius:50%;background:#1e3a5f;border:2px solid #3b82f6;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:10px;'>"+esc(t.name.charAt(0))+"</div>";
       return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;'>"
-        +"<div><div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
+        +"<div style='display:flex;align-items:center;'>"
+        +photoHtml
+        +"<div style='flex:1;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
         +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email||"")+"</div>"
-        +"<div style='font-size:12px;color:#94a3b8;'>Truck: "+esc(t.truck||"None")+"</div></div>"
-        +"<div style='display:flex;gap:6px;'>"
+        +"<div style='font-size:12px;color:#3b82f6;'>"+esc(t.title||"Technician")+"</div></div>"
+        +"<div style='display:flex;flex-direction:column;gap:4px;'>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-tech-acct' data-v='"+i+"'>Edit</button>"
         +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='reset-tech-pin' data-v='"+i+"'>Reset PIN</button>"
-        +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='del-tech' data-v='"+i+"'>X</button>"
+        +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
         +"</div></div></div>";
     }).join("");
 
@@ -3587,7 +3765,7 @@ function renderRestockSend(pg){
   const otherOpts = otherProds.map(function(p){ return "<option value='"+p.id+"'>"+esc(p.name)+" ("+p.qty+" "+esc(p.unit)+" on hand)</option>"; }).join("");
 
   const lowRows = lowStock.map(function(p){
-    const checked = !S._restockSelected || S._restockSelected[p.id]!==false;
+    const checked = S._restockSelected && S._restockSelected[p.id]===true;
     return "<div style='display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #0a1628;'>"
       +"<input type='checkbox' id='rs-"+p.id+"' style='width:18px;height:18px;cursor:pointer;accent-color:#2563eb;'"+(checked?" checked":"")+">"
       +"<div style='flex:1;'><label for='rs-"+p.id+"' style='font-weight:600;font-size:14px;cursor:pointer;'>"+esc(p.name)+"</label>"
