@@ -310,7 +310,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.1"; // Increment this with every update
+const APP_VERSION = "1.7.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1400,7 +1400,11 @@ function handleAction(a,v,el,e){
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="toggle-drawer"){ toggleDrawer(); return; }
   if(a==="close-drawer"){ closeDrawer(); return; }
-  if(a==="drawer-tab"){ S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); closeDrawer(); return; }
+  if(a==="drawer-tab"){
+    closeDrawer();
+    if(v==="__scan__"){ startScanner("lookup", null, null); return; }
+    S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return;
+  }
   if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
   if(a==="open-profile-photo"){
     var inp = document.createElement("input");
@@ -3000,9 +3004,10 @@ function renderDrawerNav(){
   var mTabs=[
     {id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},
     {id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},
-    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}
+    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},
+    {id:"__scan__",l:"Scan Barcode"},{id:"settings",l:"Settings"}
   ];
-  var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"}];
+  var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"}];
   var tabs = S.role==="manager" ? mTabs : tTabs;
   var pending = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
   var pendSign = S.role==="manager" ? 0 : (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===(S.currentTech||S.managerName); }).length;
@@ -3010,7 +3015,7 @@ function renderDrawerNav(){
   var icons = {
     dashboard:"🏠", inspect:"🚛", inventory:"📦", orders:"🛒",
     checkout:"🛍", truckinv:"🚐", restock:"🔄", analytics:"📊",
-    sign:"📝", settings:"⚙️"
+    sign:"📝", settings:"⚙️", "__scan__":"📷"
   };
 
   var nav = document.getElementById("drawer-nav");
