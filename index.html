@@ -141,7 +141,9 @@ input,textarea,select,button{font-family:inherit;}
       <span id="version-badge" style="font-size:10px;color:#475569;"></span>
       <span id="sync-badge" style="font-size:10px;padding:2px 7px;border-radius:10px;display:none;"></span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:4px;">
+      <button data-a="quick-scan" style="background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;" title="Scan barcode">📷</button>
+      <button data-a="check-update" style="background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;" title="Check for updates">⬆</button>
       <button id="hamburger-btn" data-a="toggle-drawer" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
     </div>
   </div></div>
@@ -314,7 +316,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.6.8"; // Increment this with every update
+const APP_VERSION = "1.7.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1404,6 +1406,7 @@ function handleAction(a,v,el,e){
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="toggle-drawer"){ toggleDrawer(); return; }
   if(a==="close-drawer"){ closeDrawer(); return; }
+  if(a==="drawer-tab"){ S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); closeDrawer(); return; }
   if(a==="inv-scan-upc"){ startScanner("register", v, null); return; }
   if(a==="open-profile-photo"){
     var inp = document.createElement("input");
@@ -1852,6 +1855,7 @@ function renderDash(){
     {icon:"🔄", label:"Restock", tab:"restock", color:"#001a2d", accent:"#06b6d4", badge:0},
     {icon:"🚐", label:"Truck Inv", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
+    {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0},
     {icon:"⚙️", label:"Settings", tab:"settings", color:"#1a1a1a", accent:"#94a3b8", badge:0}
   ];
 
@@ -1860,7 +1864,8 @@ function renderDash(){
   var techTiles = [
     {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:0},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
-    {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign}
+    {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
+    {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
   ];
 
   var tiles = S.role==="manager" ? mgrTiles : techTiles;
@@ -1872,7 +1877,8 @@ function renderDash(){
 
   var tilesHtml = tiles.map(function(t){
     var badgeHtml = t.badge>0 ? "<div style='position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;'>"+t.badge+"</div>" : "";
-    return "<div data-a='tab' data-v='"+t.tab+"' style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;'>"
+    var tileAction = t.tab==="__scan__" ? "data-a='quick-scan'" : "data-a='tab' data-v='"+t.tab+"'";
+    return "<div "+tileAction+" style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;'>"
       +"<div style='font-size:28px;'>"+t.icon+"</div>"
       +"<div style='font-size:12px;font-weight:600;color:#e2e8f0;text-align:center;line-height:1.2;'>"+t.label+"</div>"
       +badgeHtml
@@ -3021,13 +3027,11 @@ function renderDrawerNav(){
   nav.innerHTML = tabs.map(function(t){
     var badge = (t.id==="orders"&&pending>0) ? pending : (t.id==="sign"&&pendSign>0) ? pendSign : 0;
     var isActive = S.tab===t.id;
-    var div = document.createElement("div");
-    div.className = "drawer-item" + (isActive?" active":"");
-    div.innerHTML = "<span style='font-size:18px;'>"+(icons[t.id]||"•")+"</span>"
+    return "<div class='drawer-item"+(isActive?" active":"")+"' data-a='drawer-tab' data-v='"+t.id+"'>"
+      +"<span style='font-size:18px;'>"+(icons[t.id]||"•")+"</span>"
       +"<span>"+t.l+"</span>"
-      +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"");
-    div.onclick = (function(tabId){ return function(){ S.tab=tabId; S.inspView="home"; S.invView="list"; render(); closeDrawer(); }; })(t.id);
-    return div.outerHTML;
+      +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"")
+      +"</div>";
   }).join("");
 }
 
