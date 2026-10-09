@@ -11,6 +11,7 @@
   <!-- Barcode Scanner -->
   <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -312,7 +313,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.5"; // Increment this with every update
+const APP_VERSION = "1.8.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2994,7 +2995,38 @@ async function startScanner(mode, productId, callback){
       }, 20);
     }
 
-    if(typeof BarcodeDetector !== "undefined"){
+    // Use html5-qrcode for best iPhone compatibility
+    if(typeof Html5Qrcode !== "undefined"){
+      var scannerDiv = document.getElementById("scanner-video").parentElement;
+      var h5div = document.createElement("div");
+      h5div.id = "h5-scanner-div";
+      h5div.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;";
+      scannerDiv.appendChild(h5div);
+      document.getElementById("scanner-video").style.display = "none";
+
+      window._h5scanner = new Html5Qrcode("h5-scanner-div");
+      var h5config = {
+        fps: 10,
+        qrbox: {width:250, height:100},
+        aspectRatio: 1.7,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39
+        ]
+      };
+      window._h5scanner.start(
+        {facingMode:"environment"},
+        h5config,
+        function(decodedText){ if(_scannerActive) onBarcodeScanned(decodedText); },
+        function(err){ /* ignore scan failures */ }
+      ).catch(function(e){
+        document.getElementById("scanner-result").textContent = "Camera error: "+e;
+      });
+    } else if(typeof BarcodeDetector !== "undefined"){
       var detector2 = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39"]});
       var detect2 = async function(){
         if(!_scannerActive) return;
@@ -3025,6 +3057,19 @@ async function startScanner(mode, productId, callback){
 
 function stopScanner(){
   _scannerActive = false;
+  // Stop html5-qrcode if running
+  try {
+    if(window._h5scanner){
+      window._h5scanner.stop().then(function(){
+        window._h5scanner.clear();
+        window._h5scanner = null;
+        var h5div = document.getElementById("h5-scanner-div");
+        if(h5div) h5div.remove();
+        document.getElementById("scanner-video").style.display = "";
+      }).catch(function(){});
+    }
+  } catch(e){}
+  try { if(typeof ZXingBrowser!=="undefined" && window._zxingReader) { window._zxingReader.reset(); } } catch(e){}
   if(_codeReader){ try{ _codeReader.reset(); }catch(e){} _codeReader=null; }
   if(typeof Quagga !== "undefined"){ try{ Quagga.stop(); }catch(e){} }
   if(_scannerStream){ _scannerStream.getTracks().forEach(function(t){ t.stop(); }); _scannerStream=null; }
