@@ -282,7 +282,7 @@ const S = {
   signRequests:[], // [{id,date,techName,techEmail,docName,status,createdBy,fileData,managerSig,techSig,note}] // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
-  ordersFilter:"Pending", settingsTab:"access",
+  ordersFilter:"Pending", settingsTab:"access", checkSearch:"", checkStarredOnly:false,
   detailInsp:null, editOrderId:null, editOrderType:null,
   openCat:null, inspListFilter:"all",
 };
@@ -292,6 +292,10 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
   ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Load starred products
+  var starred = lsGet("hub:starredProducts");
+  if(starred) S.starredProducts = starred;
+  else S.starredProducts = {};
   // Parse any arrays that got stored as JSON strings
   ["managers","techAccounts","trucks","cats","inspFields","inspections","products","orders","restockOrders"].forEach(function(k){
     if(typeof S[k]==="string") try{ S[k]=JSON.parse(S[k]); }catch(e){ S[k]=[]; }
@@ -313,7 +317,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.8"; // Increment this with every update
+const APP_VERSION = "1.8.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2493,30 +2497,61 @@ function snapshotCheckItems(){
 function renderCheckout(){
   const pg=document.getElementById("pg-checkout");
   if(S.checkDone){pg.innerHTML=checkDone();return;}
-  if(!S.checkItems||!S.checkItems.length) S.checkItems=[{id:uid(),productId:"",qty:"",notes:""}];
+  if(!S.starredProducts) S.starredProducts={};
+  if(!S.checkQtys) S.checkQtys={};
   const isM=S.role==="manager";
-  const rows=S.checkItems.map((item,i)=>{
-    const prod=S.products.find(p=>p.id===item.productId);
-    const opts=S.products.map(p=>{const oos=!isM&&p.qty<=0;return `<option value="${p.id}"${item.productId===p.id?" selected":""}${oos?" disabled":""}>${esc(p.name)} - ${p.qty} ${esc(p.unit)}${p.qty<=0?" (OUT)":p.qty<=p.lowAt?" (LOW)":""}</option>`;}).join("");
-    return `<div class="card" style="margin-bottom:10px;">
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <select class="inp" style="flex:2;" data-field="productId" data-idx="${i}"><option value="">Select product...</option>${opts}</select>
-        <input type="number" class="inp" style="flex:1;" value="${esc(item.qty)}" placeholder="Qty" data-field="qty" data-idx="${i}">
-        ${S.checkItems.length>1?`<button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;" data-a="del-check-item" data-v="${i}">x</button>`:""}
-      </div>
-      <input type="text" class="inp" style="font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" value="${esc(item.notes)}" data-field="notes" data-idx="${i}">
-      ${prod&&parseInt(item.qty)>prod.qty?`<div style="color:#f97316;font-size:12px;margin-top:6px;">Only ${prod.qty} ${esc(prod.unit)} available</div>`:""}
-    </div>`;
+  const search=(S.checkSearch||"").toLowerCase().trim();
+  const starredOnly=S.checkStarredOnly||false;
+
+  // Filter products
+  var prods = S.products.filter(function(p){
+    if(starredOnly && !S.starredProducts[p.id]) return false;
+    if(search && p.name.toLowerCase().indexOf(search)===-1) return false;
+    return true;
+  }).sort(function(a,b){
+    // Stars first, then alphabetical
+    var aS=S.starredProducts[a.id]?1:0, bS=S.starredProducts[b.id]?1:0;
+    if(bS!==aS) return bS-aS;
+    return a.name.localeCompare(b.name);
+  });
+
+  var prodRows = prods.map(function(p){
+    var starred = S.starredProducts[p.id];
+    var qty = S.checkQtys[p.id]||"";
+    var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
+    var stockLabel = p.qty<=0?"OUT":p.qty<=p.lowAt?"LOW":"";
+    return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;align-items:center;gap:10px;'>"
+      +"<button data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;touch-action:manipulation;flex-shrink:0;'>"+(starred?"⭐":"☆")+"</button>"
+      +"<div style='flex:1;min-width:0;'>"
+      +"<div style='font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"+esc(p.name)+"</div>"
+      +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+" on hand"+(stockLabel?" <span style='color:"+stockColor+";font-weight:700;'>"+stockLabel+"</span>":"")+"</div>"
+      +"</div>"
+      +"<input type='number' min='0' class='inp' style='width:65px;padding:6px;font-size:14px;text-align:center;' placeholder='Qty' value='"+esc(qty)+"' data-check-product='"+p.id+"'>"
+      +"</div>";
   }).join("");
-  pg.innerHTML=`<h2 style="font-size:20px;font-weight:700;margin-bottom:4px;">${isM?"Product Checkout":"Product Request"}</h2>
-    <p style="color:#475569;font-size:13px;margin-bottom:18px;">${isM?"Check out products from inventory":"Request products - management will review"}</p>
-    <div style="margin-bottom:16px;"><label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Technician</label>
-      <select class="inp" id="check-tech"><option value="">Select your name...</option>${S.techs.map(t=>`<option value="${esc(t)}"${S.checkTech===t?" selected":""}>${esc(t)}</option>`).join("")}</select></div>
-    <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:10px;">Products</label>
-    ${rows}
-    <button class="btn bg" style="width:100%;margin-bottom:14px;font-size:13px;" data-a="add-check-item">+ Add Another Product</button>
-    <button class="btn bs" style="width:100%;padding:14px;font-size:15px;" data-a="submit-checkout">${isM?"Process Checkout":"Submit Request"}</button>
-    ${!isM?`<p style="color:#475569;font-size:12px;text-align:center;margin-top:8px;">Your request will be sent to management for approval.</p>`:""}`;
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>"+(isM?"Product Checkout":"Product Request")+"</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:14px;'>"+(isM?"Check out products from inventory":"Request products - management will review")+"</p>"
+    +"<div style='margin-bottom:12px;'>"
+    +"<select class='inp' id='check-tech'><option value=''>Select your name...</option>"
+    +S.techs.map(function(t){ return "<option value='"+esc(t)+"'"+(S.checkTech===t?" selected":"")+">"+esc(t)+"</option>"; }).join("")
+    +"</select></div>"
+    // Search + filter bar
+    +"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
+    +"<input type='text' id='check-search' class='inp' style='flex:1;' placeholder='🔍 Search products...' value='"+esc(S.checkSearch||"")+"'>"
+    +"<button data-a='check-starred-only' style='background:"+(starredOnly?"#f59e0b":"#1e3a5f")+";color:"+(starredOnly?"#000":"#e2e8f0")+";border:none;padding:8px 12px;border-radius:8px;font-size:16px;cursor:pointer;touch-action:manipulation;'>⭐</button>"
+    +"</div>"
+    +(prods.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No products found</div>":prodRows)
+    +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;margin-top:16px;' data-a='submit-checkout'>"+(isM?"Process Checkout":"Submit Request")+"</button>"
+    +(isM?"":"<p style='color:#475569;font-size:12px;text-align:center;margin-top:8px;'>Your request will be sent to management for approval.</p>");
+
+  // Wire up qty inputs
+  pg.querySelectorAll("[data-check-product]").forEach(function(inp){
+    inp.addEventListener("change", function(){
+      if(!S.checkQtys) S.checkQtys={};
+      S.checkQtys[inp.getAttribute("data-check-product")] = inp.value;
+    });
+  });
 }
 
 function checkDone(){
@@ -2546,7 +2581,18 @@ async function submitCheckout(){
     return;
   }
   S.checkTech=tech;
-  const valid=S.checkItems.filter(i=>i.productId&&parseInt(i.qty)>0);
+  // Support both old checkItems and new checkQtys format
+  var valid;
+  if(S.checkQtys && Object.keys(S.checkQtys).length){
+    valid = Object.keys(S.checkQtys).filter(function(pid){
+      return parseInt(S.checkQtys[pid])>0;
+    }).map(function(pid){
+      var prod = S.products.find(function(p){ return p.id===pid; });
+      return {productId:pid, qty:S.checkQtys[pid], notes:"", name:prod?prod.name:""};
+    });
+  } else {
+    valid=S.checkItems.filter(i=>i.productId&&parseInt(i.qty)>0);
+  }
   if(!valid.length){
     alert("Please add at least one product with a quantity.");
     if(submitBtn){submitBtn.disabled=false;submitBtn.textContent=S.role==="manager"?"Process Checkout":"Submit Request";submitBtn.style.opacity="1";}
