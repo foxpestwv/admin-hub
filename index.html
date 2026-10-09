@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.3"; // Increment this with every update
+const APP_VERSION = "1.8.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3044,20 +3044,23 @@ async function onBarcodeScanned(code){
     // Looks like random text - ignore silently
     return;
   }
+  // Normalize code for comparison - strip leading zeros
+  var normCode = trimmed.replace(/^0+/, "") || trimmed;
   // Require same code 3 times in a row for all modes to ensure accuracy
-  if(code === _lastScannedCode){
+  var normLast = (_lastScannedCode||"").replace(/^0+/, "") || _lastScannedCode;
+  if(normCode === normLast && normCode.length > 0){
     _scanConfirmCount++;
+    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
   } else {
-    _lastScannedCode = code;
+    _lastScannedCode = trimmed;
     _scanConfirmCount = 1;
     document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
     return;
   }
   if(_scanConfirmCount < _scanConfirmNeeded){
-    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
     return;
   }
-  // Reset for next scan
+  // Confirmed - reset for next scan
   _lastScannedCode = "";
   _scanConfirmCount = 0;
 
