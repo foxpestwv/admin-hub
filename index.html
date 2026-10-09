@@ -334,7 +334,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.0.4"; // Increment this with every update
+const APP_VERSION = "2.0.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1320,6 +1320,8 @@ function login(role){
   document.getElementById("app").style.display="block";
   syncFromSheet();
   saveAccountsToSheet();
+  // Show welcome splash after login
+  setTimeout(function(){ showWelcomeSplash(); }, 600);
   // Start background order refresh every 2 minutes (managers only)
   if(role==="manager"){
     if(_refreshInterval) clearInterval(_refreshInterval);
@@ -6915,7 +6917,7 @@ load(); // Load from localStorage immediately - fast
 
 // v2.0.0 Welcome splash - called after login
 function showWelcomeSplash(){
-  var splashKey = "hub:splashSeen_v2_after_login";
+  var splashKey = "hub:splash_v205";
   var firstSeen = localStorage.getItem(splashKey);
   var now = Date.now();
   var oneWeek = 7 * 24 * 60 * 60 * 1000;
