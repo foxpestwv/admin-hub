@@ -323,7 +323,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.6"; // Increment this with every update
+const APP_VERSION = "1.9.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1455,7 +1455,9 @@ function handleAction(a,v,el,e){
   if(a==="logout") { logout(); return; }
   if(a==="tab") {
     if(S.tab && S.tab!==v){ S._prevTab=S.tab; }
-    S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return;
+    S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false;
+    if(v==="checkout") S._checkView="browse";
+    render(); return;
   }
   if(a==="nav-back"){
     S.tab = S._prevTab||"dashboard";
@@ -2530,71 +2532,136 @@ function snapshotCheckItems(){
 }
 
 function renderCheckout(){
-  const pg=document.getElementById("pg-checkout");
-  if(S.checkDone){pg.innerHTML=checkDone();return;}
-  if(!S.starredProducts) S.starredProducts={};
-  if(!S.checkQtys) S.checkQtys={};
+  var pg = document.getElementById("pg-checkout");
+  if(!pg) return;
+  if(!S.starredProducts) S.starredProducts = {};
+  if(!S.cart) S.cart = {};
 
-  // If tech has cart items, prefill checkQtys from cart
-  if(S.role!=="manager" && S.cart && Object.keys(S.cart).length>0){
-    Object.keys(S.cart).forEach(function(pid){
-      if(!S.checkQtys[pid]) S.checkQtys[pid] = S.cart[pid];
-    });
-  }
-  const isM=S.role==="manager";
-  const search=(S.checkSearch||"").toLowerCase().trim();
-  const starredOnly=S.checkStarredOnly||false;
+  var view = S._checkView || "browse"; // "browse" or "cart"
+  if(view === "cart") { renderCart(pg); return; }
 
-  // Filter products
+  // ── BROWSE VIEW ────────────────────────────────────────────────────────────
+  var search = (S.checkSearch||"").toLowerCase().trim();
+  var starredOnly = S.checkStarredOnly || false;
+  var isM = S.role === "manager";
+
   var prods = S.products.filter(function(p){
     if(starredOnly && !S.starredProducts[p.id]) return false;
-    if(search && p.name.toLowerCase().indexOf(search)===-1) return false;
+    if(search && p.name.toLowerCase().indexOf(search) === -1) return false;
     return true;
   }).sort(function(a,b){
-    // Stars first, then alphabetical
-    var aS=S.starredProducts[a.id]?1:0, bS=S.starredProducts[b.id]?1:0;
-    if(bS!==aS) return bS-aS;
+    var aS = S.starredProducts[a.id] ? 1 : 0;
+    var bS = S.starredProducts[b.id] ? 1 : 0;
+    if(bS !== aS) return bS - aS;
     return a.name.localeCompare(b.name);
   });
 
-  var prodRows = prods.map(function(p){
-    var starred = S.starredProducts[p.id];
-    var qty = S.checkQtys[p.id]||"";
-    var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
-    var stockLabel = p.qty<=0?"OUT":p.qty<=p.lowAt?"LOW":"";
-    return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;align-items:center;gap:10px;'>"
-      +"<button data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;touch-action:manipulation;flex-shrink:0;'>"+(starred?"⭐":"☆")+"</button>"
-      +"<div style='flex:1;min-width:0;'>"
-      +"<div style='font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"+esc(p.name)+"</div>"
-      +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+" on hand"+(stockLabel?" <span style='color:"+stockColor+";font-weight:700;'>"+stockLabel+"</span>":"")+"</div>"
-      +"</div>"
-      +"<input type='number' min='0' class='inp' style='width:65px;padding:6px;font-size:14px;text-align:center;' placeholder='Qty' value='"+esc(qty)+"' data-check-product='"+p.id+"'>"
-      +"</div>";
-  }).join("");
+  var cartCount = Object.keys(S.cart).filter(function(k){ return S.cart[k]>0; }).length;
 
-  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>"+(isM?"Product Checkout":"Product Request")+"</h2>"
-    +"<p style='color:#475569;font-size:13px;margin-bottom:14px;'>"+(isM?"Check out products from inventory":"Request products - management will review")+"</p>"
-    +"<div style='margin-bottom:12px;'>"
-    +"<select class='inp' id='check-tech'><option value=''>Select your name...</option>"
-    +S.techs.map(function(t){ return "<option value='"+esc(t)+"'"+(S.checkTech===t?" selected":"")+">"+esc(t)+"</option>"; }).join("")
-    +"</select></div>"
-    // Search + filter bar
+  var html = "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;margin:0;'>"+(isM?"Product Checkout":"Request Products")+"</h2>"
+    +(cartCount>0
+      ?"<button data-a='view-cart' style='background:#f59e0b;color:#000;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation;'>🛒 Cart ("+cartCount+")</button>"
+      :"")
+    +"</div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:14px;'>Tap a product to add quantity then tap Add to Cart</p>"
+    // Search + star filter
     +"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
     +"<input type='text' id='check-search' class='inp' style='flex:1;' placeholder='🔍 Search products...' value='"+esc(S.checkSearch||"")+"'>"
-    +"<button data-a='check-starred-only' style='background:"+(starredOnly?"#f59e0b":"#1e3a5f")+";color:"+(starredOnly?"#000":"#e2e8f0")+";border:none;padding:8px 12px;border-radius:8px;font-size:16px;cursor:pointer;touch-action:manipulation;'>⭐</button>"
+    +"<button data-a='check-starred-only' style='background:"+(starredOnly?"#f59e0b":"#1e3a5f")+";color:"+(starredOnly?"#000":"#e2e8f0")+";border:none;padding:8px 14px;border-radius:8px;font-size:16px;cursor:pointer;touch-action:manipulation;' title='Show starred only'>⭐</button>"
     +"</div>"
-    +(prods.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No products found</div>":prodRows)
-    +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;margin-top:16px;' data-a='submit-checkout'>"+(isM?"Process Checkout":"Submit Request")+"</button>"
-    +(isM?"":"<p style='color:#475569;font-size:12px;text-align:center;margin-top:8px;'>Your request will be sent to management for approval.</p>");
+    +(prods.length===0
+      ?"<div style='text-align:center;color:#64748b;padding:40px 20px;'>"+
+        (starredOnly?"No starred products yet. Tap ⭐ on any product to star it.":"No products found.")+"</div>"
+      : prods.map(function(p){
+          var starred = S.starredProducts[p.id];
+          var inCart = S.cart[p.id]||0;
+          var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
+          var stockLabel = p.qty<=0?" (OUT)":p.qty<=p.lowAt?" (LOW)":"";
+          return "<div style='background:#0f1f38;border:1px solid "+(inCart>0?"#f59e0b":"#1e3a5f")+";border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;'>"
+            +"<button data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;flex-shrink:0;touch-action:manipulation;line-height:1;'>"+(starred?"⭐":"☆")+"</button>"
+            +"<div style='flex:1;min-width:0;'>"
+            +"<div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+            +"<div style='font-size:11px;color:"+stockColor+";'>"+p.qty+" "+esc(p.unit)+" on hand"+stockLabel+"</div>"
+            +(inCart>0?"<div style='font-size:11px;color:#f59e0b;'>"+inCart+" in cart</div>":"")
+            +"</div>"
+            +"<div style='display:flex;align-items:center;gap:6px;'>"
+            +"<input type='number' min='0' class='inp' style='width:60px;padding:6px;font-size:14px;text-align:center;' placeholder='0' value='"+(inCart>0?inCart:"")+"' data-cart-pid='"+p.id+"'>"
+            +"<button data-a='add-to-cart-direct' data-v='"+p.id+"' style='background:#22c55e;color:#000;border:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;'>+Cart</button>"
+            +"</div>"
+            +"</div>";
+        }).join(""));
 
-  // Wire up qty inputs
-  pg.querySelectorAll("[data-check-product]").forEach(function(inp){
+  pg.innerHTML = html;
+
+  // Wire up search input
+  var searchEl = document.getElementById("check-search");
+  if(searchEl){
+    searchEl.addEventListener("input", function(){
+      S.checkSearch = this.value;
+      renderCheckout();
+    });
+    searchEl.focus();
+    searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length);
+  }
+
+  // Wire up qty inputs — update cart on change
+  pg.querySelectorAll("[data-cart-pid]").forEach(function(inp){
     inp.addEventListener("change", function(){
-      if(!S.checkQtys) S.checkQtys={};
-      S.checkQtys[inp.getAttribute("data-check-product")] = inp.value;
+      var pid = inp.getAttribute("data-cart-pid");
+      var qty = parseInt(inp.value)||0;
+      if(qty > 0) S.cart[pid] = qty;
+      else delete S.cart[pid];
+      lsSet("hub:cart", S.cart);
     });
   });
 }
+
+function renderCart(pg){
+  var cartItems = Object.keys(S.cart).filter(function(k){ return S.cart[k]>0; });
+  var isM = S.role === "manager";
+
+  if(cartItems.length === 0){
+    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:8px;'>Your Cart</h2>"
+      +"<div style='text-align:center;color:#64748b;padding:40px 20px;'>Cart is empty.<br><br>"
+      +"<button data-a='view-browse' style='background:#1e3a5f;color:#e2e8f0;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;touch-action:manipulation;'>Browse Products</button></div>";
+    return;
+  }
+
+  var rows = cartItems.map(function(pid){
+    var prod = S.products.find(function(p){ return p.id===pid; });
+    if(!prod) return "";
+    var qty = S.cart[pid];
+    return "<div style='background:#0f1f38;border:1px solid #1e3a5f;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;'>"
+      +"<div style='flex:1;'>"
+      +"<div style='font-weight:600;font-size:14px;'>"+esc(prod.name)+"</div>"
+      +"<div style='font-size:12px;color:#64748b;'>"+esc(prod.unit)+"</div>"
+      +"</div>"
+      +"<div style='display:flex;align-items:center;gap:6px;'>"
+      +"<button data-a='cart-dec' data-v='"+pid+"' style='background:#1e3a5f;color:#e2e8f0;border:none;width:30px;height:30px;border-radius:6px;font-size:16px;cursor:pointer;touch-action:manipulation;'>−</button>"
+      +"<span style='font-size:16px;font-weight:700;min-width:30px;text-align:center;'>"+qty+"</span>"
+      +"<button data-a='cart-inc' data-v='"+pid+"' style='background:#1e3a5f;color:#e2e8f0;border:none;width:30px;height:30px;border-radius:6px;font-size:16px;cursor:pointer;touch-action:manipulation;'>+</button>"
+      +"<button data-a='cart-remove' data-v='"+pid+"' style='background:none;border:none;color:#ef4444;font-size:18px;cursor:pointer;padding:0 4px;touch-action:manipulation;'>✕</button>"
+      +"</div>"
+      +"</div>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='view-browse' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;touch-action:manipulation;'>←</button>"
+    +"<h2 style='font-size:20px;font-weight:700;margin:0;'>Your Cart</h2>"
+    +"</div>"
+    +rows
+    +"<div style='margin-top:16px;'>"
+    +"<textarea id='cart-comments' class='inp' style='width:100%;height:80px;resize:none;font-size:13px;' placeholder='Comments or notes for this order (optional)'>"+esc(S._cartComments||"")+"</textarea>"
+    +"</div>"
+    +"<button data-a='submit-cart' style='width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;margin-top:12px;'>"+(isM?"Process Order":"Submit Request")+"</button>"
+    +"<button data-a='clear-cart' style='width:100%;background:transparent;border:1px solid #ef4444;color:#ef4444;padding:10px;border-radius:10px;font-size:13px;cursor:pointer;touch-action:manipulation;margin-top:8px;'>Clear Cart</button>";
+
+  // Save comments on change
+  var commEl = document.getElementById("cart-comments");
+  if(commEl) commEl.addEventListener("change", function(){ S._cartComments = this.value; });
+}
+
 
 function checkDone(){
   const isM=S.role==="manager";
@@ -2603,6 +2670,48 @@ function checkDone(){
     <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">${isM?"Checkout Complete":"Request Submitted"}</h2>
     <p style="color:#475569;font-size:14px;margin-bottom:28px;">${isM?"Products logged and inventory updated.":"Your request has been sent to management."}</p>
     <button class="btn bp" data-a="checkout-reset">New ${isM?"Checkout":"Request"}</button></div>`;
+}
+
+async function submitCartOrder(){
+  var cartItems = Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; });
+  if(cartItems.length===0){ alert("Cart is empty"); return; }
+
+  var techName = S.checkTech||S.currentTech||S.managerName||"";
+  if(!techName){ alert("Please select your name first"); S._checkView="browse"; renderCheckout(); return; }
+
+  var selectedItems = cartItems.map(function(pid){
+    var prod = S.products.find(function(p){ return p.id===pid; });
+    return { id:pid, name:prod?prod.name:"", unit:prod?prod.unit:"", qty:S.cart[pid], qtyOrdered:S.cart[pid] };
+  });
+
+  var comments = S._cartComments||"";
+  var orderId = "ord_"+Date.now();
+  var orderDoc = {
+    id:orderId, tech:techName, date:new Date().toISOString(),
+    status:"Pending", items:selectedItems, notes:comments,
+    requestedBy:techName
+  };
+
+  try {
+    await gs("savePendingOrder", orderDoc);
+    // Write to order sheet
+    gs("writeToOrderSheet", {items:selectedItems}).catch(function(){});
+    // Email manager
+    var itemList = selectedItems.map(function(i){ return "- "+i.name+" x"+i.qty; }).join("\n");
+    sendEmail("john.kluttz@fox-marketingservices.com",
+      "[Fox Pest] Product Request: "+techName,
+      techName+" has submitted a product request:\n\n"+itemList+(comments?"\n\nComments: "+comments:"")+"\n\nFox Pest Control - Willamette Valley"
+    );
+    // Clear cart
+    S.cart={};
+    S._cartComments="";
+    S._checkView="browse";
+    lsSet("hub:cart", S.cart);
+    S.checkDone=true;
+    renderCheckout();
+  } catch(e){
+    alert("Error submitting order: "+e.message);
+  }
 }
 
 async function submitCheckout(){
