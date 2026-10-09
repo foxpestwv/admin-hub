@@ -334,7 +334,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.0.1"; // Increment this with every update
+const APP_VERSION = "2.0.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1585,6 +1585,7 @@ function handleAction(a,v,el,e){
     if(qty3>0){
       S.cart[v]=qty3;
       lsSet("hub:cart",S.cart);
+      updateCartBadge();
       showToast("Added to cart ✓");
       if(qInp) qInp.value="";
       renderCheckout();
@@ -1596,6 +1597,7 @@ function handleAction(a,v,el,e){
     S.cart[v]=Math.max(0,(S.cart[v]||0)-1);
     if(!S.cart[v]) delete S.cart[v];
     lsSet("hub:cart",S.cart);
+    updateCartBadge();
     renderCheckout(); return;
   }
   if(a==="cart-inc"){
@@ -2670,6 +2672,9 @@ function renderCheckout(){
     });
   }
 
+  // Always update cart header badge from renderCheckout
+  updateCartBadge();
+
   // Wire up qty inputs — update cart on change
   pg.querySelectorAll("[data-cart-pid]").forEach(function(inp){
     inp.addEventListener("change", function(){
@@ -3706,6 +3711,24 @@ function renderDrawerNav(){
       +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"")
       +"</div>";
   }).join("");
+}
+
+// ─── Cart Badge ───────────────────────────────────────────────────────────────
+function updateCartBadge(){
+  var cartBtn = document.getElementById("cart-hdr-btn");
+  var cartBadge = document.getElementById("cart-hdr-badge");
+  if(!cartBtn) return;
+  var cartCount = 0;
+  try { cartCount = Object.keys(S.cart||{}).filter(function(k){ return parseInt(S.cart[k]||0)>0; }).length; } catch(e){}
+  if(cartCount > 0){
+    cartBtn.style.display = "inline-flex";
+    cartBtn.style.alignItems = "center";
+    cartBtn.style.justifyContent = "center";
+    cartBtn.style.position = "relative";
+    if(cartBadge) cartBadge.textContent = cartCount;
+  } else {
+    cartBtn.style.display = "none";
+  }
 }
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
