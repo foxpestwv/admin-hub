@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.7.8"; // Increment this with every update
+const APP_VERSION = "1.8.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3036,7 +3036,16 @@ function stopScanner(){
 
 async function onBarcodeScanned(code){
   if(!code||!_scannerActive) return;
-  // Require same code 3 times in a row to avoid false reads
+  // Only accept codes that look like real barcodes (8, 12, or 13 digits, all numeric)
+  // Also allow Code128 which can be alphanumeric but must be 6+ chars
+  var isNumeric = /^\d{6,14}$/.test(code.trim());
+  var isAlphaNum = /^[A-Z0-9\-]{6,20}$/.test(code.trim());
+  if(!isNumeric && !isAlphaNum){
+    // Looks like random text - ignore it
+    if(_scannerActive) document.getElementById("scanner-result").textContent = "Point at barcode...";
+    return;
+  }
+  // Require same code 3 times in a row for all modes to ensure accuracy
   if(code === _lastScannedCode){
     _scanConfirmCount++;
   } else {
