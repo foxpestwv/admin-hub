@@ -313,7 +313,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.7"; // Increment this with every update
+const APP_VERSION = "1.8.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1727,7 +1727,18 @@ function handleAction(a,v,el,e){
   }
   if(a==="save-pins") { savePins(); return; }
   if(a==="add-mgr") { addManager(); return; }
-  if(a==="del-mgr") { delManager(parseInt(v)); return; }
+  if(a==="del-mgr") {
+    var dmIdx = parseInt(v);
+    if(S.managers.length<=1){ alert("You must have at least one manager account."); return; }
+    var dmName = S.managers[dmIdx] ? S.managers[dmIdx].name : "this manager";
+    if(confirm("Remove "+dmName+"? This cannot be undone.")){
+      S.managers.splice(dmIdx,1);
+      gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      lsSet("hub:managers", S.managers);
+      renderSettings();
+    }
+    return;
+  }
   if(a==="edit-mgr") {
     var mi = parseInt(v);
     var mgr = S.managers[mi];
@@ -1855,9 +1866,16 @@ function handleAction(a,v,el,e){
     save(); renderSettings(); return;
   }
   if(a==="del-tech") {
-    if(confirm("Remove this technician?")){
-      S.techAccounts.splice(parseInt(v),1);
-      save(); renderSettings();
+    var dtIdx = parseInt(v);
+    var dtName = S.techAccounts[dtIdx] ? S.techAccounts[dtIdx].name : "this technician";
+    if(confirm("Remove "+dtName+"? This cannot be undone.")){
+      S.techAccounts.splice(dtIdx,1);
+      // Also remove from techs list
+      S.techs = S.techs.filter(function(t){ return t!==dtName; });
+      gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      lsSet("hub:techAccounts", S.techAccounts);
+      lsSet("hub:techs", S.techs);
+      renderSettings();
     }
     return;
   }
