@@ -334,7 +334,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.0.7"; // Increment this with every update
+const APP_VERSION = "2.0.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1567,7 +1567,10 @@ function handleAction(a,v,el,e){
     if(S.starredProducts[v]) delete S.starredProducts[v];
     else S.starredProducts[v]=true;
     lsSet("hub:starredProducts",S.starredProducts);
-    renderCheckout(); return;
+    // Use filterProductList if on checkout page to keep keyboard open
+    if(S.tab==="checkout" && S._checkView!=="cart") filterProductList();
+    else renderCheckout();
+    return;
   }
   if(a==="check-starred-only"){
     S.checkStarredOnly=!S.checkStarredOnly;
@@ -2641,6 +2644,7 @@ function renderCheckout(){
     +"<input type='text' id='check-search' class='inp' style='flex:1;' placeholder='🔍 Search products...' value='"+esc(S.checkSearch||"")+"'>"
     +"<button data-a='check-starred-only' style='background:"+(starredOnly?"#f59e0b":"#1e3a5f")+";color:"+(starredOnly?"#000":"#e2e8f0")+";border:none;padding:8px 14px;border-radius:8px;font-size:16px;cursor:pointer;touch-action:manipulation;' title='Show starred only'>⭐</button>"
     +"</div>"
+    +"<div id='checkout-product-list'>"
     +(prods.length===0
       ?"<div style='text-align:center;color:#64748b;padding:40px 20px;'>"+
         (starredOnly?"No starred products yet. Tap ⭐ on any product to star it.":"No products found.")+"</div>"
@@ -2661,16 +2665,16 @@ function renderCheckout(){
             +"<button data-a='add-to-cart-direct' data-v='"+p.id+"' style='background:#22c55e;color:#000;border:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;'>+Cart</button>"
             +"</div>"
             +"</div>";
-        }).join(""));
+        }).join("")+"</div>");
 
   pg.innerHTML = html;
 
-  // Wire up search input - no auto-focus (prevents keyboard popup)
+  // Wire up search input - filter without full re-render to keep keyboard open
   var searchEl = document.getElementById("check-search");
   if(searchEl){
     searchEl.addEventListener("input", function(){
       S.checkSearch = this.value;
-      renderCheckout();
+      filterProductList();
     });
   }
 
@@ -3713,6 +3717,58 @@ function renderDrawerNav(){
       +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"")
       +"</div>";
   }).join("");
+}
+
+// ─── Filter Product List (without full re-render) ────────────────────────────
+function filterProductList(){
+  var search = (S.checkSearch||"").toLowerCase().trim();
+  var starredOnly = S.checkStarredOnly||false;
+  if(!S.starredProducts) S.starredProducts={};
+
+  var prods = S.products.filter(function(p){
+    if(starredOnly && !S.starredProducts[p.id]) return false;
+    if(search && p.name.toLowerCase().indexOf(search)===-1) return false;
+    return true;
+  }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+
+  var listDiv = document.getElementById("checkout-product-list");
+  if(!listDiv) return;
+
+  if(prods.length===0){
+    listDiv.innerHTML = "<div style='text-align:center;color:#64748b;padding:40px 20px;'>"
+      +(starredOnly?"No starred products yet. Tap ⭐ on any product to star it.":"No products found.")+"</div>";
+    return;
+  }
+
+  listDiv.innerHTML = prods.map(function(p){
+    var starred = S.starredProducts[p.id];
+    var inCart = S.cart&&S.cart[p.id]||0;
+    var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
+    var stockLabel = p.qty<=0?" (OUT)":p.qty<=p.lowAt?" (LOW)":"";
+    return "<div style='background:#0f1f38;border:1px solid "+(inCart>0?"#f59e0b":"#1e3a5f")+";border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;'>"
+      +"<button type='button' tabindex='-1' data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;flex-shrink:0;touch-action:manipulation;line-height:1;-webkit-tap-highlight-color:transparent;'>"+(starred?"⭐":"☆")+"</button>"
+      +"<div style='flex:1;min-width:0;'>"
+      +"<div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+      +"<div style='font-size:11px;color:"+stockColor+";'>"+p.qty+" "+esc(p.unit)+" on hand"+stockLabel+"</div>"
+      +(inCart>0?"<div style='font-size:11px;color:#f59e0b;'>"+inCart+" in cart</div>":"")
+      +"</div>"
+      +"<div style='display:flex;align-items:center;gap:6px;'>"
+      +"<input type='number' min='0' class='inp' style='width:60px;padding:6px;font-size:14px;text-align:center;' placeholder='0' value='"+(inCart>0?inCart:"")+"' data-cart-pid='"+p.id+"'>"
+      +"<button type='button' data-a='add-to-cart-direct' data-v='"+p.id+"' style='background:#22c55e;color:#000;border:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;'>+Cart</button>"
+      +"</div>"
+      +"</div>";
+  }).join("");
+
+  // Rewire qty inputs
+  listDiv.querySelectorAll("[data-cart-pid]").forEach(function(inp){
+    inp.addEventListener("change", function(){
+      var pid = inp.getAttribute("data-cart-pid");
+      var qty = parseInt(inp.value)||0;
+      if(qty>0) S.cart[pid]=qty; else delete S.cart[pid];
+      lsSet("hub:cart",S.cart);
+      updateCartBadge();
+    });
+  });
 }
 
 // ─── Cart Badge ───────────────────────────────────────────────────────────────
