@@ -194,6 +194,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-analytics" class="pg"></div>
     <div id="pg-sign" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
+    <div id="pg-reports" class="pg"></div>
   </div>
 </div>
 <!-- Print Area (hidden until print) -->
@@ -317,7 +318,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.0"; // Increment this with every update
+const APP_VERSION = "1.9.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1306,7 +1307,7 @@ function login(role){
           // Update nav badge and dashboard without full re-render
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
           // Re-render nav to update badge
-          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
+          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
           document.getElementById("nav").innerHTML=mgrTabs.map(function(t){
             return "<button class='nb"+(S.tab===t.id?" on":"")+"' data-a='tab' data-v='"+t.id+"'>"+t.l+(t.id==="orders"&&pending>0?"<span class='bdg'>"+pending+"</span>":"")+"</button>";
           }).join("")+"<button class='nb' id='logout-btn' style='color:#475569;'>Exit</button>";
@@ -1443,8 +1444,9 @@ function handleAction(a,v,el,e){
     S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false; render(); return;
   }
   if(a==="nav-back"){
-    if(S._prevTab){ var t=S._prevTab; S._prevTab=null; S.tab=t; render(); }
-    else { S.tab="dashboard"; render(); }
+    S.tab = S._prevTab||"dashboard";
+    S._prevTab = null;
+    render();
     return;
   }
   if(a==="insp-view") { S.inspView=v; render(); return; }
@@ -1569,6 +1571,7 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="analytics-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderAnalytics(); return; }
+  if(a==="reports-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderReports(); return; }
   if(a==="set-analytics-avg") { S.analyticsAvgDays=parseInt(v); renderAnalytics(); return; }
   if(a==="analytics-print") { printAnalytics(); return; }
   if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
@@ -2056,6 +2059,7 @@ function render(){
   else if(S.tab==="truckinv") renderTruckInv();
   else if(S.tab==="restock") renderRestock();
   else if(S.tab==="analytics") renderAnalytics();
+  else if(S.tab==="reports") renderReports();
   else if(S.tab==="sign") renderSign();
   else if(S.tab==="settings") renderSettings();
 }
@@ -2065,7 +2069,10 @@ function renderDash(){
   var pg = document.getElementById("pg-dashboard");
   if(!pg) return;
   var name = S.managerName || S.currentTech || "";
-  var role = S.role === "manager" ? "Branch Manager" : "Technician";
+  // Get title from account data if available
+  var acct = (S.managers||[]).find(function(m){ return m.name===name; })
+    || (S.techAccounts||[]).find(function(t){ return t.name===name; });
+  var role = acct && acct.title ? acct.title : (S.role === "manager" ? "Manager" : "Technician");
   var branch = "Willamette Valley";
   var photo = S._userPhoto || "";
 
@@ -2090,6 +2097,7 @@ function renderDash(){
     {icon:"🚐", label:"Truck Inv", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0},
+    {icon:"📋", label:"Reports", tab:"reports", color:"#1a0a1a", accent:"#d946ef", badge:0},
     {icon:"⚙️", label:"Settings", tab:"settings", color:"#1a1a1a", accent:"#94a3b8", badge:0}
   ];
 
@@ -3372,8 +3380,8 @@ function renderDrawerNav(){
   var mTabs=[
     {id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},
     {id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},
-    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},
-    {id:"__scan__",l:"Scan Barcode"},{id:"settings",l:"Settings"}
+    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},
+    {id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"},{id:"settings",l:"Settings"}
   ];
   var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"}];
   var tabs = S.role==="manager" ? mTabs : tTabs;
@@ -3383,7 +3391,7 @@ function renderDrawerNav(){
   var icons = {
     dashboard:"🏠", inspect:"🚛", inventory:"📦", orders:"🛒",
     checkout:"🛍", truckinv:"🚐", restock:"🔄", analytics:"📊",
-    sign:"📝", settings:"⚙️", "__scan__":"📷"
+    reports:"📋", sign:"📝", settings:"⚙️", "__scan__":"📷"
   };
 
   var nav = document.getElementById("drawer-nav");
@@ -3397,6 +3405,223 @@ function renderDrawerNav(){
       +(badge>0?"<span class='drawer-badge'>"+badge+"</span>":"")
       +"</div>";
   }).join("");
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+async function renderReports(){
+  var pg = document.getElementById("pg-reports");
+  if(!pg) return;
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Reports</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:20px;'>Product usage, inventory, and order history</p>"
+    +"<div style='text-align:center;padding:20px;color:#64748b;'>Loading...</div>";
+
+  // Load data
+  try {
+    var adjLog = S._cachedAdjLog;
+    var orderHist = S._cachedOrderHistory;
+    if(!adjLog){
+      var adjResult = await gs("getAdjustmentLog", null);
+      adjLog = adjResult && adjResult.log ? adjResult.log : [];
+      S._cachedAdjLog = adjLog;
+    }
+    if(!orderHist){
+      var ohResult = await gs("getOrderHistory", null);
+      orderHist = ohResult && ohResult.orders ? ohResult.orders : [];
+      S._cachedOrderHistory = orderHist;
+    }
+
+    var S_repDateRange = S._repDateRange||"30";
+    var S_repTech = S._repTech||"";
+    var S_repProduct = S._repProduct||"";
+
+    // Date filter
+    var now = new Date();
+    var cutoff;
+    if(S_repDateRange==="custom" && S._repDateFrom){
+      cutoff = new Date(S._repDateFrom);
+    } else {
+      cutoff = new Date(now - parseInt(S_repDateRange||"30")*24*60*60*1000);
+    }
+    var cutoffEnd = (S_repDateRange==="custom" && S._repDateTo) ? new Date(S._repDateTo) : now;
+
+    // Filter adjustment log
+    var filtered = adjLog.filter(function(row){
+      var d = new Date(row[0]||"");
+      if(isNaN(d)) return false;
+      if(d < cutoff) return false;
+      if(d > cutoffEnd) return false;
+      if(S_repTech && row[6] !== S_repTech) return false;
+      if(S_repProduct && row[1] !== S_repProduct) return false;
+      return true;
+    });
+
+    // Aggregate by product
+    var byProduct = {};
+    filtered.forEach(function(row){
+      var name = row[1]||"Unknown";
+      var change = parseFloat(row[5])||0;
+      if(!byProduct[name]) byProduct[name]={name:name, used:0, added:0, count:0};
+      if(change < 0) byProduct[name].used += Math.abs(change);
+      else byProduct[name].added += change;
+      byProduct[name].count++;
+    });
+
+    var prodList = Object.values(byProduct).sort(function(a,b){ return b.used-a.used; });
+
+    // Aggregate by tech
+    var byTech = {};
+    filtered.forEach(function(row){
+      var tech = row[6]||"Unknown";
+      var change = parseFloat(row[5])||0;
+      if(!byTech[tech]) byTech[tech]={name:tech, used:0, count:0};
+      if(change < 0) byTech[tech].used += Math.abs(change);
+      byTech[tech].count++;
+    });
+    var techList = Object.values(byTech).sort(function(a,b){ return b.used-a.used; });
+
+    // Get unique techs and products for filters
+    var allTechs = [...new Set(adjLog.map(function(r){ return r[6]||""; }).filter(Boolean))].sort();
+    var allProds = [...new Set(adjLog.map(function(r){ return r[1]||""; }).filter(Boolean))].sort();
+
+    // Current stock value
+    var lowStock = S.products.filter(function(p){ return p.qty<=p.lowAt; });
+    var outStock = S.products.filter(function(p){ return p.qty<=0; });
+
+    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Reports</h2>"
+      +"<p style='color:#475569;font-size:13px;margin-bottom:20px;'>Product usage, inventory, and order history</p>"
+
+      // Filters
+      +"<div class='card' style='margin-bottom:20px;'>"
+      +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>🔍 Filters</div>"
+      +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;'>"
+      +"<div><label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>DATE RANGE</label>"
+      +"<select class='inp' id='rep-date-range'>"
+      +"<option value='7'"+(S_repDateRange==="7"?" selected":"")+">Last 7 days</option>"
+      +"<option value='30'"+(S_repDateRange==="30"?" selected":"")+">Last 30 days</option>"
+      +"<option value='60'"+(S_repDateRange==="60"?" selected":"")+">Last 60 days</option>"
+      +"<option value='90'"+(S_repDateRange==="90"?" selected":"")+">Last 90 days</option>"
+      +"<option value='365'"+(S_repDateRange==="365"?" selected":"")+">Last year</option>"
+      +"<option value='custom'"+(S_repDateRange==="custom"?" selected":"")+">Custom range...</option>"
+      +"</select>"
+      +(S_repDateRange==="custom"
+        ?"<div style='display:flex;gap:6px;margin-top:6px;'>"
+        +"<input type='date' class='inp' id='rep-date-from' style='flex:1;font-size:12px;' value='"+(S._repDateFrom||"")+"'>"
+        +"<input type='date' class='inp' id='rep-date-to' style='flex:1;font-size:12px;' value='"+(S._repDateTo||"")+"'>"
+        +"</div>"
+        :"")
+      +"</div>"
+      +"<div><label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>TECHNICIAN</label>"
+      +"<select class='inp' id='rep-tech'>"
+      +"<option value=''>All Techs</option>"
+      +allTechs.map(function(t){ return "<option value='"+esc(t)+"'"+(S_repTech===t?" selected":"")+">"+esc(t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>PRODUCT</label>"
+      +"<select class='inp' id='rep-product'>"
+      +"<option value=''>All Products</option>"
+      +allProds.map(function(p){ return "<option value='"+esc(p)+"'"+(S_repProduct===p?" selected":"")+">"+esc(p)+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>"
+      +"<div style='margin-top:10px;font-size:12px;color:#64748b;'>"+filtered.length+" adjustment records found for selected filters."
+      +"  <button class='btn bg' style='padding:4px 10px;font-size:11px;margin-left:8px;' data-a='reports-refresh'>↻ Refresh</button>"
+      +"</div></div>";
+
+    // Wire up filter selects
+    setTimeout(function(){
+      var dr = document.getElementById("rep-date-range");
+      var rt = document.getElementById("rep-tech");
+      var rp = document.getElementById("rep-product");
+      if(dr) dr.onchange = function(){ S._repDateRange=this.value; renderReports(); };
+      if(rt) rt.onchange = function(){ S._repTech=this.value; renderReports(); };
+      if(rp) rp.onchange = function(){ S._repProduct=this.value; renderReports(); };
+      var df = document.getElementById("rep-date-from");
+      var dt = document.getElementById("rep-date-to");
+      if(df) df.onchange = function(){ S._repDateFrom=this.value; renderReports(); };
+      if(dt) dt.onchange = function(){ S._repDateTo=this.value; renderReports(); };
+    }, 100);
+
+    pg.innerHTML += ""
+
+      // Inventory snapshot
+      +"<div class='desk-grid' style='margin-bottom:20px;'>"
+      +"<div class='card'>"
+      +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>📦 Inventory Snapshot</div>"
+      +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;margin-bottom:12px;'>"
+      +"<div><div style='font-size:24px;font-weight:700;color:#3b82f6;'>"+S.products.length+"</div><div style='font-size:11px;color:#64748b;'>Total Products</div></div>"
+      +"<div><div style='font-size:24px;font-weight:700;color:#f97316;'>"+lowStock.length+"</div><div style='font-size:11px;color:#64748b;'>Low Stock</div></div>"
+      +"<div><div style='font-size:24px;font-weight:700;color:#ef4444;'>"+outStock.length+"</div><div style='font-size:11px;color:#64748b;'>Out of Stock</div></div>"
+      +"</div>"
+      +(lowStock.length>0
+        ?"<div style='font-size:12px;font-weight:600;color:#f97316;margin-bottom:6px;'>Low/Out Items:</div>"
+        +lowStock.slice(0,8).map(function(p){
+          return "<div style='display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #0f1f38;font-size:12px;'>"
+            +"<span>"+esc(p.name)+"</span>"
+            +"<span style='color:"+(p.qty<=0?"#ef4444":"#f97316")+";font-weight:700;'>"+p.qty+" "+esc(p.unit)+"</span>"
+            +"</div>";
+        }).join("")
+        +(lowStock.length>8?"<div style='font-size:11px;color:#64748b;margin-top:4px;'>...and "+(lowStock.length-8)+" more</div>":"")
+        :"<div style='color:#22c55e;font-size:13px;'>✓ All products adequately stocked</div>")
+      +"</div>"
+
+      // Top products by usage
+      +"<div class='card'>"
+      +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>📊 Top Products by Usage</div>"
+      +(prodList.length===0
+        ?"<div style='color:#64748b;font-size:13px;'>No usage data for selected period</div>"
+        :prodList.slice(0,10).map(function(p,i){
+          var maxUsed = prodList[0].used||1;
+          var pct = Math.round((p.used/maxUsed)*100);
+          return "<div style='margin-bottom:10px;'>"
+            +"<div style='display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;'>"
+            +"<span style='font-weight:600;'>"+esc(p.name)+"</span>"
+            +"<span style='color:#94a3b8;'>"+p.used+" used</span>"
+            +"</div>"
+            +"<div style='background:#0a1628;border-radius:4px;height:6px;'>"
+            +"<div style='background:#3b82f6;height:6px;border-radius:4px;width:"+pct+"%;'></div>"
+            +"</div>"
+            +"</div>";
+        }).join(""))
+      +"</div></div>"
+
+      // Usage by tech
+      +(techList.length>0
+        ?"<div class='card' style='margin-bottom:20px;'>"
+        +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>👷 Usage by Technician</div>"
+        +"<table class='desk-table' style='width:100%;'>"
+        +"<thead><tr><th>Technician</th><th>Units Used</th><th>Adjustments</th></tr></thead>"
+        +"<tbody>"
+        +techList.map(function(t){
+          return "<tr><td>"+esc(t.name)+"</td><td>"+t.used+"</td><td>"+t.count+"</td></tr>";
+        }).join("")
+        +"</tbody></table></div>"
+        :"")
+
+      // Detailed log
+      +(filtered.length>0
+        ?"<div class='card'>"
+        +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>📋 Adjustment Log <span style='font-weight:400;font-size:11px;color:#64748b;'>(most recent "+Math.min(filtered.length,50)+" of "+filtered.length+")</span></div>"
+        +"<div style='overflow-x:auto;'>"
+        +"<table class='desk-table' style='width:100%;min-width:500px;'>"
+        +"<thead><tr><th>Date</th><th>Product</th><th>Change</th><th>Tech</th><th>Reason</th></tr></thead>"
+        +"<tbody>"
+        +filtered.slice(0,50).map(function(row){
+          var change = parseFloat(row[5])||0;
+          var color = change<0?"#ef4444":change>0?"#22c55e":"#94a3b8";
+          var d = new Date(row[0]);
+          var dateStr = isNaN(d)?"":d.toLocaleDateString();
+          return "<tr>"
+            +"<td>"+dateStr+"</td>"
+            +"<td>"+esc(row[1]||"")+"</td>"
+            +"<td style='color:"+color+";font-weight:700;'>"+(change>0?"+":"")+change+" "+esc(row[2]||"")+"</td>"
+            +"<td>"+esc(row[6]||"")+"</td>"
+            +"<td style='color:#64748b;'>"+esc(row[7]||"")+"</td>"
+            +"</tr>";
+        }).join("")
+        +"</tbody></table></div></div>"
+        :"<div class='card'><div style='color:#64748b;text-align:center;padding:20px;'>No adjustment records found for selected filters.</div></div>");
+
+  } catch(e){
+    pg.innerHTML = "<h2>Reports</h2><div class='card'><div style='color:#ef4444;'>Error loading report data: "+e.message+"</div></div>";
+  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
