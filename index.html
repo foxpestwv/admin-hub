@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.1"; // Increment this with every update
+const APP_VERSION = "1.8.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2998,7 +2998,7 @@ async function startScanner(mode, productId, callback){
         if(!_scannerActive) return;
         try {
           var codes2 = await detector2.detect(video);
-          if(codes2.length>0){ onBarcodeScanned(codes2[0].rawValue); return; }
+          if(codes2.length>0){ await onBarcodeScanned(codes2[0].rawValue); }
         } catch(e){}
         if(_scannerActive) requestAnimationFrame(detect2);
       };
