@@ -317,7 +317,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.9"; // Increment this with every update
+const APP_VERSION = "1.9.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -496,7 +496,8 @@ async function gs(fn, data){
         var cfg = await fbGet("config","accounts");
         return cfg || {managers:[],techAccounts:[],trucks:[],cats:[],inspFields:[]};
       }
-      case "saveAccounts": {
+      case "saveAccounts":
+      case "saveAccountsServer": {
         await fbSet("config","accounts",{
           managers: data.managers||[],
           techAccounts: data.techAccounts||[],
@@ -505,6 +506,11 @@ async function gs(fn, data){
           inspFields: data.inspFields||[],
           updatedAt: new Date().toISOString()
         });
+        lsSet("hub:managers", data.managers||[]);
+        lsSet("hub:techAccounts", data.techAccounts||[]);
+        lsSet("hub:trucks", data.trucks||[]);
+        lsSet("hub:cats", data.cats||[]);
+        lsSet("hub:inspFields", data.inspFields||[]);
         return {ok:true};
       }
 
@@ -778,6 +784,13 @@ async function gs(fn, data){
       }
 
       // ── SIGN REQUESTS ─────────────────────────────────────────────────────────
+      case "getAccountsServer":
+      case "getAccounts": {
+        await initFirebase();
+        var acctDoc = await _db.collection("config").doc("accounts").get();
+        if(acctDoc.exists) return acctDoc.data();
+        return {managers:[], techAccounts:[], trucks:[], cats:[], inspFields:[]};
+      }
       case "getSignRequests": {
         await initFirebase();
         var srSnap = await _db.collection("signRequests").get();
