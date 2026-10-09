@@ -145,7 +145,7 @@ input,textarea,select,button{font-family:inherit;}
     </div>
     <div style="display:flex;align-items:center;gap:4px;">
       <button data-a="tab" data-v="dashboard" style="background:none;border:none;color:#f59e0b;font-size:18px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;" title="Home">🏠</button>
-      <button id="cart-hdr-btn" data-a="tab" data-v="checkout" style="display:none;position:relative;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">🛒<span id="cart-hdr-badge" style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;"></span></button>
+      <button id="cart-hdr-btn" data-a="go-to-cart" style="display:none;position:relative;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">🛒<span id="cart-hdr-badge" style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;font-size:10px;"></span></button>
       <button id="hamburger-btn" data-a="toggle-drawer" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
     </div>
   </div></div>
@@ -323,7 +323,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.7"; // Increment this with every update
+const APP_VERSION = "1.9.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1549,6 +1549,65 @@ function handleAction(a,v,el,e){
   if(a==="add-check-item") { snapshotCheckItems(); S.checkItems.push({id:uid(),productId:"",qty:"",notes:""}); render(); return; }
   if(a==="del-check-item") { snapshotCheckItems(); S.checkItems.splice(parseInt(v),1); render(); return; }
   if(a==="submit-checkout") { submitCheckout(); return; }
+  if(a==="toggle-star-product"){
+    if(!S.starredProducts) S.starredProducts={};
+    if(S.starredProducts[v]) delete S.starredProducts[v];
+    else S.starredProducts[v]=true;
+    lsSet("hub:starredProducts",S.starredProducts);
+    renderCheckout(); return;
+  }
+  if(a==="check-starred-only"){
+    S.checkStarredOnly=!S.checkStarredOnly;
+    renderCheckout(); return;
+  }
+  if(a==="view-cart"||a==="go-to-cart"){
+    S.tab="checkout"; S._checkView="cart"; S.checkDone=false; render(); return;
+  }
+  if(a==="view-browse"){
+    S._checkView="browse"; renderCheckout(); return;
+  }
+  if(a==="add-to-cart-direct"){
+    if(!S.cart) S.cart={};
+    var pg3=document.getElementById("pg-checkout");
+    var qInp=pg3&&pg3.querySelector("[data-cart-pid='"+v+"']");
+    var qty3=qInp?(parseInt(qInp.value)||0):1;
+    if(qty3>0){
+      S.cart[v]=qty3;
+      lsSet("hub:cart",S.cart);
+      showToast("Added to cart ✓");
+      if(qInp) qInp.value="";
+      renderCheckout();
+    }
+    return;
+  }
+  if(a==="cart-dec"){
+    if(!S.cart) S.cart={};
+    S.cart[v]=Math.max(0,(S.cart[v]||0)-1);
+    if(!S.cart[v]) delete S.cart[v];
+    lsSet("hub:cart",S.cart);
+    renderCheckout(); return;
+  }
+  if(a==="cart-inc"){
+    if(!S.cart) S.cart={};
+    S.cart[v]=(S.cart[v]||0)+1;
+    lsSet("hub:cart",S.cart);
+    renderCheckout(); return;
+  }
+  if(a==="cart-remove"){
+    if(S.cart) delete S.cart[v];
+    lsSet("hub:cart",S.cart);
+    renderCheckout(); return;
+  }
+  if(a==="clear-cart"){
+    if(confirm("Clear all items from cart?")){
+      S.cart={};
+      lsSet("hub:cart",S.cart);
+      S._checkView="browse";
+      renderCheckout();
+    }
+    return;
+  }
+  if(a==="submit-cart"){ submitCartOrder(); return; }
   if(a==="checkout-reset") { S.checkDone=false; S.checkItems=[{id:uid(),productId:"",qty:"",notes:""}]; S.checkTech=""; render(); return; }
   if(a==="order-filter") { S.ordersFilter=v; render(); return; }
   if(a==="refresh-orders") { refreshOrders(); return; }
