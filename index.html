@@ -318,7 +318,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.3"; // Increment this with every update
+const APP_VERSION = "1.9.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3479,9 +3479,15 @@ async function renderReports(){
     });
     var techList = Object.values(byTech).sort(function(a,b){ return b.used-a.used; });
 
-    // Get unique techs and products for filters
-    var allTechs = [...new Set(adjLog.map(function(r){ return r[6]||""; }).filter(Boolean))].sort();
-    var allProds = [...new Set(adjLog.map(function(r){ return r[1]||""; }).filter(Boolean))].sort();
+    // Get techs from S.techs (already loaded) + any in adj log
+    var allTechsSet = new Set(S.techs||[]);
+    adjLog.forEach(function(r){ if(r[6]) allTechsSet.add(r[6]); });
+    var allTechs = Array.from(allTechsSet).filter(Boolean).sort();
+
+    // Get products from S.products (already loaded) + any in adj log
+    var allProdsSet = new Set((S.products||[]).map(function(p){ return p.name; }));
+    adjLog.forEach(function(r){ if(r[1]) allProdsSet.add(r[1]); });
+    var allProds = Array.from(allProdsSet).filter(Boolean).sort();
 
     // Current stock value
     var lowStock = S.products.filter(function(p){ return p.qty<=p.lowAt; });
