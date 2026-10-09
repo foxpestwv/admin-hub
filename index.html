@@ -334,7 +334,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.0.2"; // Increment this with every update
+const APP_VERSION = "2.0.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -6913,12 +6913,17 @@ document.addEventListener("change",function(e){
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 load(); // Load from localStorage immediately - fast
 
-// v2.0.0 Welcome splash - show once
-(function(){
-  var splashKey = "hub:splashSeen_2.0.0";
-  var seen = localStorage.getItem(splashKey);
-  if(seen) return;
-  localStorage.setItem(splashKey, "1");
+// v2.0.0 Welcome splash - called after login
+function showWelcomeSplash(){
+  var splashKey = "hub:splashSeen_v2_after_login";
+  var firstSeen = localStorage.getItem(splashKey);
+  var now = Date.now();
+  var oneWeek = 7 * 24 * 60 * 60 * 1000;
+  if(!firstSeen){
+    localStorage.setItem(splashKey, String(now));
+  } else if(now - parseInt(firstSeen) > oneWeek){
+    return; // More than a week has passed, stop showing
+  }
 
   var splash = document.getElementById("welcome-splash");
   if(!splash) return;
@@ -7000,7 +7005,7 @@ load(); // Load from localStorage immediately - fast
       cancelAnimationFrame(animId);
     }, 800);
   });
-})();
+}
 
 // Show login right away from cached data
 var dbg = document.getElementById("debug");
