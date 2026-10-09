@@ -283,7 +283,7 @@ const S = {
   signRequests:[], // [{id,date,techName,techEmail,docName,status,createdBy,fileData,managerSig,techSig,note}] // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
-  ordersFilter:"Pending", settingsTab:"access", checkSearch:"", checkStarredOnly:false,
+  ordersFilter:"Pending", settingsTab:"access", checkSearch:"", checkStarredOnly:false, cart:{},
   detailInsp:null, editOrderId:null, editOrderType:null,
   openCat:null, inspListFilter:"all",
 };
@@ -297,6 +297,10 @@ function load(){
   var starred = lsGet("hub:starredProducts");
   if(starred) S.starredProducts = starred;
   else S.starredProducts = {};
+  // Load cart
+  var savedCart = lsGet("hub:cart");
+  if(savedCart) S.cart = savedCart;
+  else S.cart = {};
   // Parse any arrays that got stored as JSON strings
   ["managers","techAccounts","trucks","cats","inspFields","inspections","products","orders","restockOrders"].forEach(function(k){
     if(typeof S[k]==="string") try{ S[k]=JSON.parse(S[k]); }catch(e){ S[k]=[]; }
@@ -318,7 +322,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.4"; // Increment this with every update
+const APP_VERSION = "1.9.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -591,6 +595,15 @@ async function gs(fn, data){
         });
         // Update product qty atomically
         await fbUpdate("products", data.productId, {qty: data.newQty, updatedAt: new Date().toISOString()});
+        return {ok:true};
+      }
+      case "logAdjustment": {
+        var adjId = data.id||"adj_"+Date.now();
+        await fbSet("adjustmentLog", adjId, Object.assign({}, data, {id:adjId}));
+        // Update cache
+        if(S._cachedAdjLog){
+          S._cachedAdjLog.unshift([data.date,data.product,data.unit,data.qtyBefore,data.qtyAfter,data.change,data.tech,data.reason]);
+        }
         return {ok:true};
       }
       case "getAdjustmentLog": {
@@ -2104,7 +2117,7 @@ function renderDash(){
   // Tech tiles
   var pendingTechSign = (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===name; }).length;
   var techTiles = [
-    {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:0},
+    {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; }).length},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
@@ -2520,6 +2533,13 @@ function renderCheckout(){
   if(S.checkDone){pg.innerHTML=checkDone();return;}
   if(!S.starredProducts) S.starredProducts={};
   if(!S.checkQtys) S.checkQtys={};
+
+  // If tech has cart items, prefill checkQtys from cart
+  if(S.role!=="manager" && S.cart && Object.keys(S.cart).length>0){
+    Object.keys(S.cart).forEach(function(pid){
+      if(!S.checkQtys[pid]) S.checkQtys[pid] = S.cart[pid];
+    });
+  }
   const isM=S.role==="manager";
   const search=(S.checkSearch||"").toLowerCase().trim();
   const starredOnly=S.checkStarredOnly||false;
@@ -3305,16 +3325,16 @@ function showProductLookup(productId){
   var prod = S.products.find(function(p){ return p.id===productId; });
   if(!prod){ showToast("Product not found"); return; }
 
+  var isManager = S.role==="manager";
+  var stockColor = prod.qty<=0?"#ef4444":prod.qty<=prod.lowAt?"#f59e0b":"#22c55e";
+  var cartQty = (S.cart&&S.cart[prod.id])||0;
+
   var overlay = document.createElement("div");
+  overlay.id = "lookup-overlay";
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9998;padding:20px;";
 
-  var lowPct = prod.qty<=prod.lowAt ? "color:#ef4444;" : prod.qty<=prod.lowAt*1.5 ? "color:#f59e0b;" : "color:#22c55e;";
-
-  // Build popup using DOM to avoid quote nesting issues
   var box = document.createElement("div");
-  box.style.cssText = "background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;width:100%;max-width:400px;padding:20px;";
-
-  var stockColor = prod.qty<=prod.lowAt?"#ef4444":prod.qty<=prod.lowAt*1.5?"#f59e0b":"#22c55e";
+  box.style.cssText = "background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;width:100%;max-width:400px;padding:20px;max-height:90vh;overflow-y:auto;";
 
   box.innerHTML = "<div style='display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;'>"
     +"<div><div style='font-size:17px;font-weight:700;'>"+esc(prod.name)+"</div>"
@@ -3333,13 +3353,44 @@ function showProductLookup(productId){
     +"</div>"
     +(prod.reorderNote?"<div style='background:#0a1628;padding:10px;border-radius:8px;font-size:12px;color:#94a3b8;margin-bottom:14px;'>"+esc(prod.reorderNote)+"</div>":"")
     +(prod.upc?"<div style='font-size:11px;color:#475569;margin-bottom:8px;'>UPC: "+esc(prod.upc)+"</div>":"")
-    +(prod.sdsUrl||prod.labelUrl||prod.SDS||prod.Label?"<div style='display:flex;gap:8px;margin-bottom:12px;'>"
-      +((prod.sdsUrl||prod.SDS)?"<a href='"+esc(prod.sdsUrl||prod.SDS)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F4C4; SDS Sheet</a>":"")
+    +(prod.sdsUrl||prod.labelUrl||prod.SDS||prod.Label?"<div style='display:flex;gap:8px;margin-bottom:14px;'>"
+      +((prod.sdsUrl||prod.SDS)?"<a href='"+esc(prod.sdsUrl||prod.SDS)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F4C4; SDS</a>":"")
       +((prod.labelUrl||prod.Label)?"<a href='"+esc(prod.labelUrl||prod.Label)+"' target='_blank' style='flex:1;background:#0a1628;color:#3b82f6;border:1px solid #1e3a5f;padding:8px;border-radius:8px;text-align:center;font-size:12px;text-decoration:none;font-weight:600;'>&#x1F3F7; Label</a>":"")
       +"</div>":"")
+
+    // Manager: Adjust Stock inline
+    +(isManager
+      ?"<div id='adjust-section' style='background:#0a1628;border-radius:10px;padding:14px;margin-bottom:14px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:10px;'>Adjust Stock</div>"
+      +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+      +"<button id='adj-minus' style='background:#1e3a5f;color:#e2e8f0;border:none;width:36px;height:36px;border-radius:8px;font-size:20px;cursor:pointer;'>−</button>"
+      +"<input id='adj-qty' type='number' class='inp' style='flex:1;text-align:center;font-size:18px;font-weight:700;padding:6px;' value='0' placeholder='0'>"
+      +"<button id='adj-plus' style='background:#1e3a5f;color:#e2e8f0;border:none;width:36px;height:36px;border-radius:8px;font-size:20px;cursor:pointer;'>+</button>"
+      +"</div>"
+      +"<input id='adj-reason' type='text' class='inp' style='width:100%;margin-bottom:8px;font-size:13px;' placeholder='Reason (e.g. used, received, damaged)'>"
+      +"<button id='adj-submit' style='width:100%;background:#2563eb;color:#fff;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;'>Apply Adjustment</button>"
+      +"</div>"
+      :"")
+
+    // Tech: Add to Cart
+    +(!isManager
+      ?"<div style='background:#0a1628;border-radius:10px;padding:14px;margin-bottom:14px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:10px;'>🛒 Add to Cart</div>"
+      +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+      +"<button id='cart-minus' style='background:#1e3a5f;color:#e2e8f0;border:none;width:36px;height:36px;border-radius:8px;font-size:20px;cursor:pointer;'>−</button>"
+      +"<input id='cart-qty' type='number' class='inp' style='flex:1;text-align:center;font-size:18px;font-weight:700;padding:6px;' value='"+(cartQty||1)+"' min='0'>"
+      +"<button id='cart-plus' style='background:#1e3a5f;color:#e2e8f0;border:none;width:36px;height:36px;border-radius:8px;font-size:20px;cursor:pointer;'>+</button>"
+      +"</div>"
+      +(cartQty>0?"<div style='font-size:11px;color:#22c55e;margin-bottom:6px;'>Currently in cart: "+cartQty+" "+esc(prod.unit)+"</div>":"")
+      +"<button id='cart-add' style='width:100%;background:#22c55e;color:#000;border:none;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;'>Add to Cart</button>"
+      +"</div>"
+      :"")
+
     +"<div style='display:flex;gap:8px;'>"
-    +"<button id='lookup-adjust' style='flex:1;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;'>Adjust Stock</button>"
-    +"<button id='lookup-scan-more' style='flex:1;background:#f59e0b;color:#000;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;'>Scan Another</button>"
+    +(!isManager&&Object.keys(S.cart||{}).length>0
+      ?"<button id='lookup-view-cart' style='flex:1;background:#f59e0b;color:#000;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;'>View Cart ("+Object.keys(S.cart).filter(function(k){ return S.cart[k]>0; }).length+")</button>"
+      :"")
+    +"<button id='lookup-scan-more' style='flex:1;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;'>Scan Another</button>"
     +"</div>";
 
   overlay.appendChild(box);
@@ -3350,12 +3401,71 @@ function showProductLookup(productId){
     overlay.remove();
     startScanner("lookup", null, function(pid){ showProductLookup(pid); });
   };
-  document.getElementById("lookup-adjust").onclick = function(){
-    overlay.remove();
-    S.tab="inventory"; render();
-  };
 
-  document.body.appendChild(overlay);
+  var vcBtn = document.getElementById("lookup-view-cart");
+  if(vcBtn) vcBtn.onclick = function(){ overlay.remove(); S.tab="checkout"; S._showCart=true; render(); };
+
+  // Manager adjust stock
+  if(isManager){
+    var adjQtyInput = document.getElementById("adj-qty");
+    document.getElementById("adj-minus").onclick = function(){
+      adjQtyInput.value = parseInt(adjQtyInput.value||0) - 1;
+    };
+    document.getElementById("adj-plus").onclick = function(){
+      adjQtyInput.value = parseInt(adjQtyInput.value||0) + 1;
+    };
+    document.getElementById("adj-submit").onclick = async function(){
+      var delta = parseInt(adjQtyInput.value)||0;
+      var reason = document.getElementById("adj-reason").value.trim();
+      if(delta===0){ alert("Enter a quantity to adjust"); return; }
+      var newQty = prod.qty + delta;
+      if(newQty < 0){ alert("Cannot go below 0"); return; }
+      prod.qty = newQty;
+      await gs("updateProduct", {id:prod.id, qty:newQty});
+      // Log adjustment
+      var logEntry = {
+        id:"adj_"+Date.now(),
+        date:new Date().toISOString(),
+        product:prod.name,
+        unit:prod.unit,
+        qtyBefore:prod.qty-delta,
+        qtyAfter:newQty,
+        change:delta,
+        tech:S.managerName||"",
+        reason:reason||"Manual adjustment"
+      };
+      await gs("logAdjustment", logEntry);
+      lsSet("hub:products", S.products);
+      overlay.remove();
+      showToast((delta>0?"+":"")+delta+" "+prod.unit+" — New stock: "+newQty);
+    };
+  }
+
+  // Tech cart
+  if(!isManager){
+    var cartQtyInput = document.getElementById("cart-qty");
+    document.getElementById("cart-minus").onclick = function(){
+      cartQtyInput.value = Math.max(0, parseInt(cartQtyInput.value||1) - 1);
+    };
+    document.getElementById("cart-plus").onclick = function(){
+      cartQtyInput.value = parseInt(cartQtyInput.value||1) + 1;
+    };
+    document.getElementById("cart-add").onclick = function(){
+      var qty = parseInt(cartQtyInput.value)||0;
+      if(!S.cart) S.cart={};
+      if(qty > 0){
+        S.cart[prod.id] = qty;
+        lsSet("hub:cart", S.cart);
+        overlay.remove();
+        showToast("Added "+qty+" "+prod.unit+" of "+prod.name+" to cart");
+      } else {
+        delete S.cart[prod.id];
+        lsSet("hub:cart", S.cart);
+        overlay.remove();
+        showToast("Removed "+prod.name+" from cart");
+      }
+    };
+  }
 }
 
 // Also handle lookup mode in onBarcodeScanned
