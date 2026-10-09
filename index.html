@@ -312,7 +312,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.8.4"; // Increment this with every update
+const APP_VERSION = "1.8.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2922,7 +2922,9 @@ async function sendLowEmail(low){
 var _scannerActive = false;
 var _lastScannedCode = "";
 var _scanConfirmCount = 0;
-var _scanConfirmNeeded = 3; // Must read same barcode 3 times consecutively
+var _scanConfirmNeeded = 3;
+var _lastScanTime = 0;
+var _scanCooldown = 1500; // ms between accepted scans
 var _scannerStream = null;
 var _scannerCallback = null;
 var _scannerMode = null; // "register" or "pull"
@@ -2993,7 +2995,7 @@ async function startScanner(mode, productId, callback){
     }
 
     if(typeof BarcodeDetector !== "undefined"){
-      var detector2 = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"]});
+      var detector2 = new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39"]});
       var detect2 = async function(){
         if(!_scannerActive) return;
         try {
@@ -3044,23 +3046,25 @@ async function onBarcodeScanned(code){
     // Looks like random text - ignore silently
     return;
   }
-  // Normalize code for comparison - strip leading zeros
-  var normCode = trimmed.replace(/^0+/, "") || trimmed;
-  // Require same code 3 times in a row for all modes to ensure accuracy
-  var normLast = (_lastScannedCode||"").replace(/^0+/, "") || _lastScannedCode;
+  // Cooldown - ignore reads within 1.5s of last accepted scan
+  var now = Date.now();
+  if(now - _lastScanTime < _scanCooldown) return;
+
+  // Normalize for comparison
+  var normCode = trimmed.replace(/^0+/,"") || trimmed;
+  var normLast = (_lastScannedCode||"").replace(/^0+/,"") || _lastScannedCode;
+
   if(normCode === normLast && normCode.length > 0){
     _scanConfirmCount++;
-    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
   } else {
     _lastScannedCode = trimmed;
     _scanConfirmCount = 1;
-    document.getElementById("scanner-result").textContent = "Reading... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
-    return;
   }
-  if(_scanConfirmCount < _scanConfirmNeeded){
-    return;
-  }
-  // Confirmed - reset for next scan
+  document.getElementById("scanner-result").textContent = "Hold steady... ("+_scanConfirmCount+"/"+_scanConfirmNeeded+")";
+  if(_scanConfirmCount < _scanConfirmNeeded) return;
+
+  // Confirmed - set timestamp and reset counter
+  _lastScanTime = now;
   _lastScannedCode = "";
   _scanConfirmCount = 0;
 
