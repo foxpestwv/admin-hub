@@ -136,6 +136,17 @@ input,textarea,select,button{font-family:inherit;}
 </div>
 
 <div id="app" style="display:none;">
+  <!-- v2.0.0 Welcome Splash - shows once -->
+  <div id="welcome-splash" style="display:none;">
+    <canvas id="firework-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+    <div id="welcome-text">
+      <div style="font-size:clamp(14px,4vw,22px);color:#f59e0b;font-weight:600;letter-spacing:4px;text-transform:uppercase;margin-bottom:8px;">Fox Pest Control</div>
+      <div style="font-size:clamp(32px,10vw,72px);font-weight:900;color:#e2e8f0;line-height:1;margin-bottom:8px;">Admin Hub</div>
+      <div style="font-size:clamp(40px,12vw,90px);font-weight:900;background:linear-gradient(135deg,#f59e0b,#ef4444,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;">2.0</div>
+      <div style="font-size:clamp(12px,3vw,18px);color:#64748b;margin-top:16px;letter-spacing:2px;">🎉 Welcome to the future 🎉</div>
+    </div>
+  </div>
+
   <div id="hdr"><div id="hdr-in">
     <div style="display:flex;align-items:center;gap:6px;">
       <button id="back-btn" data-a="nav-back" style="display:none;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">←</button>
@@ -145,7 +156,7 @@ input,textarea,select,button{font-family:inherit;}
     </div>
     <div style="display:flex;align-items:center;gap:4px;">
       <button data-a="tab" data-v="dashboard" style="background:none;border:none;color:#f59e0b;font-size:18px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;" title="Home">🏠</button>
-      <button id="cart-hdr-btn" data-a="go-to-cart" style="display:none;position:relative;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">🛒<span id="cart-hdr-badge" style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;font-size:10px;"></span></button>
+      <button id="cart-hdr-btn" onclick="S.tab='checkout';S._checkView='cart';S.checkDone=false;render();" style="display:none;position:relative;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">🛒<span id="cart-hdr-badge" style="position:absolute;top:0px;right:0px;background:#ef4444;color:#fff;border-radius:50%;min-width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;padding:0 2px;"></span></button>
       <button id="hamburger-btn" data-a="toggle-drawer" style="background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:4px 8px;touch-action:manipulation;line-height:1;">☰</button>
     </div>
   </div></div>
@@ -300,7 +311,7 @@ function load(){
   else S.starredProducts = {};
   // Load cart
   var savedCart = lsGet("hub:cart");
-  if(savedCart) S.cart = savedCart;
+  if(savedCart && typeof savedCart === "object") S.cart = savedCart;
   else S.cart = {};
   // Parse any arrays that got stored as JSON strings
   ["managers","techAccounts","trucks","cats","inspFields","inspections","products","orders","restockOrders"].forEach(function(k){
@@ -323,7 +334,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.9"; // Increment this with every update
+const APP_VERSION = "2.0.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2609,9 +2620,6 @@ function renderCheckout(){
     if(search && p.name.toLowerCase().indexOf(search) === -1) return false;
     return true;
   }).sort(function(a,b){
-    var aS = S.starredProducts[a.id] ? 1 : 0;
-    var bS = S.starredProducts[b.id] ? 1 : 0;
-    if(bS !== aS) return bS - aS;
     return a.name.localeCompare(b.name);
   });
 
@@ -2638,7 +2646,7 @@ function renderCheckout(){
           var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
           var stockLabel = p.qty<=0?" (OUT)":p.qty<=p.lowAt?" (LOW)":"";
           return "<div style='background:#0f1f38;border:1px solid "+(inCart>0?"#f59e0b":"#1e3a5f")+";border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;'>"
-            +"<button data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;flex-shrink:0;touch-action:manipulation;line-height:1;'>"+(starred?"⭐":"☆")+"</button>"
+            +"<button type='button' tabindex='-1' data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;flex-shrink:0;touch-action:manipulation;line-height:1;-webkit-tap-highlight-color:transparent;'>"+(starred?"⭐":"☆")+"</button>"
             +"<div style='flex:1;min-width:0;'>"
             +"<div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
             +"<div style='font-size:11px;color:"+stockColor+";'>"+p.qty+" "+esc(p.unit)+" on hand"+stockLabel+"</div>"
@@ -2653,15 +2661,13 @@ function renderCheckout(){
 
   pg.innerHTML = html;
 
-  // Wire up search input
+  // Wire up search input - no auto-focus (prevents keyboard popup)
   var searchEl = document.getElementById("check-search");
   if(searchEl){
     searchEl.addEventListener("input", function(){
       S.checkSearch = this.value;
       renderCheckout();
     });
-    searchEl.focus();
-    searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length);
   }
 
   // Wire up qty inputs — update cart on change
@@ -6883,6 +6889,95 @@ document.addEventListener("change",function(e){
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 load(); // Load from localStorage immediately - fast
+
+// v2.0.0 Welcome splash - show once
+(function(){
+  var splashKey = "hub:splashSeen_2.0.0";
+  var seen = localStorage.getItem(splashKey);
+  if(seen) return;
+  localStorage.setItem(splashKey, "1");
+
+  var splash = document.getElementById("welcome-splash");
+  if(!splash) return;
+  splash.style.display = "flex";
+
+  // Fireworks
+  var canvas = document.getElementById("firework-canvas");
+  var ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  var particles = [];
+  var colors = ["#f59e0b","#ef4444","#8b5cf6","#22c55e","#3b82f6","#ec4899","#fff"];
+
+  function spawnFirework(x, y){
+    for(var i=0;i<60;i++){
+      var angle = (Math.PI*2/60)*i;
+      var speed = 2+Math.random()*6;
+      particles.push({
+        x:x, y:y,
+        vx:Math.cos(angle)*speed,
+        vy:Math.sin(angle)*speed,
+        life:1, decay:0.012+Math.random()*0.015,
+        size:2+Math.random()*3,
+        color:colors[Math.floor(Math.random()*colors.length)]
+      });
+    }
+  }
+
+  // Launch fireworks at intervals
+  var fw_times = [200,500,800,1100,1400,1700,2000,2300];
+  fw_times.forEach(function(t, i){
+    setTimeout(function(){
+      var x = canvas.width*(0.2+Math.random()*0.6);
+      var y = canvas.height*(0.15+Math.random()*0.5);
+      spawnFirework(x, y);
+    }, t);
+  });
+
+  var animId;
+  function drawParticles(){
+    ctx.fillStyle = "rgba(7,15,30,0.15)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    particles = particles.filter(function(p){ return p.life>0; });
+    particles.forEach(function(p){
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size*p.life, 0, Math.PI*2);
+      ctx.fill();
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.08; // gravity
+      p.life -= p.decay;
+    });
+    ctx.globalAlpha = 1;
+    if(particles.length > 0 || Date.now() - startTime < 3000){
+      animId = requestAnimationFrame(drawParticles);
+    }
+  }
+
+  var startTime = Date.now();
+  drawParticles();
+
+  // Auto-dismiss after 3.5s
+  setTimeout(function(){
+    splash.classList.add("fade-out");
+    setTimeout(function(){
+      splash.style.display = "none";
+      cancelAnimationFrame(animId);
+    }, 800);
+  }, 3500);
+
+  // Tap to dismiss early
+  splash.addEventListener("click", function(){
+    splash.classList.add("fade-out");
+    setTimeout(function(){
+      splash.style.display = "none";
+      cancelAnimationFrame(animId);
+    }, 800);
+  });
+})();
 
 // Show login right away from cached data
 var dbg = document.getElementById("debug");
