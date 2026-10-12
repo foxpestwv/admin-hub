@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.2"; // Increment this with every update
+const APP_VERSION = "2.3.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5607,8 +5607,8 @@ function renderMultiSignTech(pg){
           if(filled){
             if(f.type==="signature"){
               var img=document.createElement("img");
-              img.src=filled; img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;filter:invert(0);";
-              box.style.background="rgba(255,255,255,0.9)";
+              img.src=filled; img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;";
+              box.style.background="transparent";
               box.appendChild(img);
             } else {
               box.style.color="#111"; box.style.fontSize="11px"; box.style.padding="2px 4px"; box.style.fontWeight="700";
