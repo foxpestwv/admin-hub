@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.0"; // Increment this with every update
+const APP_VERSION = "2.3.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5676,7 +5676,9 @@ function showMsSigPad(callback){
   setupSigCanvas(canvas);
 
   document.getElementById("ms-sig-clear").onclick = function(){
-    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+    var ctx2 = canvas.getContext("2d");
+    ctx2.fillStyle = "#ffffff";
+    ctx2.fillRect(0,0,canvas.width,canvas.height);
   };
   document.getElementById("ms-sig-cancel").onclick = function(){ modal.remove(); };
   document.getElementById("ms-sig-done").onclick = function(){
@@ -5706,8 +5708,11 @@ function setupSigCanvas(canvas){
   canvas.width = canvas.offsetWidth || 400;
   canvas.height = canvas.offsetHeight || 150;
   var ctx = canvas.getContext("2d");
-  ctx.strokeStyle = "#e2e8f0";
-  ctx.lineWidth = 2;
+  // White background so signature is visible on PDF
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = 2.5;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   var drawing = false;
@@ -6735,7 +6740,7 @@ async function signSubmitTech(){
     });
 
     if(result && result.ok){
-      // Step 2: Call Apps Script ONCE to export PDF and email manager
+      // Step 2: For QA/RA use Apps Script; for multi-sign embed fields and save PDF
       if((req.isQA||req.isRA) && !req._bridgeCalled){
         req._bridgeCalled = true;
         fetch(EMAIL_BRIDGE, {
@@ -6753,6 +6758,62 @@ async function signSubmitTech(){
             createdBy: req.createdBy||S.managerName
           })
         }).then(function(r){ return r.json(); }).catch(function(e){ console.warn("Bridge:", e.message); });
+      } else if(req.isMultiSign && !req._bridgeCalled){
+        req._bridgeCalled = true;
+        // Embed filled fields into PDF and save to Drive
+        (async function(){
+          try {
+            var b64 = req.pdfBase64||"";
+            if(!b64){
+              var pd = await gs("getSigningPdf",{id:req.id});
+              b64 = pd&&pd.pdfBase64||"";
+            }
+            var signedB64 = b64;
+            // Embed fields using pdf-lib if available
+            if(b64 && typeof PDFLib!=="undefined" && req._filled){
+              try {
+                var pdfBytes2 = Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});
+                var doc2 = await PDFLib.PDFDocument.load(pdfBytes2);
+                var pages2 = doc2.getPages();
+                var font2 = await doc2.embedFont(PDFLib.StandardFonts.Helvetica);
+                var allF = req.fields||req.pdfFields||[];
+                for(var fi=0;fi<allF.length;fi++){
+                  var f2=allF[fi];
+                  var pg2=pages2[f2.page-1];
+                  if(!pg2) continue;
+                  var key2=f2.type+"_"+f2.page+"_"+fi;
+                  var val2=req._filled[key2];
+                  if(!val2) continue;
+                  var pw=pg2.getWidth(), ph=pg2.getHeight();
+                  var x2=f2.xPct*pw, y2=ph-(f2.yPct*ph)-(f2.hPct*ph);
+                  var w2=f2.wPct*pw, h2=f2.hPct*ph;
+                  if(f2.type==="signature"){
+                    try {
+                      var sBytes=Uint8Array.from(atob(val2.replace(/^data:image\/\w+;base64,/,"")),function(c){return c.charCodeAt(0);});
+                      var sImg=await doc2.embedPng(sBytes);
+                      pg2.drawImage(sImg,{x:x2,y:y2,width:w2,height:h2});
+                    } catch(e2){}
+                  } else {
+                    pg2.drawText(val2,{x:x2+2,y:y2+h2/3,size:Math.min(12,h2*0.6),font:font2,color:PDFLib.rgb(0,0,0)});
+                  }
+                }
+                var outBytes=await doc2.save();
+                signedB64=btoa(String.fromCharCode.apply(null,new Uint8Array(outBytes)));
+              } catch(embedErr){ console.warn("PDF embed:",embedErr.message); }
+            }
+            // Save to Drive and email manager
+            fetch(EMAIL_BRIDGE,{
+              method:"POST", headers:{"Content-Type":"text/plain"},
+              body: JSON.stringify({
+                action:"submitMultiSign",
+                signedPdfBase64: signedB64,
+                techName: req.techName||"",
+                managerEmail: "john.kluttz@fox-marketingservices.com",
+                docName: req.docName||""
+              })
+            }).catch(function(e){ console.warn("Drive save:",e.message); });
+          } catch(e){ console.warn("Multi-sign submit:",e.message); }
+        })();
       }
       // Update local state immediately
       var idx = S.signRequests.findIndex(function(r){ return r.id===req.id; });
