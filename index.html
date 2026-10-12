@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.1.7"; // Increment this with every update
+const APP_VERSION = "2.1.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1038,21 +1038,21 @@ async function syncFromSheet(){
     // Also load sign requests fresh
     try {
       var srResult = await gs("getSignRequestsServer", null);
-      if(srResult && srResult.requests){
-        S.signRequests = srResult.requests.map(function(r){
-          return {
-            id: r.id, date: r.date||r.createdAt||"",
-            techName: r.techName||"", techEmail: r.techEmail||"",
-            docName: r.docName||"", status: r.status||"Pending",
-            createdBy: r.createdBy||"", note: r.note||"",
-            isMultiSign: !!r.isMultiSign, multiSignId: r.multiSignId||"",
-            isQA: !!(r.formType==="QA"), isRA: !!(r.formType==="RA"),
+      var srArr = srResult && (srResult.signRequests || srResult.requests || []);
+      if(srArr && srArr.length >= 0){
+        S.signRequests = srArr.map(function(r){
+          // Use Object.assign to preserve ALL fields from Firebase
+          return Object.assign({}, r, {
+            id: r.id||r._id,
+            date: r.date||r.createdAt||"",
+            status: r.status||"Pending",
+            isMultiSign: !!r.isMultiSign,
+            isQA: !!(r.isQA||r.formType==="QA"),
+            isRA: !!(r.isRA||r.formType==="RA"),
             fileId: r.fileId||r.existingFileId||"",
-            managerSig: r.managerSig||"",
             pdfFields: r.pdfFields||r.fields||[],
-            pdfSigners: r.pdfSigners||[],
-            fields: r.fields||[], _cachedFields: r.fields||[]
-          };
+            pdfSigners: r.pdfSigners||[]
+          });
         });
         lsSet("hub:signRequests", S.signRequests);
       }
@@ -5580,6 +5580,40 @@ function renderMultiSignTech(pg){
 
   var canvas = document.getElementById("sig-canvas");
   if(canvas) setupSigCanvas(canvas);
+}
+
+function setupSigCanvas(canvas){
+  // Setup signature drawing on canvas
+  canvas.width = canvas.offsetWidth || 400;
+  canvas.height = canvas.offsetHeight || 150;
+  var ctx = canvas.getContext("2d");
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  var drawing = false;
+  var lastX = 0, lastY = 0;
+
+  function getPos(e, c){
+    var rect = c.getBoundingClientRect();
+    var scaleX = c.width / rect.width;
+    var scaleY = c.height / rect.height;
+    if(e.touches){
+      return {x:(e.touches[0].clientX-rect.left)*scaleX, y:(e.touches[0].clientY-rect.top)*scaleY};
+    }
+    return {x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY};
+  }
+
+  function start(e){ e.preventDefault(); drawing=true; var p=getPos(e,canvas); lastX=p.x; lastY=p.y; }
+  function move(e){ e.preventDefault(); if(!drawing) return; var p=getPos(e,canvas); ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke(); lastX=p.x; lastY=p.y; }
+  function stop(){ drawing=false; }
+
+  canvas.addEventListener("mousedown",start);
+  canvas.addEventListener("mousemove",move);
+  canvas.addEventListener("mouseup",stop);
+  canvas.addEventListener("touchstart",start,{passive:false});
+  canvas.addEventListener("touchmove",move,{passive:false});
+  canvas.addEventListener("touchend",stop);
 }
 
 async function renderSign(skipReload){
