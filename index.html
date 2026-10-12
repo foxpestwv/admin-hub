@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.1.9"; // Increment this with every update
+const APP_VERSION = "2.2.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1854,7 +1854,8 @@ function handleAction(a,v,el,e){
       } else {
         S._signView="signing";
       }
-      renderSign();
+      S.tab="sign";
+      render();
     }
     return;
   }
