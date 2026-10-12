@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.1.6"; // Increment this with every update
+const APP_VERSION = "2.1.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1047,6 +1047,10 @@ async function syncFromSheet(){
             createdBy: r.createdBy||"", note: r.note||"",
             isMultiSign: !!r.isMultiSign, multiSignId: r.multiSignId||"",
             isQA: !!(r.formType==="QA"), isRA: !!(r.formType==="RA"),
+            fileId: r.fileId||r.existingFileId||"",
+            managerSig: r.managerSig||"",
+            pdfFields: r.pdfFields||r.fields||[],
+            pdfSigners: r.pdfSigners||[],
             fields: r.fields||[], _cachedFields: r.fields||[]
           };
         });
