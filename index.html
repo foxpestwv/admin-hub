@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.1.4"; // Increment this with every update
+const APP_VERSION = "2.1.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5696,6 +5696,7 @@ function renderSignUpload(pg){
     +"<div style='display:flex;gap:8px;margin-bottom:8px;'>"
     +"<select class='inp' id='pdf-signer-sel'>"+techOpts+"</select>"
     +"<button class='btn bp' style='padding:8px 14px;white-space:nowrap;' data-a='pdf-add-signer'>+ Add</button>"
+    +"<button class='btn bg' style='padding:8px 14px;white-space:nowrap;' data-a='pdf-add-all-signers'>All</button>"
     +"</div>"
     +(_pdfSigners.length>0?signerTags:"<div style='font-size:12px;color:#475569;'>No signers yet.</div>")
     +"</div>"
