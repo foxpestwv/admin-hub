@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.3"; // Increment this with every update
+const APP_VERSION = "2.3.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5676,9 +5676,7 @@ function showMsSigPad(callback){
   setupSigCanvas(canvas);
 
   document.getElementById("ms-sig-clear").onclick = function(){
-    var ctx2 = canvas.getContext("2d");
-    ctx2.fillStyle = "#ffffff";
-    ctx2.fillRect(0,0,canvas.width,canvas.height);
+    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
   };
   document.getElementById("ms-sig-cancel").onclick = function(){ modal.remove(); };
   document.getElementById("ms-sig-done").onclick = function(){
@@ -5708,9 +5706,6 @@ function setupSigCanvas(canvas){
   canvas.width = canvas.offsetWidth || 400;
   canvas.height = canvas.offsetHeight || 150;
   var ctx = canvas.getContext("2d");
-  // White background so signature is visible on PDF
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.strokeStyle = "#111111";
   ctx.lineWidth = 2.5;
   ctx.lineCap = "round";
