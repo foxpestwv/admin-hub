@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.2.9"; // Increment this with every update
+const APP_VERSION = "2.3.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5607,10 +5607,11 @@ function renderMultiSignTech(pg){
           if(filled){
             if(f.type==="signature"){
               var img=document.createElement("img");
-              img.src=filled; img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;";
+              img.src=filled; img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;filter:invert(0);";
+              box.style.background="rgba(255,255,255,0.9)";
               box.appendChild(img);
             } else {
-              box.style.color="#e2e8f0"; box.style.fontSize="11px"; box.style.padding="2px 4px";
+              box.style.color="#111"; box.style.fontSize="11px"; box.style.padding="2px 4px"; box.style.fontWeight="700";
               box.textContent=filled;
             }
           } else {
@@ -6701,14 +6702,25 @@ async function signSubmitTech(){
   if(!req){ _techSigSubmitting=false; alert("No document found."); return; }
 
   var sigData = null;
-  if(S._savedTechSig && !document.getElementById("sig-canvas")){
-    sigData = S._savedTechSig;
-  } else {
-    var canvas = document.getElementById("sig-canvas");
-    if(!canvas){ alert("Please draw your signature."); return; }
-    sigData = canvas.toDataURL("image/png");
-    S._savedTechSig = sigData;
+
+  // New overlay system - get sig from req._filled
+  if(req._filled){
+    var sigKey = Object.keys(req._filled).find(function(k){ return k.startsWith("signature_"); });
+    if(sigKey) sigData = req._filled[sigKey];
   }
+
+  // Fallback to old canvas system
+  if(!sigData){
+    var canvas = document.getElementById("sig-canvas");
+    if(canvas) sigData = canvas.toDataURL("image/png");
+  }
+
+  if(!sigData){
+    _techSigSubmitting = false;
+    alert("Please tap the signature box on the document and draw your signature.");
+    return;
+  }
+  S._savedTechSig = sigData;
 
   var btn = document.querySelector("[data-a='sign-submit-tech']");
   if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
