@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.1.1"; // Increment this with every update
+const APP_VERSION = "2.1.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5825,6 +5825,55 @@ function _pdfRenderFieldOverlays(){
       _pdfRenderFieldOverlays();
     };
     box.appendChild(removeBtn);
+
+    // Drag handle (top-left corner)
+    var dragHandle = document.createElement("span");
+    dragHandle.style.cssText = "position:absolute;top:-1px;left:-1px;width:16px;height:16px;"
+      +"background:"+color+";border-radius:3px 0 3px 0;cursor:move;z-index:2;"
+      +"display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;";
+    dragHandle.textContent = "✥";
+
+    // Mouse drag
+    dragHandle.onmousedown = (function(fi, fbox, fPageDiv){
+      return function(ev){
+        ev.stopPropagation(); ev.preventDefault();
+        var startX=ev.clientX, startY=ev.clientY;
+        var startL=fbox.offsetLeft, startT=fbox.offsetTop;
+        var parentW=fPageDiv.offsetWidth, parentH=fPageDiv.offsetHeight;
+        function onMove(e){
+          var newL = Math.max(0, Math.min(parentW-fbox.offsetWidth, startL+(e.clientX-startX)));
+          var newT = Math.max(0, Math.min(parentH-fbox.offsetHeight, startT+(e.clientY-startY)));
+          _pdfFields[fi].xPct = newL/parentW;
+          _pdfFields[fi].yPct = newT/parentH;
+          fbox.style.left = (_pdfFields[fi].xPct*100)+"%";
+          fbox.style.top = (_pdfFields[fi].yPct*100)+"%";
+        }
+        function onUp(){ document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp); }
+        document.addEventListener("mousemove",onMove);
+        document.addEventListener("mouseup",onUp);
+      };
+    })(idx, box, pageDiv);
+
+    // Touch drag
+    dragHandle.ontouchstart = (function(fi, fbox, fPageDiv){
+      return function(ev){
+        ev.stopPropagation(); ev.preventDefault();
+        var startX=ev.touches[0].clientX, startY=ev.touches[0].clientY;
+        var startL=fbox.offsetLeft, startT=fbox.offsetTop;
+        var parentW=fPageDiv.offsetWidth, parentH=fPageDiv.offsetHeight;
+        function onMove(e){ e.preventDefault();
+          var newL=Math.max(0,Math.min(parentW-fbox.offsetWidth, startL+(e.touches[0].clientX-startX)));
+          var newT=Math.max(0,Math.min(parentH-fbox.offsetHeight, startT+(e.touches[0].clientY-startY)));
+          _pdfFields[fi].xPct=newL/parentW; _pdfFields[fi].yPct=newT/parentH;
+          fbox.style.left=(_pdfFields[fi].xPct*100)+"%"; fbox.style.top=(_pdfFields[fi].yPct*100)+"%";
+        }
+        function onEnd(){ document.removeEventListener("touchmove",onMove); document.removeEventListener("touchend",onEnd); }
+        document.addEventListener("touchmove",onMove,{passive:false});
+        document.addEventListener("touchend",onEnd);
+      };
+    })(idx, box, pageDiv);
+
+    box.appendChild(dragHandle);
 
     // Resize handle (bottom-right corner)
     var resizeHandle = document.createElement("span");
