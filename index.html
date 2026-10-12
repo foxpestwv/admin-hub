@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.2.7"; // Increment this with every update
+const APP_VERSION = "2.2.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5528,42 +5528,131 @@ function renderMultiSignTech(pg){
   if(!req){ pg.innerHTML="<div class='card'>No document found.</div>"; return; }
 
   var myName = S.currentTech||S.managerName||"";
+  var allFields = req.fields||req.pdfFields||[];
 
-  pg.innerHTML = "<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>"+esc(req.docName||"Document")+"</h2>"
-    +"<p style='font-size:12px;color:#64748b;margin-bottom:14px;'>Created by "+esc(req.createdBy||"")+" &bull; Please fill in all fields below</p>"
-    +"<div id='ms-pdf-preview' style='border:1px solid #1e3a5f;border-radius:8px;overflow:hidden;margin-bottom:16px;min-height:200px;background:#0a1628;display:flex;align-items:center;justify-content:center;'>"
-    +"<div style='color:#64748b;font-size:13px;'>Loading document...</div>"
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:12px;'>"
+    +"<button data-a='sign-cancel' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<div><div style='font-weight:700;font-size:16px;'>"+esc(req.docName||"Document")+"</div>"
+    +"<div style='font-size:11px;color:#64748b;'>From: "+esc(req.createdBy||"")+"</div></div>"
     +"</div>"
-
-    // Fields to fill
-    +"<div class='card' style='margin-bottom:16px;'>"
-    +"<div style='font-weight:700;font-size:13px;color:#f59e0b;margin-bottom:12px;'>Your Information</div>"
-
-    // Name field - always show
-    +"<div style='margin-bottom:12px;'>"
-    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>PRINT NAME</label>"
-    +"<input type='text' id='ms-name-inp' class='inp' placeholder='Type your full name' value='"+esc(myName)+"'>"
+    +"<div style='font-size:12px;color:#f59e0b;margin-bottom:10px;'>📝 Tap each highlighted field on the document to fill it in.</div>"
+    +"<div id='ms-doc-wrap' style='position:relative;border:1px solid #1e3a5f;border-radius:8px;overflow:auto;max-height:55vh;background:#0a1628;margin-bottom:16px;'>"
+    +"<div style='text-align:center;color:#64748b;padding:30px;font-size:13px;'>Loading document...</div>"
     +"</div>"
-
-    // Date field - always show
-    +"<div style='margin-bottom:12px;'>"
-    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>DATE</label>"
-    +"<input type='text' id='ms-date-inp' class='inp' value='"+new Date().toLocaleDateString()+"'>"
-    +"</div>"
-
-    // Signature
-    +"<div>"
-    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>SIGNATURE</label>"
-    +"<canvas id='sig-canvas' style='width:100%;height:150px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;touch-action:none;display:block;'></canvas>"
-    +"<button type='button' data-a='sig-clear' style='margin-top:6px;background:#1e3a5f;color:#e2e8f0;border:none;padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;'>Clear</button>"
-    +"</div></div>"
-
+    +"<div id='ms-review' style='background:#0f1f38;border:1px solid #1e3a5f;border-radius:12px;padding:12px;margin-bottom:14px;font-size:12px;color:#64748b;'>Fill in the fields above...</div>"
     +"<button data-a='sign-submit-tech' style='width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;'>✓ Submit Signature</button>"
     +"<button data-a='sign-cancel' style='width:100%;background:transparent;border:1px solid #475569;color:#94a3b8;padding:10px;border-radius:10px;font-size:13px;cursor:pointer;touch-action:manipulation;margin-top:8px;'>Cancel</button>";
 
-  var canvas = document.getElementById("sig-canvas");
-  if(canvas) setupSigCanvas(canvas);
+  if(!req._filled) req._filled = {};
+
+  (async function(){
+    try {
+      var wrap = document.getElementById("ms-doc-wrap");
+      if(!wrap) return;
+
+      var b64 = req.pdfBase64||"";
+      if(!b64){
+        var pdfData = await gs("getSigningPdf", {id:req.id});
+        b64 = pdfData&&pdfData.pdfBase64||"";
+      }
+      if(!b64){ wrap.innerHTML="<div style='padding:20px;color:#94a3b8;'>PDF not available.</div>"; return; }
+
+      if(typeof pdfjsLib==="undefined"){ wrap.innerHTML="<div style='padding:20px;color:#ef4444;'>PDF viewer not loaded.</div>"; return; }
+      pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      var raw=atob(b64);
+      var pdfBytes=new Uint8Array(raw.length);
+      for(var i=0;i<raw.length;i++) pdfBytes[i]=raw.charCodeAt(i);
+
+      wrap.innerHTML="<div style='padding:10px;color:#64748b;font-size:12px;'>Rendering...</div>";
+      var pdfDoc2=await pdfjsLib.getDocument({data:pdfBytes}).promise;
+      wrap.innerHTML="";
+
+      for(var pn=1;pn<=pdfDoc2.numPages;pn++){
+        var page=await pdfDoc2.getPage(pn);
+        var vp0=page.getViewport({scale:1});
+        var scale=(wrap.offsetWidth-4)/vp0.width;
+        var vp=page.getViewport({scale:scale});
+
+        var pageDiv=document.createElement("div");
+        pageDiv.style.cssText="position:relative;margin-bottom:2px;";
+
+        var c=document.createElement("canvas");
+        c.width=vp.width; c.height=vp.height;
+        c.style.cssText="display:block;width:100%;";
+        pageDiv.appendChild(c);
+        await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
+        pageDiv.style.height=c.height+"px";
+
+        // Add field boxes for this page
+        var pageFields=allFields.filter(function(f){ return f.page===pn; });
+        pageFields.forEach(function(f,fi){
+          var color=f.type==="signature"?"#f59e0b":f.type==="date"?"#3b82f6":"#22c55e";
+          var key=f.type+"_"+pn+"_"+fi;
+          var filled=req._filled[key];
+
+          var box=document.createElement("div");
+          box.style.cssText="position:absolute;"
+            +"left:"+(f.xPct*100)+"%;"
+            +"top:"+(f.yPct*100)+"%;"
+            +"width:"+(f.wPct*100)+"%;"
+            +"height:"+(f.hPct*100)+"%;"
+            +"border:2px solid "+color+";"
+            +"border-radius:3px;"
+            +"background:transparent;"
+            +"cursor:pointer;"
+            +"display:flex;align-items:center;justify-content:center;"
+            +"overflow:hidden;z-index:10;";
+
+          if(filled){
+            if(f.type==="signature"){
+              var img=document.createElement("img");
+              img.src=filled; img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;";
+              box.appendChild(img);
+            } else {
+              box.style.color="#e2e8f0"; box.style.fontSize="11px"; box.style.padding="2px 4px";
+              box.textContent=filled;
+            }
+          } else {
+            box.style.color=color; box.style.fontSize="10px"; box.style.fontWeight="600";
+            box.textContent=f.type==="signature"?"✎ Sign":f.type==="date"?"📅 Date":"✎ Name";
+          }
+
+          box.onclick=(function(fld,fk,fbx){
+            return function(){
+              if(fld.type==="signature"){
+                showMsSigPad(function(sig){ req._filled[fk]=sig; renderMultiSignTech(pg); });
+              } else {
+                var def=fld.type==="name"?myName:new Date().toLocaleDateString();
+                var val=prompt(fld.type==="name"?"Enter your name:":"Enter date:",def);
+                if(val){ req._filled[fk]=val; renderMultiSignTech(pg); }
+              }
+            };
+          })(f,key,box);
+
+          pageDiv.appendChild(box);
+        });
+
+        wrap.appendChild(pageDiv);
+      }
+
+      // Update review
+      var rev=document.getElementById("ms-review");
+      if(rev){
+        var lines=allFields.map(function(f,fi){
+          var k=f.type+"_"+f.page+"_"+fi;
+          var v=req._filled&&req._filled[k];
+          return "<span style='margin-right:12px;color:"+(v?"#22c55e":"#f97316")+";'>"+(v?"✓":"✗")+" "+f.type+"</span>";
+        }).join("");
+        rev.innerHTML=lines||"No fields found.";
+      }
+    } catch(e){
+      var w=document.getElementById("ms-doc-wrap");
+      if(w) w.innerHTML="<div style='padding:20px;color:#ef4444;'>Error: "+e.message+"</div>";
+    }
+  })();
 }
+
 
 function openDocToSign(id){
   var r = S.signRequests.find(function(x){ return x.id===id; });
