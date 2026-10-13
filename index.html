@@ -346,7 +346,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.4.3"; // Increment this with every update
+const APP_VERSION = "2.4.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -6252,17 +6252,42 @@ async function pdfSendDocument(){
     });
 
     if(result && result.ok){
-      signerPayload.forEach(function(s, i){
+      // Send notifications to each signer
+      for(var ni2=0; ni2<signerPayload.length; ni2++){
+        var signer2 = signerPayload[ni2];
+        var srId2 = result.id+"-"+(ni2+1);
         S.signRequests.unshift({
-          id: result.id+"-"+(i+1),
+          id: srId2,
           date: new Date().toISOString(),
-          techName: s.name, techEmail: s.email,
+          techName: signer2.name, techEmail: signer2.email,
           docName: docName, status: "Pending",
           createdBy: S.managerName, note: note,
           fileId: result.fileId,
-          isMultiSign: true, multiSignId: result.id
+          isMultiSign: true, multiSignId: result.id,
+          fields: _pdfFields.filter(function(f){ return f.signerIdx===ni2; })
         });
-      });
+
+        if(signer2.email){
+          var isGuest2 = signer2.id && String(signer2.id).startsWith("other_");
+          if(isGuest2){
+            // Generate guest token
+            var gToken = "gt_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+            var gUrl = "https://foxpestwv.github.io/admin-hub?sign="+gToken;
+            // Save token to Firebase
+            gs("saveGuestToken", {token:gToken, srId:srId2, signerName:signer2.name, signerEmail:signer2.email}).catch(function(){});
+            sendEmail(signer2.email,
+              "[Fox Pest Control] Please sign: "+docName,
+              "Hi "+signer2.name+",\n\nPlease sign the document "+docName+" by clicking this unique link (no account needed):\n"+gUrl+"\n\nFox Pest Control - Willamette Valley"
+            );
+          } else {
+            sendEmail(signer2.email,
+              "[Fox Pest Control] Please sign: "+docName,
+              "Hi "+signer2.name+",\n\nPlease sign "+docName+" in the Fox Pest Admin Hub:\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+            );
+          }
+        }
+      }
+
       lsSet("hub:signRequests", S.signRequests);
       _pdfDoc=null; _pdfBytes=null; _pdfFields=[]; _pdfSigners=[]; _pdfArmed=null;
       S._pdfDocName=""; S._pdfNote="";
