@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.4.0"; // Increment this with every update
+const APP_VERSION = "2.4.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -819,6 +819,24 @@ async function gs(fn, data){
       }
 
       // ── SIGN REQUESTS ─────────────────────────────────────────────────────────
+      case "saveGuestToken": {
+        await initFirebase();
+        await _db.collection("guestTokens").doc(data.token).set({
+          token: data.token,
+          srId: data.srId,
+          signerName: data.signerName,
+          signerEmail: data.signerEmail,
+          createdAt: new Date().toISOString(),
+          used: false
+        });
+        return {ok:true};
+      }
+      case "getGuestToken": {
+        await initFirebase();
+        var gtDoc = await _db.collection("guestTokens").doc(data.token).get();
+        if(!gtDoc.exists) return {ok:false, error:"Invalid or expired link"};
+        return Object.assign({ok:true}, gtDoc.data());
+      }
       case "getAccountsServer":
       case "getAccounts": {
         await initFirebase();
@@ -7436,6 +7454,158 @@ document.addEventListener("change",function(e){
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 load(); // Load from localStorage immediately - fast
+
+// Check for guest signing token in URL
+(async function(){
+  var urlParams = new URLSearchParams(window.location.search);
+  var guestToken = urlParams.get("sign");
+  if(!guestToken) return;
+
+  // Show guest signing UI immediately
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "none";
+
+  var guestDiv = document.createElement("div");
+  guestDiv.style.cssText = "position:fixed;inset:0;background:#070f1e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;z-index:99999;";
+  guestDiv.innerHTML = "<div style='max-width:460px;width:100%;'>"
+    +"<div style='text-align:center;margin-bottom:20px;'>"
+    +"<div style='font-size:32px;font-weight:900;color:#f59e0b;'>Fox Pest Admin Hub</div>"
+    +"<div style='font-size:14px;color:#64748b;margin-top:4px;'>Document Signing</div>"
+    +"</div>"
+    +"<div id='guest-content' style='background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;padding:24px;'>"
+    +"<div style='color:#64748b;text-align:center;'>Loading document...</div>"
+    +"</div></div>";
+  document.body.appendChild(guestDiv);
+
+  try {
+    await initFirebase();
+    var tokenData = await gs("getGuestToken", {token:guestToken});
+    if(!tokenData||!tokenData.ok){ 
+      document.getElementById("guest-content").innerHTML = "<div style='color:#ef4444;text-align:center;padding:20px;'>❌ This signing link is invalid or has already been used.</div>";
+      return;
+    }
+    if(tokenData.used){
+      document.getElementById("guest-content").innerHTML = "<div style='color:#f59e0b;text-align:center;padding:20px;'>✓ You have already signed this document. Thank you!</div>";
+      return;
+    }
+
+    // Load the sign request
+    var srDoc = await gs("getSignRequestById", {id:tokenData.srId});
+    if(!srDoc){
+      document.getElementById("guest-content").innerHTML = "<div style='color:#ef4444;text-align:center;'>Document not found.</div>";
+      return;
+    }
+
+    // Show guest signing UI
+    var gc = document.getElementById("guest-content");
+    gc.innerHTML = "<div style='font-size:18px;font-weight:700;margin-bottom:4px;'>"+esc(srDoc.docName||"Document")+"</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-bottom:16px;'>From: "+esc(srDoc.createdBy||"Fox Pest Control")+"</div>"
+      +"<div id='guest-pdf' style='border:1px solid #1e3a5f;border-radius:8px;overflow:auto;max-height:45vh;background:#000;margin-bottom:16px;'>"
+      +"<div style='padding:20px;color:#64748b;text-align:center;'>Loading document...</div>"
+      +"</div>"
+      +"<div style='margin-bottom:12px;'>"
+      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>YOUR NAME</label>"
+      +"<input type='text' id='guest-name' class='inp' value='"+esc(tokenData.signerName||"")+"'>"
+      +"</div>"
+      +"<div style='margin-bottom:12px;'>"
+      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>DATE</label>"
+      +"<input type='text' id='guest-date' class='inp' value='"+new Date().toLocaleDateString()+"'>"
+      +"</div>"
+      +"<div style='margin-bottom:12px;'>"
+      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>SIGNATURE</label>"
+      +"<canvas id='guest-sig' style='width:100%;height:140px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;display:block;touch-action:none;'></canvas>"
+      +"<button id='guest-sig-clear' style='margin-top:6px;background:#1e3a5f;color:#e2e8f0;border:none;padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;'>Clear</button>"
+      +"</div>"
+      +"<button id='guest-submit' style='width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;'>✓ Sign Document</button>";
+
+    // Setup sig canvas
+    var gSigCanvas = document.getElementById("guest-sig");
+    if(gSigCanvas) setupSigCanvas(gSigCanvas);
+    var gClearBtn = document.getElementById("guest-sig-clear");
+    if(gClearBtn) gClearBtn.onclick = function(){
+      var gc2 = document.getElementById("guest-sig");
+      if(gc2) gc2.getContext("2d").clearRect(0,0,gc2.width,gc2.height);
+    };
+
+    // Load PDF preview
+    if(srDoc.pdfBase64){
+      (async function(){
+        try {
+          if(typeof pdfjsLib==="undefined") return;
+          pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+          var raw=atob(srDoc.pdfBase64); var pb=new Uint8Array(raw.length);
+          for(var i=0;i<raw.length;i++) pb[i]=raw.charCodeAt(i);
+          var pdoc=await pdfjsLib.getDocument({data:pb}).promise;
+          var gpdf=document.getElementById("guest-pdf");
+          gpdf.innerHTML="";
+          for(var pn=1;pn<=pdoc.numPages;pn++){
+            var pp=await pdoc.getPage(pn);
+            var vp0=pp.getViewport({scale:1});
+            var sc=(gpdf.offsetWidth-4)/vp0.width;
+            var vp=pp.getViewport({scale:sc});
+            var pc=document.createElement("canvas");
+            pc.width=vp.width; pc.height=vp.height; pc.style.cssText="display:block;width:100%;";
+            gpdf.appendChild(pc);
+            await pp.render({canvasContext:pc.getContext("2d"),viewport:vp}).promise;
+          }
+        } catch(e){ console.warn("Guest PDF render:",e.message); }
+      })();
+    }
+
+    // Submit handler
+    document.getElementById("guest-submit").onclick = async function(){
+      var name = document.getElementById("guest-name").value.trim();
+      var date = document.getElementById("guest-date").value.trim();
+      var sigCanvas = document.getElementById("guest-sig");
+      var sigData = sigCanvas ? sigCanvas.toDataURL("image/png") : "";
+      if(!name){ alert("Please enter your name."); return; }
+
+      this.disabled=true; this.textContent="Submitting...";
+
+      try {
+        // Build filled fields
+        var filled = {};
+        var fields = srDoc.fields||srDoc.pdfFields||[];
+        fields.forEach(function(f,fi){
+          var key=f.type+"_"+f.page+"_"+fi;
+          if(f.type==="signature") filled[key]=sigData;
+          else if(f.type==="name") filled[key]=name;
+          else if(f.type==="date") filled[key]=date;
+        });
+
+        // Update Firebase sign request
+        await gs("updateSignRequest", {
+          id: srDoc.id, status:"Signed",
+          signedAt: new Date().toISOString(),
+          filledFields: JSON.stringify(filled),
+          sigData: sigData
+        });
+
+        // Mark token as used
+        await initFirebase();
+        await _db.collection("guestTokens").doc(guestToken).update({used:true});
+
+        // Email manager
+        sendEmail("john.kluttz@fox-marketingservices.com",
+          "[Fox Pest Control] Document Signed: "+name,
+          name+" has signed "+srDoc.docName+".\n\nFox Pest Control - Willamette Valley"
+        );
+
+        gc.innerHTML = "<div style='text-align:center;padding:30px;'>"
+          +"<div style='font-size:48px;margin-bottom:16px;'>✅</div>"
+          +"<div style='font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px;'>Document Signed!</div>"
+          +"<div style='font-size:14px;color:#64748b;'>Thank you, "+esc(name)+". Your signature has been recorded.</div>"
+          +"</div>";
+      } catch(e){
+        alert("Error: "+e.message);
+        document.getElementById("guest-submit").disabled=false;
+        document.getElementById("guest-submit").textContent="✓ Sign Document";
+      }
+    };
+  } catch(e){
+    document.getElementById("guest-content").innerHTML = "<div style='color:#ef4444;text-align:center;padding:20px;'>Error: "+e.message+"</div>";
+  }
+})();
 
 // v2.0.0 Welcome splash - called after login
 function showWelcomeSplash(){
