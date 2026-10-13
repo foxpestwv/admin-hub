@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.6"; // Increment this with every update
+const APP_VERSION = "2.3.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -5856,9 +5856,13 @@ var _pdfArmed = null; // {signerIdx, type}
 var _pdfPageScales = {};
 
 function renderSignUpload(pg){
-  var techOpts = (S.techAccounts||[]).map(function(t,i){
-    return "<option value='"+i+"'>"+esc(t.name)+"</option>";
-  }).join("");
+  var allSignerOptions = (S.techAccounts||[]).map(function(t,i){
+    return "<option value='tech_"+i+"'>"+esc(t.name)+"</option>";
+  }).concat((S.managers||[]).map(function(m,i){
+    return "<option value='mgr_"+i+"'>"+esc(m.name)+" (Manager)</option>";
+  }));
+  allSignerOptions.push("<option value='__other__'>+ Someone else...</option>");
+  var techOpts = allSignerOptions.join("");
 
   var signerTags = _pdfSigners.map(function(s,i){
     return "<div style='display:inline-flex;align-items:center;gap:6px;background:#0a1628;border:1px solid #1e3a5f;padding:4px 10px;border-radius:20px;font-size:12px;margin:3px;'>"
