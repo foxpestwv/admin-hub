@@ -5,6 +5,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0a1628">
+  <script>
+    // Hide login immediately if guest signing token present
+    if(new URLSearchParams(window.location.search).get("sign")){
+      document.documentElement.style.background="#070f1e";
+    }
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
@@ -147,6 +153,11 @@ input,textarea,select,button{font-family:inherit;}
     </div>
   </div>
 
+  <script>
+    if(new URLSearchParams(window.location.search).get("sign")){
+      document.getElementById("login") && (document.getElementById("login").style.display="none");
+    }
+  </script>
   <div id="hdr"><div id="hdr-in">
     <div style="display:flex;align-items:center;gap:6px;">
       <button id="back-btn" data-a="nav-back" style="display:none;background:none;border:none;color:#e2e8f0;font-size:20px;cursor:pointer;padding:4px 6px;touch-action:manipulation;line-height:1;">←</button>
@@ -335,7 +346,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.4.1"; // Increment this with every update
+const APP_VERSION = "2.4.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2230,6 +2241,8 @@ function setPage(id){
 }
 
 function render(){
+  // Don't render normal UI if guest signing is active
+  if(new URLSearchParams(window.location.search).get("sign")) return;
   // Nav
   const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
   var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"}];
@@ -7453,6 +7466,19 @@ document.addEventListener("change",function(e){
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
+
+// Check for guest signing token BEFORE load() to prevent login screen showing
+var _guestToken = new URLSearchParams(window.location.search).get("sign");
+if(_guestToken){
+  // Hide everything until guest UI is ready
+  document.addEventListener("DOMContentLoaded", function(){
+    var loginEl = document.getElementById("login");
+    var appEl = document.getElementById("app");
+    if(loginEl) loginEl.style.display = "none";
+    if(appEl) appEl.style.display = "none";
+  });
+}
+
 load(); // Load from localStorage immediately - fast
 
 // Check for guest signing token in URL
@@ -7460,6 +7486,12 @@ load(); // Load from localStorage immediately - fast
   var urlParams = new URLSearchParams(window.location.search);
   var guestToken = urlParams.get("sign");
   if(!guestToken) return;
+
+  // Hide login and app
+  var loginEl2 = document.getElementById("login");
+  var appEl2 = document.getElementById("app");
+  if(loginEl2) loginEl2.style.display = "none";
+  if(appEl2) appEl2.style.display = "none";
 
   // Show guest signing UI immediately
   document.getElementById("login").style.display = "none";
