@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.4"; // Increment this with every update
+const APP_VERSION = "2.3.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -681,6 +681,10 @@ async function gs(fn, data){
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return bridgeResp;
       }
+      case "updateSignRequest": {
+        if(data.id) await fbUpdate("signRequests", data.id, data);
+        return {ok:true};
+      }
       case "updateRestockOrder": {
         if(data.id) await fbUpdate("restockOrders", data.id, {status:data.status||"Cancelled"});
         return {ok:true};
@@ -742,6 +746,10 @@ async function gs(fn, data){
           return rec;
         });
         return {orders: roData};
+      }
+      case "updateSignRequest": {
+        if(data.id) await fbUpdate("signRequests", data.id, data);
+        return {ok:true};
       }
       case "updateRestockOrder": {
         await fbUpdate("restockOrders", data.id, Object.assign({}, data, {updatedAt:new Date().toISOString()}));
@@ -878,6 +886,27 @@ async function gs(fn, data){
           }
         }
         return {ok:true, id:msId, fileId:msId};
+      }
+      case "getSignRequestById": {
+        await initFirebase();
+        var srDoc3 = await _db.collection("signRequests").doc(data.id).get();
+        if(srDoc3.exists) return srDoc3.data();
+        return null;
+      }
+      case "getLatestSignedPdf": {
+        // Get the most recently signed PDF for a multiSign group
+        await initFirebase();
+        var multiId = data.multiSignId||data.id;
+        var srSnap2 = await _db.collection("signRequests").get();
+        var srDocs2 = srSnap2.docs.map(function(d){ return d.data(); });
+        // Find all signed docs in this group, get latest
+        var signedDocs = srDocs2.filter(function(d){
+          return (d.multiSignId===multiId||d.id===multiId) && d.status==="Signed" && d.signedPdfBase64;
+        }).sort(function(a,b){ return (b.signedAt||b.date||"").localeCompare(a.signedAt||a.date||""); });
+        if(signedDocs.length>0 && signedDocs[0].signedPdfBase64){
+          return {pdfBase64: signedDocs[0].signedPdfBase64};
+        }
+        return {pdfBase64: null};
       }
       case "getSigningPdf": {
         var srDoc = await fbGet("signRequests", data.id);
@@ -6755,58 +6784,101 @@ async function signSubmitTech(){
         }).then(function(r){ return r.json(); }).catch(function(e){ console.warn("Bridge:", e.message); });
       } else if(req.isMultiSign && !req._bridgeCalled){
         req._bridgeCalled = true;
-        // Embed filled fields into PDF and save to Drive
         (async function(){
           try {
-            var b64 = req.pdfBase64||"";
-            if(!b64){
-              var pd = await gs("getSigningPdf",{id:req.id});
-              b64 = pd&&pd.pdfBase64||"";
-            }
-            var signedB64 = b64;
-            // Embed fields using pdf-lib if available
-            if(b64 && typeof PDFLib!=="undefined" && req._filled){
-              try {
-                var pdfBytes2 = Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});
-                var doc2 = await PDFLib.PDFDocument.load(pdfBytes2);
-                var pages2 = doc2.getPages();
-                var font2 = await doc2.embedFont(PDFLib.StandardFonts.Helvetica);
-                var allF = req.fields||req.pdfFields||[];
-                for(var fi=0;fi<allF.length;fi++){
-                  var f2=allF[fi];
-                  var pg2=pages2[f2.page-1];
-                  if(!pg2) continue;
-                  var key2=f2.type+"_"+f2.page+"_"+fi;
-                  var val2=req._filled[key2];
-                  if(!val2) continue;
-                  var pw=pg2.getWidth(), ph=pg2.getHeight();
-                  var x2=f2.xPct*pw, y2=ph-(f2.yPct*ph)-(f2.hPct*ph);
-                  var w2=f2.wPct*pw, h2=f2.hPct*ph;
-                  if(f2.type==="signature"){
+            // Save this signer's filled data to Firebase
+            var filledData = req._filled||{};
+            var allFields = req.fields||req.pdfFields||[];
+            // Find signature field
+            var sigKey = Object.keys(filledData).find(function(k){ return k.startsWith("signature_"); });
+            await gs("updateSignRequest", {
+              id: req.id,
+              signedAt: new Date().toISOString(),
+              filledFields: JSON.stringify(filledData),
+              sigData: sigKey ? filledData[sigKey] : sigData
+            }).catch(function(){});
+
+            // Check if ALL signers in this group have now signed
+            var multiId = req.multiSignId||req.id;
+            var allReqs = S.signRequests.filter(function(r){
+              return r.multiSignId===multiId || r.id===multiId;
+            });
+            var allSigned = allReqs.every(function(r){
+              return r.status==="Signed" || r.id===req.id;
+            });
+
+            if(allSigned){
+              // All signed! Fetch original PDF and embed ALL signatures
+              var b64 = req.pdfBase64||"";
+              if(!b64){
+                // Get from any record in the group that has it
+                var baseReq = allReqs.find(function(r){ return r.pdfBase64; });
+                b64 = baseReq ? baseReq.pdfBase64 : "";
+              }
+              if(!b64){
+                var pd = await gs("getSigningPdf",{id:req.id});
+                b64 = pd&&pd.pdfBase64||"";
+              }
+
+              var signedB64 = b64;
+              if(b64 && typeof PDFLib!=="undefined"){
+                try {
+                  var raw=atob(b64); var pb=new Uint8Array(raw.length);
+                  for(var i=0;i<raw.length;i++) pb[i]=raw.charCodeAt(i);
+                  var doc3=await PDFLib.PDFDocument.load(pb);
+                  var pages3=doc3.getPages();
+                  var font3=await doc3.embedFont(PDFLib.StandardFonts.Helvetica);
+
+                  // Embed fields from ALL signers
+                  for(var ri=0;ri<allReqs.length;ri++){
+                    var sr=allReqs[ri];
+                    var srFilled={};
+                    // Load filled data from Firebase for each signer
                     try {
-                      var sBytes=Uint8Array.from(atob(val2.replace(/^data:image\/\w+;base64,/,"")),function(c){return c.charCodeAt(0);});
-                      var sImg=await doc2.embedPng(sBytes);
-                      pg2.drawImage(sImg,{x:x2,y:y2,width:w2,height:h2});
-                    } catch(e2){}
-                  } else {
-                    pg2.drawText(val2,{x:x2+2,y:y2+h2/3,size:Math.min(12,h2*0.6),font:font2,color:PDFLib.rgb(0,0,0)});
+                      var srDoc=await gs("getSignRequestById",{id:sr.id});
+                      if(srDoc&&srDoc.filledFields) srFilled=JSON.parse(srDoc.filledFields);
+                      else if(sr._filled) srFilled=sr._filled;
+                    } catch(e){ if(sr._filled) srFilled=sr._filled; }
+
+                    var srFields=sr.fields||sr.pdfFields||allFields;
+                    for(var fi2=0;fi2<srFields.length;fi2++){
+                      var f3=srFields[fi2];
+                      var k3=f3.type+"_"+f3.page+"_"+fi2;
+                      var v3=srFilled[k3];
+                      if(!v3) continue;
+                      var pg3=pages3[f3.page-1]; if(!pg3) continue;
+                      var pw3=pg3.getWidth(),ph3=pg3.getHeight();
+                      var x3=f3.xPct*pw3,y3=ph3-(f3.yPct*ph3)-(f3.hPct*ph3);
+                      var w3=f3.wPct*pw3,h3=f3.hPct*ph3;
+                      if(f3.type==="signature"){
+                        try {
+                          var sb=Uint8Array.from(atob(v3.replace(/^data:image\/\w+;base64,/,"")),function(c){return c.charCodeAt(0);});
+                          var si=await doc3.embedPng(sb);
+                          pg3.drawImage(si,{x:x3,y:y3,width:w3,height:h3});
+                        } catch(e){}
+                      } else {
+                        pg3.drawText(v3,{x:x3+2,y:y3+h3/3,size:Math.min(12,h3*0.6),font:font3,color:PDFLib.rgb(0,0,0)});
+                      }
+                    }
                   }
-                }
-                var outBytes=await doc2.save();
-                signedB64=btoa(String.fromCharCode.apply(null,new Uint8Array(outBytes)));
-              } catch(embedErr){ console.warn("PDF embed:",embedErr.message); }
+                  var outB=await doc3.save();
+                  signedB64=btoa(String.fromCharCode.apply(null,new Uint8Array(outB)));
+                } catch(embedErr){ console.warn("PDF embed:",embedErr.message); }
+              }
+
+              // Save final merged PDF to Drive
+              fetch(EMAIL_BRIDGE,{
+                method:"POST", headers:{"Content-Type":"text/plain"},
+                body: JSON.stringify({
+                  action:"submitMultiSign",
+                  signedPdfBase64: signedB64,
+                  techName: "All Signers",
+                  managerEmail: "john.kluttz@fox-marketingservices.com",
+                  docName: (req.docName||"Document")+" - Fully Signed"
+                })
+              }).catch(function(e){ console.warn("Drive save:",e.message); });
             }
-            // Save to Drive and email manager
-            fetch(EMAIL_BRIDGE,{
-              method:"POST", headers:{"Content-Type":"text/plain"},
-              body: JSON.stringify({
-                action:"submitMultiSign",
-                signedPdfBase64: signedB64,
-                techName: req.techName||"",
-                managerEmail: "john.kluttz@fox-marketingservices.com",
-                docName: req.docName||""
-              })
-            }).catch(function(e){ console.warn("Drive save:",e.message); });
+            // If not all signed yet, just save this signer's data (already done above)
           } catch(e){ console.warn("Multi-sign submit:",e.message); }
         })();
       }
