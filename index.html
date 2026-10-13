@@ -335,7 +335,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.3.8"; // Increment this with every update
+const APP_VERSION = "2.4.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1765,16 +1765,51 @@ function handleAction(a,v,el,e){
   if(a==="sign-load-file") { signLoadFile(); return; }
   if(a==="pdf-add-signer") {
     var sel2 = document.getElementById("pdf-signer-sel");
-    if(sel2){
-      var techIdx = parseInt(sel2.value);
-      var tech2 = S.techAccounts[techIdx];
-      if(tech2 && !_pdfSigners.some(function(s){ return s.id===tech2.id; })){
-        _pdfSigners.push({name:tech2.name, email:tech2.email||"", id:tech2.id});
-        renderSignUpload(document.getElementById("pg-sign"));
-        if(_pdfDoc){ _pdfRendering=false; setTimeout(_pdfRenderPages, 80); }
-        if(_pdfDoc) setTimeout(_pdfRenderPages, 80);
-      }
+    if(!sel2||!sel2.value) return;
+    var val2 = sel2.value;
+    var person2 = null;
+    if(val2==="__other__"){
+      var oName = prompt("Enter their full name:"); if(!oName) return;
+      var oEmail = prompt("Enter their email (optional):")||"";
+      person2 = {name:oName.trim(), email:oEmail.trim(), id:"other_"+Date.now()};
+    } else if(val2.startsWith("tech_")){
+      var t3 = S.techAccounts[parseInt(val2.replace("tech_",""))];
+      if(t3) person2 = {name:t3.name, email:t3.email||"", id:t3.id||val2};
+    } else if(val2.startsWith("mgr_")){
+      var m3 = S.managers[parseInt(val2.replace("mgr_",""))];
+      if(m3) person2 = {name:m3.name, email:m3.email||"", id:m3.id||val2};
     }
+    if(person2 && !_pdfSigners.some(function(s){ return s.name===person2.name; })){
+      _pdfSigners.push(person2);
+      renderSignUpload(document.getElementById("pg-sign"));
+      if(_pdfDoc){ _pdfRendering=false; setTimeout(_pdfRenderPages, 80); }
+    }
+    return;
+  }
+  if(a==="pdf-add-all-signers"){
+    var ap = [];
+    (S.techAccounts||[]).forEach(function(t){ ap.push({name:t.name, email:t.email||"", id:t.id||t.name}); });
+    (S.managers||[]).forEach(function(m){ ap.push({name:m.name, email:m.email||"", id:m.id||m.name}); });
+    ap.forEach(function(p){
+      if(!_pdfSigners.some(function(s){ return s.name===p.name; })) _pdfSigners.push(p);
+    });
+    renderSignUpload(document.getElementById("pg-sign"));
+    if(_pdfDoc){ _pdfRendering=false; setTimeout(_pdfRenderPages, 80); }
+    return;
+  }
+  if(a==="pdf-auto-place"){
+    if(!_pdfDoc||_pdfSigners.length===0){ alert("Add signers first."); return; }
+    _pdfFields = [];
+    var lpg = _pdfDoc.numPages;
+    var bH=0.07, bW=0.35, sp=0.02;
+    _pdfSigners.forEach(function(s,i){
+      var col=i%2, row=Math.floor(i/2), yS=0.72+row*(bH*2+sp);
+      _pdfFields.push({signerIdx:i, page:lpg, type:"name", xPct:col===0?0.05:0.55, yPct:yS, wPct:bW, hPct:bH*0.45});
+      _pdfFields.push({signerIdx:i, page:lpg, type:"signature", xPct:col===0?0.05:0.55, yPct:yS+bH*0.5, wPct:bW, hPct:bH*0.5});
+    });
+    _pdfArmed = null;
+    renderSignUpload(document.getElementById("pg-sign"));
+    setTimeout(_pdfRenderPages, 100);
     return;
   }
   if(a==="pdf-remove-signer") {
