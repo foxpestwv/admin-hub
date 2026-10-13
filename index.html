@@ -346,7 +346,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.4.4"; // Increment this with every update
+const APP_VERSION = "2.4.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -907,12 +907,7 @@ async function gs(fn, data){
             isMultiSign: true,
             formType: "MULTI:"+msId
           });
-          if(s.email){
-            sendEmail(s.email,
-              "[Fox Pest Control] Please Sign: "+data.docName,
-              "Hi "+s.name+",\n\n"+data.createdBy+" has sent you a document that requires your signature.\n\nDocument: "+data.docName+"\n"+(data.note?"Note: "+data.note+"\n":"")+"Please log into the Fox Pest Control Admin Hub and go to the Sign tab.\n\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
-            );
-          }
+          // Email is sent by pdfSendDocument to handle guest tokens properly
         }
         return {ok:true, id:msId, fileId:msId};
       }
@@ -7523,8 +7518,8 @@ load(); // Load from localStorage immediately - fast
   document.getElementById("app").style.display = "none";
 
   var guestDiv = document.createElement("div");
-  guestDiv.style.cssText = "position:fixed;inset:0;background:#070f1e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;z-index:99999;";
-  guestDiv.innerHTML = "<div style='max-width:460px;width:100%;'>"
+  guestDiv.style.cssText = "position:fixed;inset:0;background:#070f1e;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;z-index:99999;";
+  guestDiv.innerHTML = "<div style='max-width:460px;width:100%;margin:0 auto;padding-bottom:40px;'>"
     +"<div style='text-align:center;margin-bottom:20px;'>"
     +"<div style='font-size:32px;font-weight:900;color:#f59e0b;'>Fox Pest Admin Hub</div>"
     +"<div style='font-size:14px;color:#64748b;margin-top:4px;'>Document Signing</div>"
@@ -7560,31 +7555,15 @@ load(); // Load from localStorage immediately - fast
       +"<div id='guest-pdf' style='border:1px solid #1e3a5f;border-radius:8px;overflow:auto;max-height:45vh;background:#000;margin-bottom:16px;'>"
       +"<div style='padding:20px;color:#64748b;text-align:center;'>Loading document...</div>"
       +"</div>"
-      +"<div style='margin-bottom:12px;'>"
-      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>YOUR NAME</label>"
-      +"<input type='text' id='guest-name' class='inp' value='"+esc(tokenData.signerName||"")+"'>"
+      +"<div style='font-size:12px;color:#f59e0b;margin-bottom:10px;'>📝 Tap each highlighted field on the document to fill it in.</div>"
+      +"<div id='guest-pdf' style='position:relative;border:1px solid #1e3a5f;border-radius:8px;overflow:auto;max-height:50vh;background:#000;margin-bottom:16px;'>"
+      +"<div style='padding:20px;color:#64748b;text-align:center;'>Loading document...</div>"
       +"</div>"
-      +"<div style='margin-bottom:12px;'>"
-      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>DATE</label>"
-      +"<input type='text' id='guest-date' class='inp' value='"+new Date().toLocaleDateString()+"'>"
-      +"</div>"
-      +"<div style='margin-bottom:12px;'>"
-      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>SIGNATURE</label>"
-      +"<canvas id='guest-sig' style='width:100%;height:140px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;display:block;touch-action:none;'></canvas>"
-      +"<button id='guest-sig-clear' style='margin-top:6px;background:#1e3a5f;color:#e2e8f0;border:none;padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;'>Clear</button>"
-      +"</div>"
-      +"<button id='guest-submit' style='width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;'>✓ Sign Document</button>";
+      +"<div id='guest-review' style='font-size:12px;color:#64748b;margin-bottom:12px;'>Fill in the fields above...</div>"
+      +"<button id='guest-submit' style='width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;touch-action:manipulation;margin-bottom:20px;'>✓ Sign Document</button>";
 
-    // Setup sig canvas
-    var gSigCanvas = document.getElementById("guest-sig");
-    if(gSigCanvas) setupSigCanvas(gSigCanvas);
-    var gClearBtn = document.getElementById("guest-sig-clear");
-    if(gClearBtn) gClearBtn.onclick = function(){
-      var gc2 = document.getElementById("guest-sig");
-      if(gc2) gc2.getContext("2d").clearRect(0,0,gc2.width,gc2.height);
-    };
-
-    // Load PDF preview
+    // Render PDF with interactive field boxes
+    var guestFilled = {};
     if(srDoc.pdfBase64){
       (async function(){
         try {
@@ -7595,39 +7574,105 @@ load(); // Load from localStorage immediately - fast
           var pdoc=await pdfjsLib.getDocument({data:pb}).promise;
           var gpdf=document.getElementById("guest-pdf");
           gpdf.innerHTML="";
+          var gFields=srDoc.fields||srDoc.pdfFields||[];
           for(var pn=1;pn<=pdoc.numPages;pn++){
             var pp=await pdoc.getPage(pn);
             var vp0=pp.getViewport({scale:1});
             var sc=(gpdf.offsetWidth-4)/vp0.width;
             var vp=pp.getViewport({scale:sc});
+            var pdiv=document.createElement("div");
+            pdiv.style.cssText="position:relative;margin-bottom:2px;";
             var pc=document.createElement("canvas");
             pc.width=vp.width; pc.height=vp.height; pc.style.cssText="display:block;width:100%;";
-            gpdf.appendChild(pc);
+            pdiv.appendChild(pc);
             await pp.render({canvasContext:pc.getContext("2d"),viewport:vp}).promise;
+            pdiv.style.height=pc.height+"px";
+            // Add field boxes
+            gFields.filter(function(f){return f.page===pn;}).forEach(function(f,fi){
+              var color=f.type==="signature"?"#f59e0b":f.type==="date"?"#3b82f6":"#22c55e";
+              var key=f.type+"_"+pn+"_"+fi;
+              var box=document.createElement("div");
+              box.style.cssText="position:absolute;left:"+(f.xPct*100)+"%;top:"+(f.yPct*100)+"%;width:"+(f.wPct*100)+"%;height:"+(f.hPct*100)+"%;border:2px solid "+color+";border-radius:3px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden;z-index:10;";
+              var filled=guestFilled[key];
+              if(filled){
+                if(f.type==="signature"){var img=document.createElement("img");img.src=filled;img.style.cssText="max-width:100%;max-height:100%;object-fit:contain;";box.appendChild(img);}
+                else{box.style.color="#111";box.style.fontSize="11px";box.style.fontWeight="700";box.style.padding="2px 4px";box.textContent=filled;}
+              } else {
+                box.style.color=color;box.style.fontSize="10px";box.style.fontWeight="600";
+                box.textContent=f.type==="signature"?"✎ Sign":f.type==="date"?"📅 Date":"✎ Name";
+              }
+              box.onclick=(function(fld,fk){
+                return function(){
+                  if(fld.type==="signature"){
+                    showMsSigPad(function(sig){guestFilled[fk]=sig;updateGuestReview(gFields,guestFilled);gpdf.innerHTML="<div style='padding:10px;color:#64748b;text-align:center;'>Reloading...</div>";setTimeout(arguments.callee.bind(null),0);});
+                    // Re-render
+                    showMsSigPad(function(sig){
+                      guestFilled[fk]=sig;
+                      updateGuestReview(gFields,guestFilled);
+                      // Re-render PDF with new sig
+                      var gpdf2=document.getElementById("guest-pdf");
+                      if(gpdf2) gpdf2.dispatchEvent(new Event("rerender"));
+                    });
+                  } else {
+                    var def=fld.type==="name"?(tokenData.signerName||""):new Date().toLocaleDateString();
+                    var val=prompt(fld.type==="name"?"Enter your name:":"Enter date:",def);
+                    if(val){guestFilled[fk]=val;updateGuestReview(gFields,guestFilled);}
+                  }
+                };
+              })(f,key);
+              pdiv.appendChild(box);
+            });
+            gpdf.appendChild(pdiv);
           }
-        } catch(e){ console.warn("Guest PDF render:",e.message); }
+          updateGuestReview(gFields,guestFilled);
+        } catch(e){ var g=document.getElementById("guest-pdf"); if(g) g.innerHTML="<div style='padding:20px;color:#ef4444;'>Error: "+e.message+"</div>"; }
       })();
+    }
+
+    // Helper to update review
+    function updateGuestReview(fields, filled){
+      var rev=document.getElementById("guest-review");
+      if(!rev) return;
+      var lines=fields.map(function(f,fi){
+        var k=f.type+"_"+f.page+"_"+fi;
+        var v=filled[k];
+        return "<span style='margin-right:12px;color:"+(v?"#22c55e":"#f97316")+";'>"+(v?"✓":"✗")+" "+f.type+"</span>";
+      }).join("");
+      rev.innerHTML=lines||"No fields.";
     }
 
     // Submit handler
     document.getElementById("guest-submit").onclick = async function(){
-      var name = document.getElementById("guest-name").value.trim();
-      var date = document.getElementById("guest-date").value.trim();
-      var sigCanvas = document.getElementById("guest-sig");
-      var sigData = sigCanvas ? sigCanvas.toDataURL("image/png") : "";
-      if(!name){ alert("Please enter your name."); return; }
+      var fields2=srDoc.fields||srDoc.pdfFields||[];
+      var name = (function(){
+        var nk=Object.keys(guestFilled).find(function(k){return k.startsWith("name_");});
+        return nk?guestFilled[nk]:(tokenData.signerName||"");
+      })();
+      var sigData = (function(){
+        var sk=Object.keys(guestFilled).find(function(k){return k.startsWith("signature_");});
+        return sk?guestFilled[sk]:"";
+      })();
+      if(!sigData){ alert("Please tap the signature box and draw your signature."); return; }
+      if(!name){ alert("Please tap the name box and enter your name."); return; }
+      var date = (function(){
+        var dk=Object.keys(guestFilled).find(function(k){return k.startsWith("date_");});
+        return dk?guestFilled[dk]:new Date().toLocaleDateString();
+      })();
 
       this.disabled=true; this.textContent="Submitting...";
 
       try {
-        // Build filled fields
-        var filled = {};
-        var fields = srDoc.fields||srDoc.pdfFields||[];
-        fields.forEach(function(f,fi){
+        // Use the interactively filled data
+        var filled = Object.assign({}, guestFilled);
+        // Fill any unfilled fields with defaults
+        var fields2b=srDoc.fields||srDoc.pdfFields||[];
+        fields2b.forEach(function(f,fi){
           var key=f.type+"_"+f.page+"_"+fi;
-          if(f.type==="signature") filled[key]=sigData;
-          else if(f.type==="name") filled[key]=name;
-          else if(f.type==="date") filled[key]=date;
+          if(!filled[key]){
+            if(f.type==="signature") filled[key]=sigData;
+            else if(f.type==="name") filled[key]=name;
+            else if(f.type==="date") filled[key]=date;
+          }
         });
 
         // Update Firebase sign request
