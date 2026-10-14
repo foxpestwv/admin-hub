@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.3"; // Increment this with every update
+const APP_VERSION = "2.5.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2359,7 +2359,7 @@ function render(){
   if(new URLSearchParams(window.location.search).get("sign")) return;
   // Nav
   const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
-  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"}];
+  var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"}];
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
   const pendingSign=S.role==="manager"?0:S.signRequests.filter(function(r){return r.status==="Pending"&&r.techName===S.currentTech;}).length;
