@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.5"; // Increment this with every update
+const APP_VERSION = "2.5.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -693,6 +693,11 @@ async function gs(fn, data){
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return bridgeResp;
       }
+      case "saveSignRequest": {
+        var srId2 = data.id||"sr_"+Date.now();
+        await fbSet("signRequests", srId2, Object.assign({}, data, {id:srId2}));
+        return {ok:true, id:srId2};
+      }
       case "updateSignRequest": {
         if(data.id) await fbUpdate("signRequests", data.id, data);
         return {ok:true};
@@ -758,6 +763,11 @@ async function gs(fn, data){
           return rec;
         });
         return {orders: roData};
+      }
+      case "saveSignRequest": {
+        var srId2 = data.id||"sr_"+Date.now();
+        await fbSet("signRequests", srId2, Object.assign({}, data, {id:srId2}));
+        return {ok:true, id:srId2};
       }
       case "updateSignRequest": {
         if(data.id) await fbUpdate("signRequests", data.id, data);
@@ -929,6 +939,100 @@ async function gs(fn, data){
         await initFirebase();
         var oooDoc = await _db.collection("oooForms").doc(data.id).get();
         return oooDoc.exists ? oooDoc.data() : null;
+      }
+      case "generateOOOPdf": {
+        // Build PDF using pdf-lib directly in browser
+        var f = data.form;
+        if(typeof PDFLib === "undefined") return {pdfBase64:null};
+        var doc = await PDFLib.PDFDocument.create();
+        var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+        var boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+        var page = doc.addPage([612, 792]);
+        var y = 750;
+        var margin = 50;
+        var lineH = 16;
+        var colW = 256;
+
+        function drawText(text, x, yPos, size, bold, color){
+          page.drawText(String(text||"").slice(0,120), {
+            x:x, y:yPos, size:size||10,
+            font:bold?boldFont:font,
+            color:color||PDFLib.rgb(0.1,0.1,0.1),
+            maxWidth:500
+          });
+        }
+        function drawLine(yPos){
+          page.drawLine({start:{x:margin,y:yPos},end:{x:562,y:yPos},thickness:0.5,color:PDFLib.rgb(0.8,0.8,0.8)});
+        }
+        function drawField(label, value, yPos){
+          drawText(label, margin, yPos, 8, false, PDFLib.rgb(0.4,0.4,0.4));
+          var lines = String(value||"Not filled in").match(/.{1,80}/g)||["Not filled in"];
+          lines.forEach(function(l,i){ drawText(l, margin, yPos-12-(i*12), 10, false); });
+          return yPos - 14 - (Math.max(lines.length,1)*12);
+        }
+
+        // Header
+        drawText("Fox Pest Control - Willamette Valley", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4)); y-=16;
+        drawText(f.quarter+" One-on-One Review", margin, y, 18, true, PDFLib.rgb(0.05,0.37,0.6)); y-=24;
+        drawText("Technician: "+f.techName, margin, y, 11, true); y-=14;
+        drawText("Manager: "+(f.createdBy||""), margin, y, 11, false); y-=14;
+        drawText("Date: "+new Date().toLocaleDateString(), margin, y, 11, false); y-=20;
+        drawLine(y); y-=16;
+
+        // Star rating
+        var stars = "";
+        var rating = parseInt(f.overallRating)||0;
+        for(var i=0;i<5;i++) stars += (i<rating?"★":"☆");
+        drawText("TECH RESPONSES", margin, y, 9, true, PDFLib.rgb(0.02,0.71,0.83)); y-=14;
+        drawText("Overall Rating: "+stars+" ("+rating+"/5)", margin, y, 11, false); y-=20;
+
+        var techFields2 = [
+          {k:"goingWell",l:"What's going well?"},
+          {k:"challenges",l:"Challenges"},
+          {k:"resources",l:"Resources/support needed"},
+          {k:"training",l:"Training interests"},
+          {k:"personalGoal",l:"Personal goal this quarter"},
+          {k:"professionalGoal",l:"Professional goal this quarter"},
+          {k:"feedbackPos",l:"Manager feedback - what's working"},
+          {k:"feedbackImprove",l:"Manager feedback - improvements"},
+          {k:"other",l:"Other topics for discussion"}
+        ];
+        techFields2.forEach(function(tf){
+          if(y < 120){ page = doc.addPage([612,792]); y=750; }
+          y = drawField(tf.l, f[tf.k], y);
+          y -= 6;
+        });
+
+        y -= 10; drawLine(y); y -= 16;
+        drawText("MANAGER NOTES (PRIVATE)", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y -= 14;
+        drawText("Performance Rating: "+(function(){ var s=""; var mr=parseInt(f.mgrRating)||0; for(var i=0;i<5;i++) s+=(i<mr?"★":"☆"); return s+" ("+mr+"/5)"; })(), margin, y, 11, false); y-=16;
+        var mgrFields2 = [
+          {k:"mgrStrengths",l:"Areas of strength"},
+          {k:"mgrCoaching",l:"Coaching opportunities"},
+          {k:"mgrCorrective",l:"Corrective action items"},
+          {k:"mgrNotes",l:"Meeting notes / talking points"}
+        ];
+        mgrFields2.forEach(function(mf){
+          if(y < 180){ page = doc.addPage([612,792]); y=750; }
+          y = drawField(mf.l, f[mf.k], y);
+          y -= 6;
+        });
+
+        // Signature lines at bottom - ensure on last page
+        if(y < 180){ page = doc.addPage([612,792]); y=750; }
+        y -= 20; drawLine(y); y -= 30;
+        drawText("Technician Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        drawText("Manager Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        y -= 40;
+        page.drawLine({start:{x:margin,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        page.drawLine({start:{x:margin+colW+44,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        y -= 12;
+        drawText(f.techName, margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        drawText(f.createdBy||"", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+
+        var pdfBytes2 = await doc.save();
+        var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(pdfBytes2)));
+        return {pdfBase64: b64};
       }
       case "getSignRequestById": {
         await initFirebase();
@@ -1822,10 +1926,79 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="ooo-ready-to-sign"){
-    gs("saveOOOForm", {id:v, status:"Ready"}).then(function(){
-      showToast("Marked ready to sign ✓");
-      renderOOOFormManager(document.getElementById("pg-ooo"), v);
-    });
+    // Generate PDF of the form and send as multi-sign document
+    (async function(){
+      try {
+        showToast("Generating signing document...");
+        var form = await gs("getOOOForm", {id:v});
+        if(!form){ alert("Form not found."); return; }
+
+        // Build HTML representation of the form for PDF
+        var formHtml = buildOOOFormHtml(form);
+
+        // Create PDF using html2canvas approach via pdf-lib
+        // Actually, build it as a text-based PDF via Apps Script
+        var pdfResult = await gs("generateOOOPdf", {formId:v, formHtml:formHtml, form:form});
+
+        if(!pdfResult || !pdfResult.pdfBase64){
+          alert("Could not generate PDF. Please try again.");
+          return;
+        }
+
+        // Create multi-sign document using existing system
+        var techAcct = (S.techAccounts||[]).find(function(t){ return t.name===form.techName; });
+        var mgrAcct = (S.managers||[]).find(function(m){ return m.name===form.createdBy; });
+
+        var signers = [
+          {name:form.techName, email:techAcct?techAcct.email:"", id:techAcct?techAcct.id:"tech_ooo"},
+          {name:form.createdBy||S.managerName, email:mgrAcct?mgrAcct.email:"", id:mgrAcct?mgrAcct.id:"mgr_ooo"}
+        ];
+
+        // Place signature fields - tech on left, manager on right at bottom
+        var fields = [
+          {signerIdx:0, page:1, type:"name", xPct:0.05, yPct:0.88, wPct:0.38, hPct:0.04},
+          {signerIdx:0, page:1, type:"signature", xPct:0.05, yPct:0.92, wPct:0.38, hPct:0.05},
+          {signerIdx:1, page:1, type:"name", xPct:0.57, yPct:0.88, wPct:0.38, hPct:0.04},
+          {signerIdx:1, page:1, type:"signature", xPct:0.57, yPct:0.92, wPct:0.38, hPct:0.05}
+        ];
+
+        var multiId = "ooo_sign_"+Date.now();
+        var docName = form.quarter+" 1-on-1: "+form.techName;
+
+        // Save sign requests for each signer
+        for(var si=0;si<signers.length;si++){
+          var signer = signers[si];
+          var srId = multiId+"-"+(si+1);
+          var srData = {
+            id:srId, multiSignId:multiId, isMultiSign:true,
+            docName:docName, techName:signer.name, techEmail:signer.email,
+            createdBy:S.managerName, date:new Date().toISOString(),
+            status:"Pending", formType:"ooo",
+            pdfBase64:pdfResult.pdfBase64,
+            fields:fields.filter(function(f){ return f.signerIdx===si; }),
+            pdfSigners:signers,
+            note:"Please sign your "+form.quarter+" one-on-one review."
+          };
+          await gs("saveSignRequest", srData);
+          S.signRequests.unshift(srData);
+
+          // Email notification
+          if(signer.email){
+            sendEmail(signer.email,
+              "[Fox Pest Control] Please sign: "+docName,
+              "Hi "+signer.name+",\n\nYour "+form.quarter+" one-on-one review is ready to sign.\n\nPlease log in to the Fox Pest Admin Hub and go to Documents to sign.\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+            );
+          }
+        }
+
+        // Update form status
+        await gs("saveOOOForm", {id:v, status:"Signing", multiSignId:multiId});
+        lsSet("hub:signRequests", S.signRequests);
+
+        showToast("Signing documents sent to both parties ✓");
+        renderOOOFormManager(document.getElementById("pg-ooo"), v);
+      } catch(e){ alert("Error: "+e.message); }
+    })();
     return;
   }
   if(a==="ooo-set-rating"){
@@ -4280,7 +4453,7 @@ async function renderOOOManager(pg){
     }
 
     listDiv.innerHTML = forms.map(function(f){
-      var statusColor = f.status==="Complete"?"#22c55e":f.status==="Signed"?"#3b82f6":f.status==="Sent"?"#f59e0b":"#64748b";
+      var statusColor = f.status==="Complete"||f.status==="Signed"?"#22c55e":f.status==="Signing"?"#3b82f6":f.status==="Submitted"?"#f59e0b":f.status==="Sent"?"#94a3b8":"#64748b";
       return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='ooo-open' data-v='"+f.id+"'>"
         +"<div style='display:flex;justify-content:space-between;align-items:start;'>"
         +"<div>"
@@ -4405,8 +4578,8 @@ async function renderOOOFormManager(pg, formId){
     +(form.status==="Draft"||form.status==="Sent"
       ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✓ Mark Ready to Sign</button>"
       :"")
-    +(form.status==="Ready"
-      ?"<button class='btn bs' style='width:100%;padding:13px;' data-a='ooo-sign-manager' data-v='"+formId+"'>✍ Sign & Complete</button>"
+    +(form.status==="Signing"
+      ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:10px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing document sent — check your Documents tab to sign.</div>"
       :"");
 }
 
@@ -4559,6 +4732,10 @@ function oooTechField(key, label, placeholder, form, inCard){
     +"</div>";
   html += inCard?"":"</div>";
   return html;
+}
+
+function buildOOOFormHtml(form){
+  return "<h1>"+form.quarter+" One-on-One: "+form.techName+"</h1>";
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
