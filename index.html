@@ -219,6 +219,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-sign" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
     <div id="pg-reports" class="pg"></div>
+    <div id="pg-ooo" class="pg"></div>
   </div>
 </div>
 <!-- Print Area (hidden until print) -->
@@ -346,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.4.5"; // Increment this with every update
+const APP_VERSION = "2.5.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -911,6 +912,21 @@ async function gs(fn, data){
         }
         return {ok:true, id:msId, fileId:msId};
       }
+      case "saveOOOForm": {
+        var oooId = data.id || "ooo_"+Date.now();
+        await fbSet("oooForms", oooId, Object.assign({}, data, {id:oooId, updatedAt:new Date().toISOString()}));
+        return {ok:true, id:oooId};
+      }
+      case "getOOOForms": {
+        await initFirebase();
+        var oooSnap = await _db.collection("oooForms").orderBy("quarter","desc").get();
+        return {forms: oooSnap.docs.map(function(d){ return d.data(); })};
+      }
+      case "getOOOForm": {
+        await initFirebase();
+        var oooDoc = await _db.collection("oooForms").doc(data.id).get();
+        return oooDoc.exists ? oooDoc.data() : null;
+      }
       case "getSignRequestById": {
         await initFirebase();
         var srDoc3 = await _db.collection("signRequests").doc(data.id).get();
@@ -1392,7 +1408,7 @@ function login(role){
           // Update nav badge and dashboard without full re-render
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
           // Re-render nav to update badge
-          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
+          var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
           document.getElementById("nav").innerHTML=mgrTabs.map(function(t){
             return "<button class='nb"+(S.tab===t.id?" on":"")+"' data-a='tab' data-v='"+t.id+"'>"+t.l+(t.id==="orders"&&pending>0?"<span class='bdg'>"+pending+"</span>":"")+"</button>";
           }).join("")+"<button class='nb' id='logout-btn' style='color:#475569;'>Exit</button>";
@@ -1723,6 +1739,106 @@ function handleAction(a,v,el,e){
   }
   if(a==="analytics-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderAnalytics(); return; }
   if(a==="reports-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderReports(); return; }
+  if(a==="ooo-new"){ renderOOONewForm(document.getElementById("pg-ooo")); return; }
+  if(a==="ooo-back"||a==="ooo-back-tech"){ renderOOO(); return; }
+  if(a==="ooo-open"){ renderOOOFormManager(document.getElementById("pg-ooo"), v); return; }
+  if(a==="ooo-open-tech"){ renderOOOFormTech(document.getElementById("pg-ooo"), v); return; }
+  if(a==="ooo-create"){
+    var techSel = document.getElementById("ooo-tech-sel");
+    var qSel = document.getElementById("ooo-quarter-sel");
+    if(!techSel||!techSel.value){ alert("Please select a technician."); return; }
+    var techAcc = S.techAccounts.find(function(t){ return t.name===techSel.value; });
+    var newForm = {
+      id:"ooo_"+Date.now(), techName:techSel.value, techEmail:techAcc?techAcc.email:"",
+      quarter:qSel?qSel.value:"Q"+(Math.ceil((new Date().getMonth()+1)/3))+" "+new Date().getFullYear(),
+      createdBy:S.managerName, createdAt:new Date().toISOString(), status:"Sent"
+    };
+    gs("saveOOOForm", newForm).then(function(){
+      // Email tech
+      if(techAcc&&techAcc.email){
+        sendEmail(techAcc.email,
+          "[Fox Pest Control] Your "+newForm.quarter+" 1-on-1 Form is Ready",
+          "Hi "+techSel.value+",\n\nYour quarterly check-in form for "+newForm.quarter+" is ready. You can fill it out anytime before your meeting.\n\nLog in to the Fox Pest Admin Hub and tap '1-on-1' to access it.\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+        );
+      }
+      S.tab="ooo"; render();
+      showToast("Form created and sent to "+techSel.value+" ✓");
+    }).catch(function(e){ alert("Error: "+e.message); });
+    return;
+  }
+  if(a==="ooo-save-tech"){
+    var techData = {
+      overallRating: (document.querySelector("[data-v='ooo-rating'] ~ span[data-filled]")||{}).textContent||S._oooRating||"",
+      goingWell: (document.getElementById("ooo-tech-goingWell")||{}).value||"",
+      challenges: (document.getElementById("ooo-tech-challenges")||{}).value||"",
+      resources: (document.getElementById("ooo-tech-resources")||{}).value||"",
+      training: (document.getElementById("ooo-tech-training")||{}).value||"",
+      feedbackPos: (document.getElementById("ooo-tech-feedbackPos")||{}).value||"",
+      feedbackImprove: (document.getElementById("ooo-tech-feedbackImprove")||{}).value||"",
+      personalGoal: (document.getElementById("ooo-tech-personalGoal")||{}).value||"",
+      professionalGoal: (document.getElementById("ooo-tech-professionalGoal")||{}).value||"",
+      other: (document.getElementById("ooo-tech-other")||{}).value||""
+    };
+    if(S._oooRating) techData.overallRating = S._oooRating;
+    gs("saveOOOForm", Object.assign({id:v}, techData)).then(function(){
+      showToast("Saved ✓");
+    }).catch(function(e){ alert("Error: "+e.message); });
+    return;
+  }
+  if(a==="ooo-submit-tech"){
+    var tData = {
+      overallRating: S._oooRating||"",
+      goingWell: (document.getElementById("ooo-tech-goingWell")||{}).value||"",
+      challenges: (document.getElementById("ooo-tech-challenges")||{}).value||"",
+      resources: (document.getElementById("ooo-tech-resources")||{}).value||"",
+      training: (document.getElementById("ooo-tech-training")||{}).value||"",
+      feedbackPos: (document.getElementById("ooo-tech-feedbackPos")||{}).value||"",
+      feedbackImprove: (document.getElementById("ooo-tech-feedbackImprove")||{}).value||"",
+      personalGoal: (document.getElementById("ooo-tech-personalGoal")||{}).value||"",
+      professionalGoal: (document.getElementById("ooo-tech-professionalGoal")||{}).value||"",
+      other: (document.getElementById("ooo-tech-other")||{}).value||"",
+      techSubmittedAt: new Date().toISOString(), status:"Submitted"
+    };
+    gs("saveOOOForm", Object.assign({id:v}, tData)).then(function(){
+      showToast("Submitted to manager ✓");
+      renderOOO();
+    }).catch(function(e){ alert("Error: "+e.message); });
+    return;
+  }
+  if(a==="ooo-save-mgr"){
+    var mData = {
+      mgrStrengths: (document.getElementById("ooo-mgr-mgrStrengths")||{}).value||"",
+      mgrCoaching: (document.getElementById("ooo-mgr-mgrCoaching")||{}).value||"",
+      mgrCorrective: (document.getElementById("ooo-mgr-mgrCorrective")||{}).value||"",
+      mgrNotes: (document.getElementById("ooo-mgr-mgrNotes")||{}).value||"",
+      mgrRating: S._oooMgrRating||""
+    };
+    gs("saveOOOForm", Object.assign({id:v}, mData)).then(function(){
+      showToast("Manager notes saved ✓");
+    }).catch(function(e){ alert("Error: "+e.message); });
+    return;
+  }
+  if(a==="ooo-ready-to-sign"){
+    gs("saveOOOForm", {id:v, status:"Ready"}).then(function(){
+      showToast("Marked ready to sign ✓");
+      renderOOOFormManager(document.getElementById("pg-ooo"), v);
+    });
+    return;
+  }
+  if(a==="ooo-set-rating"){
+    var parts = v.split("_");
+    var rating = parseInt(parts[parts.length-1]);
+    var ratingId = parts.slice(0,-1).join("_");
+    if(ratingId.startsWith("ooo-mgr-rating-")) S._oooMgrRating = rating;
+    else S._oooRating = rating;
+    // Update star display
+    var starEls = document.querySelectorAll("[data-a='ooo-set-rating'][data-v^='"+ratingId+"']");
+    starEls.forEach(function(s){
+      var sRating = parseInt(s.getAttribute("data-v").split("_").pop());
+      s.style.color = sRating<=rating?"#f59e0b":"#1e3a5f";
+    });
+    return;
+  }
   if(a==="app-refresh"){
     var btn = document.getElementById("refresh-btn");
     if(btn){ btn.style.animation="spin 0.6s linear"; setTimeout(function(){ btn.style.animation=""; }, 600); }
@@ -2268,6 +2384,7 @@ function render(){
   else if(S.tab==="restock") renderRestock();
   else if(S.tab==="analytics") renderAnalytics();
   else if(S.tab==="reports") renderReports();
+  else if(S.tab==="ooo") renderOOO();
   else if(S.tab==="sign") renderSign();
   else if(S.tab==="settings") renderSettings();
 }
@@ -2306,6 +2423,7 @@ function renderDash(){
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0},
     {icon:"📋", label:"Reports", tab:"reports", color:"#1a0a1a", accent:"#d946ef", badge:0},
+    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:0},
     {icon:"⚙️", label:"Settings", tab:"settings", color:"#1a1a1a", accent:"#94a3b8", badge:0}
   ];
 
@@ -3818,7 +3936,7 @@ function renderDrawerNav(){
   var icons = {
     dashboard:"🏠", inspect:"🚛", inventory:"📦", orders:"🛒",
     checkout:"🛍", truckinv:"🚐", restock:"🔄", analytics:"📊",
-    reports:"📋", sign:"📝", settings:"⚙️", "__scan__":"📷"
+    reports:"📋", ooo:"🤝", sign:"📝", settings:"⚙️", "__scan__":"📷"
   };
 
   var nav = document.getElementById("drawer-nav");
@@ -4125,6 +4243,274 @@ async function renderReports(){
   } catch(e){
     pg.innerHTML = "<h2>Reports</h2><div class='card'><div style='color:#ef4444;'>Error loading report data: "+e.message+"</div></div>";
   }
+}
+
+// ─── One-on-One ───────────────────────────────────────────────────────────────
+async function renderOOO(){
+  var pg = document.getElementById("pg-ooo");
+  if(!pg) return;
+  var isM = S.role==="manager";
+
+  if(isM){
+    renderOOOManager(pg);
+  } else {
+    renderOOOTech(pg);
+  }
+}
+
+async function renderOOOManager(pg){
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>One-on-One</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Create and manage quarterly one-on-one forms for your technicians.</p>"
+    +"<button class='btn bs' style='width:100%;padding:12px;margin-bottom:20px;' data-a='ooo-new'>+ Create New 1-on-1 Form</button>"
+    +"<div id='ooo-list'><div style='color:#64748b;text-align:center;padding:20px;'>Loading forms...</div></div>";
+
+  try {
+    var result = await gs("getOOOForms", null);
+    var forms = result && result.forms ? result.forms : [];
+    var listDiv = document.getElementById("ooo-list");
+    if(!listDiv) return;
+
+    if(forms.length === 0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:20px;'>No forms yet. Create one above.</div>";
+      return;
+    }
+
+    listDiv.innerHTML = forms.map(function(f){
+      var statusColor = f.status==="Complete"?"#22c55e":f.status==="Signed"?"#3b82f6":f.status==="Sent"?"#f59e0b":"#64748b";
+      return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='ooo-open' data-v='"+f.id+"'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:start;'>"
+        +"<div>"
+        +"<div style='font-weight:700;font-size:14px;'>"+esc(f.techName)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(f.quarter)+" &bull; Created "+new Date(f.createdAt).toLocaleDateString()+"</div>"
+        +"</div>"
+        +"<span style='font-size:11px;font-weight:700;color:"+statusColor+";background:"+statusColor+"22;padding:3px 8px;border-radius:20px;'>"+esc(f.status||"Draft")+"</span>"
+        +"</div>"
+        +(f.techSubmittedAt?"<div style='font-size:11px;color:#22c55e;margin-top:6px;'>✓ Tech submitted "+new Date(f.techSubmittedAt).toLocaleDateString()+"</div>":"")
+        +"</div>";
+    }).join("");
+  } catch(e){
+    pg.innerHTML += "<div style='color:#ef4444;'>Error loading forms: "+e.message+"</div>";
+  }
+}
+
+async function renderOOOTech(pg){
+  var myName = S.currentTech||"";
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>My 1-on-1</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Your quarterly check-in form. Fill it out anytime — your manager will review it before your meeting.</p>"
+    +"<div id='ooo-tech-list'><div style='color:#64748b;text-align:center;padding:20px;'>Loading...</div></div>";
+
+  try {
+    var result = await gs("getOOOForms", null);
+    var forms = result && result.forms ? result.forms : [];
+    var myForms = forms.filter(function(f){ return f.techName===myName && f.status!=="Archived"; });
+    var listDiv = document.getElementById("ooo-tech-list");
+    if(!listDiv) return;
+
+    if(myForms.length===0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:30px;'>No active 1-on-1 forms yet.<br><br>Your manager will send one when it's time for your quarterly check-in.</div>";
+      return;
+    }
+
+    listDiv.innerHTML = myForms.map(function(f){
+      var pct = f.techSubmittedAt?100:calcTechPct(f);
+      var statusColor = f.techSubmittedAt?"#22c55e":"#f59e0b";
+      return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='ooo-open-tech' data-v='"+f.id+"'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;'>"
+        +"<div><div style='font-weight:700;font-size:14px;'>"+esc(f.quarter)+" Check-in</div>"
+        +"<div style='font-size:12px;color:#64748b;'>From: "+esc(f.createdBy)+"</div></div>"
+        +"<span style='font-size:11px;font-weight:700;color:"+statusColor+";'>"+( f.techSubmittedAt?"✓ Submitted":"In Progress")+"</span>"
+        +"</div>"
+        +"<div style='background:#0a1628;border-radius:4px;height:6px;'>"
+        +"<div style='background:#06b6d4;height:6px;border-radius:4px;width:"+pct+"%;transition:width 0.3s;'></div>"
+        +"</div>"
+        +"<div style='font-size:11px;color:#64748b;margin-top:4px;'>"+pct+"% complete</div>"
+        +"</div>";
+    }).join("");
+  } catch(e){
+    document.getElementById("ooo-tech-list").innerHTML = "<div style='color:#ef4444;'>Error: "+e.message+"</div>";
+  }
+}
+
+function calcTechPct(f){
+  var techFields = ["overallRating","goingWell","challenges","resources","training","personalGoal","professionalGoal","feedbackPos","feedbackImprove","other"];
+  var filled = techFields.filter(function(k){ return f[k]&&String(f[k]).trim(); }).length;
+  return Math.round((filled/techFields.length)*100);
+}
+
+function renderOOONewForm(pg){
+  var quarters = [];
+  var now = new Date();
+  var yr = now.getFullYear();
+  var q = Math.ceil((now.getMonth()+1)/3);
+  for(var i=0;i<4;i++){
+    var qq=q+i; var yy=yr;
+    if(qq>4){qq-=4;yy++;}
+    quarters.push("Q"+qq+" "+yy);
+  }
+  var techOpts2 = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'>"+esc(t.name)+"</option>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<h2 style='font-size:18px;font-weight:700;margin:0;'>New 1-on-1 Form</h2>"
+    +"</div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>TECHNICIAN</label>"
+    +"<select class='inp' id='ooo-tech-sel' style='margin-bottom:12px;'><option value=''>Select technician...</option>"+techOpts2+"</select>"
+    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>QUARTER</label>"
+    +"<select class='inp' id='ooo-quarter-sel'>"
+    +quarters.map(function(q2){ return "<option>"+q2+"</option>"; }).join("")
+    +"</select>"
+    +"</div>"
+    +"<button class='btn bs' style='width:100%;padding:13px;font-size:15px;' data-a='ooo-create'>Create & Send Form</button>";
+}
+
+async function renderOOOFormManager(pg, formId){
+  pg.innerHTML = "<div style='text-align:center;padding:20px;color:#64748b;'>Loading...</div>";
+  var form = await gs("getOOOForm", {id:formId});
+  if(!form){ pg.innerHTML="<div class='card'>Form not found.</div>"; return; }
+
+  var isEditable = form.status !== "Signed";
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<div><div style='font-weight:700;font-size:16px;'>"+esc(form.techName)+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>"+esc(form.quarter)+" One-on-One</div></div>"
+    +"</div>"
+
+    // Tech responses (read-only for manager)
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#06b6d4;margin-bottom:12px;'>📋 Tech Responses"
+    +(form.techSubmittedAt?" <span style='font-size:11px;color:#22c55e;font-weight:400;'>✓ Submitted "+new Date(form.techSubmittedAt).toLocaleDateString()+"</span>":"")
+    +"</div>"
+    +oooTechReadonly(form)
+    +"</div>"
+
+    // Manager-only section
+    +"<div class='card' style='margin-bottom:14px;border-color:#f59e0b44;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:12px;'>🔒 Manager Notes (Private)</div>"
+    +oooManagerFields(form, isEditable, formId)
+    +"</div>"
+
+    // Actions
+    +(isEditable
+      ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
+      :"")
+    +(form.status==="Draft"||form.status==="Sent"
+      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✓ Mark Ready to Sign</button>"
+      :"")
+    +(form.status==="Ready"
+      ?"<button class='btn bs' style='width:100%;padding:13px;' data-a='ooo-sign-manager' data-v='"+formId+"'>✍ Sign & Complete</button>"
+      :"");
+}
+
+function oooTechReadonly(form){
+  var fields = [
+    {k:"overallRating", l:"Overall Rating", type:"rating"},
+    {k:"goingWell", l:"What's going well?"},
+    {k:"challenges", l:"Challenges"},
+    {k:"resources", l:"Resources/support needed"},
+    {k:"training", l:"Training interests"},
+    {k:"personalGoal", l:"Personal goal this quarter"},
+    {k:"professionalGoal", l:"Professional goal this quarter"},
+    {k:"feedbackPos", l:"What I'm doing well (feedback for manager)"},
+    {k:"feedbackImprove", l:"What I could do better"},
+    {k:"other", l:"Anything else to discuss"}
+  ];
+  return fields.map(function(f){
+    var val = form[f.k]||"";
+    return "<div style='margin-bottom:10px;'>"
+      +"<div style='font-size:11px;color:#64748b;margin-bottom:3px;'>"+f.l+"</div>"
+      +(f.type==="rating"
+        ?renderStars(parseInt(val)||0, false)
+        :"<div style='font-size:13px;color:"+(val?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;min-height:32px;'>"+(esc(val)||"<em>Not filled in yet</em>")+"</div>")
+      +"</div>";
+  }).join("");
+}
+
+function oooManagerFields(form, editable, formId){
+  var fields = [
+    {k:"mgrStrengths", l:"Areas of strength to highlight"},
+    {k:"mgrCoaching", l:"Coaching opportunities"},
+    {k:"mgrCorrective", l:"Corrective action items (if any)"},
+    {k:"mgrNotes", l:"Meeting talking points / notes"},
+  ];
+  var ratingHtml = "<div style='margin-bottom:10px;'>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:6px;'>OVERALL PERFORMANCE RATING</div>"
+    +renderStars(parseInt(form.mgrRating)||0, editable, "ooo-mgr-rating-"+formId)
+    +"</div>";
+
+  return ratingHtml + fields.map(function(f){
+    return "<div style='margin-bottom:10px;'>"
+      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:3px;'>"+f.l.toUpperCase()+"</label>"
+      +(editable
+        ?"<textarea class='inp' id='ooo-mgr-"+f.k+"' style='width:100%;height:70px;resize:none;font-size:13px;'>"+esc(form[f.k]||"")+"</textarea>"
+        :"<div style='font-size:13px;color:"+(form[f.k]?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;'>"+esc(form[f.k]||"Not filled in")+"</div>")
+      +"</div>";
+  }).join("");
+}
+
+function renderStars(val, editable, id){
+  var stars = "";
+  for(var i=1;i<=5;i++){
+    var filled = i<=val;
+    if(editable){
+      stars += "<span data-a='ooo-set-rating' data-v='"+id+"_"+i+"' style='font-size:28px;cursor:pointer;color:"+(filled?"#f59e0b":"#1e3a5f")+";'>★</span>";
+    } else {
+      stars += "<span style='font-size:24px;color:"+(filled?"#f59e0b":"#1e3a5f")+";'>★</span>";
+    }
+  }
+  return "<div>"+stars+"</div>";
+}
+
+async function renderOOOFormTech(pg, formId){
+  pg.innerHTML = "<div style='text-align:center;padding:20px;color:#64748b;'>Loading...</div>";
+  var form = await gs("getOOOForm", {id:formId});
+  if(!form){ pg.innerHTML="<div class='card'>Form not found.</div>"; return; }
+
+  var submitted = !!form.techSubmittedAt;
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back-tech' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<div><div style='font-weight:700;font-size:16px;'>"+esc(form.quarter)+" Check-in</div>"
+    +"<div style='font-size:12px;color:#64748b;'>Fill out anytime before your meeting</div></div>"
+    +"</div>"
+    +(submitted?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:10px 14px;font-size:13px;color:#22c55e;margin-bottom:14px;'>✓ Submitted! You can still update your responses.</div>":"")
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#06b6d4;margin-bottom:14px;'>How's it going? ★</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:6px;'>OVERALL RATING</div>"
+    +renderStars(parseInt(form.overallRating)||0, true, "ooo-rating")
+    +"</div>"
+
+    +oooTechField("goingWell","What's going well in your role?","What are you proud of this quarter?",form)
+    +oooTechField("challenges","What challenges are you facing?","Workload, customers, equipment, anything...",form)
+    +oooTechField("resources","What resources or support would help you?","Training, tools, schedule changes...",form)
+    +oooTechField("training","Training or development interests","Any certifications, skills, or topics you'd like to learn?",form)
+
+    +"<div class='card' style='margin-bottom:14px;border-color:#f59e0b44;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:14px;'>💬 Feedback for Your Manager</div>"
+    +oooTechField("feedbackPos","What is your manager doing well?","Be honest — this helps!",form,true)
+    +oooTechField("feedbackImprove","What could your manager do better?","How can they support you more?",form,true)
+    +"</div>"
+
+    +oooTechField("personalGoal","Personal goal this quarter","Something you're working on outside of work...",form)
+    +oooTechField("professionalGoal","Professional goal this quarter","A skill, habit, or achievement you're aiming for at work...",form)
+    +oooTechField("other","Anything else you want to discuss?","Topics, questions, concerns for the meeting...",form)
+
+    +"<button class='btn bs' style='width:100%;padding:13px;font-size:15px;margin-bottom:10px;' data-a='ooo-save-tech' data-v='"+formId+"'>💾 Save My Responses</button>"
+    +(!submitted?"<button class='btn bp' style='width:100%;padding:12px;font-size:14px;' data-a='ooo-submit-tech' data-v='"+formId+"'>✓ Submit to Manager</button>":"");
+}
+
+function oooTechField(key, label, placeholder, form, inCard){
+  var html = inCard?"":"<div class='card' style='margin-bottom:14px;'>";
+  html += "<div style='margin-bottom:"+(inCard?"14":"0")+"px;'>"
+    +"<label style='font-size:12px;font-weight:600;color:#94a3b8;display:block;margin-bottom:6px;'>"+label+"</label>"
+    +"<textarea class='inp' id='ooo-tech-"+key+"' style='width:100%;height:80px;resize:none;font-size:13px;' placeholder='"+esc(placeholder)+"'>"+esc(form[key]||"")+"</textarea>"
+    +"</div>";
+  html += inCard?"":"</div>";
+  return html;
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
