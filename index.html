@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.8"; // Increment this with every update
+const APP_VERSION = "2.5.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -926,6 +926,11 @@ async function gs(fn, data){
         var oooId = data.id || "ooo_"+Date.now();
         await fbSet("oooForms", oooId, Object.assign({}, data, {id:oooId, updatedAt:new Date().toISOString()}));
         return {ok:true, id:oooId};
+      }
+      case "deleteOOOForm": {
+        await initFirebase();
+        await _db.collection("oooForms").doc(data.id).delete();
+        return {ok:true};
       }
       case "getOOOForms": {
         await initFirebase();
@@ -1846,6 +1851,15 @@ function handleAction(a,v,el,e){
   if(a==="analytics-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderAnalytics(); return; }
   if(a==="reports-refresh") { S._cachedAdjLog=null; S._cachedOrderHistory=null; renderReports(); return; }
   if(a==="ooo-new"){ renderOOONewForm(document.getElementById("pg-ooo")); return; }
+  if(a==="ooo-delete"){
+    if(confirm("Delete this 1-on-1 form? This cannot be undone.")){
+      gs("deleteOOOForm", {id:v}).then(function(){
+        showToast("Form deleted");
+        renderOOO();
+      }).catch(function(e){ alert("Error: "+e.message); });
+    }
+    return;
+  }
   if(a==="ooo-back"||a==="ooo-back-tech"){ renderOOO(); return; }
   if(a==="ooo-open"){ renderOOOFormManager(document.getElementById("pg-ooo"), v); return; }
   if(a==="ooo-open-tech"){ renderOOOFormTech(document.getElementById("pg-ooo"), v); return; }
@@ -4574,6 +4588,7 @@ async function renderOOOFormManager(pg, formId){
     +(isEditable
       ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
       :"")
+    +"<button class='btn bd' style='width:100%;padding:10px;margin-top:6px;font-size:13px;' data-a='ooo-delete' data-v='"+formId+"'>🗑 Delete Form</button>"
     +(form.status!=="Signing"&&form.status!=="Signed"&&form.status!=="Complete"
       ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
       :"")
