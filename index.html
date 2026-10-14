@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.4"; // Increment this with every update
+const APP_VERSION = "2.5.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2358,7 +2358,7 @@ function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
   // Nav
-  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
+  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
   var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"}];
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
@@ -2435,6 +2435,7 @@ function renderDash(){
   var techTiles = [
     {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; }).length},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
+    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:0},
     {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
   ];
