@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.6"; // Increment this with every update
+const APP_VERSION = "2.5.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -4575,8 +4575,8 @@ async function renderOOOFormManager(pg, formId){
     +(isEditable
       ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
       :"")
-    +(form.status==="Draft"||form.status==="Sent"
-      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✓ Mark Ready to Sign</button>"
+    +(form.status!=="Signing"&&form.status!=="Signed"&&form.status!=="Complete"
+      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
       :"")
     +(form.status==="Signing"
       ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:10px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing document sent — check your Documents tab to sign.</div>"
