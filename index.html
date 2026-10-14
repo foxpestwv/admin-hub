@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.7"; // Increment this with every update
+const APP_VERSION = "2.5.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -980,11 +980,10 @@ async function gs(fn, data){
         drawLine(y); y-=16;
 
         // Star rating
-        var stars = "";
         var rating = parseInt(f.overallRating)||0;
-        for(var i=0;i<5;i++) stars += (i<rating?"★":"☆");
+        var starsText = rating+"/5 stars";
         drawText("TECH RESPONSES", margin, y, 9, true, PDFLib.rgb(0.02,0.71,0.83)); y-=14;
-        drawText("Overall Rating: "+stars+" ("+rating+"/5)", margin, y, 11, false); y-=20;
+        drawText("Overall Rating: "+starsText, margin, y, 11, false); y-=20;
 
         var techFields2 = [
           {k:"goingWell",l:"What's going well?"},
@@ -1005,7 +1004,7 @@ async function gs(fn, data){
 
         y -= 10; drawLine(y); y -= 16;
         drawText("MANAGER NOTES (PRIVATE)", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y -= 14;
-        drawText("Performance Rating: "+(function(){ var s=""; var mr=parseInt(f.mgrRating)||0; for(var i=0;i<5;i++) s+=(i<mr?"★":"☆"); return s+" ("+mr+"/5)"; })(), margin, y, 11, false); y-=16;
+        drawText("Performance Rating: "+(parseInt(f.mgrRating)||0)+"/5 stars", margin, y, 11, false); y-=16;
         var mgrFields2 = [
           {k:"mgrStrengths",l:"Areas of strength"},
           {k:"mgrCoaching",l:"Coaching opportunities"},
