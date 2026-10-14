@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.1"; // Increment this with every update
+const APP_VERSION = "2.5.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -919,8 +919,11 @@ async function gs(fn, data){
       }
       case "getOOOForms": {
         await initFirebase();
-        var oooSnap = await _db.collection("oooForms").orderBy("quarter","desc").get();
-        return {forms: oooSnap.docs.map(function(d){ return d.data(); })};
+        var oooSnap = await _db.collection("oooForms").get();
+        var oooForms = oooSnap.docs.map(function(d){ return d.data(); });
+        // Sort by createdAt descending in JS
+        oooForms.sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); });
+        return {forms: oooForms};
       }
       case "getOOOForm": {
         await initFirebase();
@@ -4302,7 +4305,8 @@ async function renderOOOTech(pg){
   try {
     var result = await gs("getOOOForms", null);
     var forms = result && result.forms ? result.forms : [];
-    var myForms = forms.filter(function(f){ return f.techName===myName && f.status!=="Archived"; });
+    var myName2 = S.currentTech||S.managerName||"";
+    var myForms = forms.filter(function(f){ return f.techName===myName2 && f.status!=="Archived"; });
     var listDiv = document.getElementById("ooo-tech-list");
     if(!listDiv) return;
 
@@ -4499,8 +4503,51 @@ async function renderOOOFormTech(pg, formId){
     +oooTechField("professionalGoal","Professional goal this quarter","A skill, habit, or achievement you're aiming for at work...",form)
     +oooTechField("other","Anything else you want to discuss?","Topics, questions, concerns for the meeting...",form)
 
+    +"<div id='ooo-autosave-status' style='text-align:center;font-size:11px;color:#475569;margin-bottom:8px;'></div>"
     +"<button class='btn bs' style='width:100%;padding:13px;font-size:15px;margin-bottom:10px;' data-a='ooo-save-tech' data-v='"+formId+"'>💾 Save My Responses</button>"
     +(!submitted?"<button class='btn bp' style='width:100%;padding:12px;font-size:14px;' data-a='ooo-submit-tech' data-v='"+formId+"'>✓ Submit to Manager</button>":"");
+
+  // Autosave - debounce 2 seconds after typing stops
+  var _oooAutosaveTimer = null;
+  var _oooFormId = formId;
+  function oooAutosave(){
+    var statusEl = document.getElementById("ooo-autosave-status");
+    if(statusEl) statusEl.textContent = "Saving...";
+    var data = {
+      id: _oooFormId,
+      overallRating: S._oooRating||form.overallRating||"",
+      goingWell: (document.getElementById("ooo-tech-goingWell")||{}).value||"",
+      challenges: (document.getElementById("ooo-tech-challenges")||{}).value||"",
+      resources: (document.getElementById("ooo-tech-resources")||{}).value||"",
+      training: (document.getElementById("ooo-tech-training")||{}).value||"",
+      personalGoal: (document.getElementById("ooo-tech-personalGoal")||{}).value||"",
+      professionalGoal: (document.getElementById("ooo-tech-professionalGoal")||{}).value||"",
+      feedbackPos: (document.getElementById("ooo-tech-feedbackPos")||{}).value||"",
+      feedbackImprove: (document.getElementById("ooo-tech-feedbackImprove")||{}).value||"",
+      other: (document.getElementById("ooo-tech-other")||{}).value||""
+    };
+    gs("saveOOOForm", data).then(function(){
+      var s = document.getElementById("ooo-autosave-status");
+      if(s) s.textContent = "✓ Saved " + new Date().toLocaleTimeString();
+    }).catch(function(){
+      var s = document.getElementById("ooo-autosave-status");
+      if(s) s.textContent = "⚠ Save failed";
+    });
+  }
+
+  // Wire up autosave on all text fields
+  var oooTextFields = ["goingWell","challenges","resources","training","personalGoal","professionalGoal","feedbackPos","feedbackImprove","other"];
+  oooTextFields.forEach(function(key){
+    var el = document.getElementById("ooo-tech-"+key);
+    if(el){
+      el.addEventListener("input", function(){
+        clearTimeout(_oooAutosaveTimer);
+        _oooAutosaveTimer = setTimeout(oooAutosave, 2000);
+        var s = document.getElementById("ooo-autosave-status");
+        if(s) s.textContent = "Unsaved changes...";
+      });
+    }
+  });
 }
 
 function oooTechField(key, label, placeholder, form, inCard){
