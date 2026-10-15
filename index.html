@@ -318,6 +318,10 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
   ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Load OOO forms for badge (from cache)
+  var cachedOoo = lsGet("hub:oooForms");
+  if(cachedOoo) S._oooForms = cachedOoo;
+
   // Load starred products
   var starred = lsGet("hub:starredProducts");
   if(starred) S.starredProducts = starred;
@@ -347,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.1"; // Increment this with every update
+const APP_VERSION = "2.7.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -940,6 +944,7 @@ async function gs(fn, data){
         oooForms.sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); });
         // Cache for badge counts
         S._oooForms = oooForms;
+        lsSet("hub:oooForms", oooForms);
         return {forms: oooForms};
       }
       case "getOOOForm": {
@@ -2009,36 +2014,42 @@ function handleAction(a,v,el,e){
         var dateHPct = pdfResult.dateHPct || 0.018;
         var fields = [
           {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:0, page:lastPg, type:"date", xPct:0.08, yPct:dateYPct, wPct:0.30, hPct:dateHPct},
+          {signerIdx:0, page:lastPg, type:"date", xPct:0.18, yPct:dateYPct, wPct:0.25, hPct:dateHPct},
           {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"date", xPct:0.60, yPct:dateYPct, wPct:0.30, hPct:dateHPct}
+          {signerIdx:1, page:lastPg, type:"date", xPct:0.70, yPct:dateYPct, wPct:0.25, hPct:dateHPct}
         ];
 
         var multiId = "ooo_sign_"+Date.now();
         var docName = form.quarter+" 1-on-1: "+form.techName;
 
-        // Save sign requests for each signer
+        // Save sign requests for each signer with role label
+        var roleLabels = ["Tech", "Manager"];
         for(var si=0;si<signers.length;si++){
           var signer = signers[si];
           var srId = multiId+"-"+(si+1);
           var srData = {
             id:srId, multiSignId:multiId, isMultiSign:true,
-            docName:docName, techName:signer.name, techEmail:signer.email,
+            docName:docName+" ("+roleLabels[si]+")",
+            techName:signer.name, techEmail:signer.email,
+            signerRole:roleLabels[si],
             createdBy:S.managerName, date:new Date().toISOString(),
             status:"Pending", formType:"ooo",
             pdfBase64:pdfResult.pdfBase64,
             fields:fields.filter(function(f){ return f.signerIdx===si; }),
             pdfSigners:signers,
-            note:"Please sign your "+form.quarter+" one-on-one review."
+            note:"Please sign as "+roleLabels[si]+": "+form.quarter+" one-on-one review."
           };
           await gs("saveSignRequest", srData);
           S.signRequests.unshift(srData);
 
-          // Email notification
+          // Email notification with role context
           if(signer.email){
+            var roleMsg = si===0
+              ? "As the technician, please review and sign your "+form.quarter+" one-on-one."
+              : "As the manager, please sign the completed "+form.quarter+" one-on-one for "+form.techName+".";
             sendEmail(signer.email,
-              "[Fox Pest Control] Please sign: "+docName,
-              "Hi "+signer.name+",\n\nYour "+form.quarter+" one-on-one review is ready to sign.\n\nPlease log in to the Fox Pest Admin Hub and go to Documents to sign.\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
+              "[Fox Pest Control] Please sign: "+docName+" ("+roleLabels[si]+")",
+              "Hi "+signer.name+",\n\n"+roleMsg+"\n\nLog in and go to Documents:\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
             );
           }
         }
