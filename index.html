@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.5"; // Increment this with every update
+const APP_VERSION = "2.7.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2701,8 +2701,11 @@ function renderDash(){
     {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; }).length},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:(function(){
+      var myN2 = S.currentTech||S.managerName||"";
       if(!S._oooForms) return 0;
-      return S._oooForms.filter(function(f){ return f.status==="Submitted"; }).length;
+      return S._oooForms.filter(function(f){
+        return f.techName===myN2 && f.status==="Sent";
+      }).length;
     })()},
     {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
