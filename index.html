@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.6.7"; // Increment this with every update
+const APP_VERSION = "2.6.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2005,11 +2005,16 @@ function handleAction(a,v,el,e){
         var sigNameHPct = pdfResult.sigNameHPct || 0.03;
         // date above sig line, signature on the line
         // sigNameYPct = date position, sigYPct = signature position
+        // sigYPct = signature box position (above sig line)
+        // sigNameYPct = date box position (above date underline)
+        // Date label is "Date:" text, date goes on underline below it
+        // Shift date box down past the label text
+        var dateBoxYPct = sigNameYPct + sigHPct + (10/792); // below sig box
         var fields = [
-          {signerIdx:0, page:lastPg, type:"date", xPct:0.10, yPct:sigNameYPct, wPct:0.33, hPct:sigNameHPct},
           {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"date", xPct:0.62, yPct:sigNameYPct, wPct:0.33, hPct:sigNameHPct},
-          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct}
+          {signerIdx:0, page:lastPg, type:"date", xPct:0.08, yPct:dateBoxYPct, wPct:0.30, hPct:sigNameHPct},
+          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
+          {signerIdx:1, page:lastPg, type:"date", xPct:0.60, yPct:dateBoxYPct, wPct:0.30, hPct:sigNameHPct}
         ];
 
         var multiId = "ooo_sign_"+Date.now();
@@ -6434,7 +6439,8 @@ function showMsSigPad(callback){
   setupSigCanvas(canvas);
 
   document.getElementById("ms-sig-clear").onclick = function(){
-    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+    var ctx3 = canvas.getContext("2d");
+    ctx3.fillStyle="#ffffff"; ctx3.fillRect(0,0,canvas.width,canvas.height);
   };
   document.getElementById("ms-sig-cancel").onclick = function(){ modal.remove(); };
   document.getElementById("ms-sig-done").onclick = function(){
@@ -6464,6 +6470,9 @@ function setupSigCanvas(canvas){
   canvas.width = canvas.offsetWidth || 400;
   canvas.height = canvas.offsetHeight || 150;
   var ctx = canvas.getContext("2d");
+  // Force white background regardless of CSS
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.strokeStyle = "#111111";
   ctx.lineWidth = 2.5;
   ctx.lineCap = "round";
