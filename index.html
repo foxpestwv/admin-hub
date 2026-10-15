@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.6.0"; // Increment this with every update
+const APP_VERSION = "2.6.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1022,21 +1022,39 @@ async function gs(fn, data){
           y -= 6;
         });
 
-        // Signature lines at bottom - ensure on last page
-        if(y < 180){ page = doc.addPage([612,792]); y=750; }
-        y -= 20; drawLine(y); y -= 30;
+        // Signature section - always on a fresh area with enough space
+        // If less than 160pts remaining, add a new page
+        if(y < 160){ page = doc.addPage([612,792]); y=750; }
+        y -= 30; drawLine(y); y -= 20;
+        drawText("By signing below, both parties acknowledge this review.", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4)); y -= 30;
         drawText("Technician Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
         drawText("Manager Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        y -= 40;
+        y -= 50;
         page.drawLine({start:{x:margin,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
         page.drawLine({start:{x:margin+colW+44,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        y -= 12;
+        y -= 14;
         drawText(f.techName, margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
         drawText(f.createdBy||"", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        y -= 10;
+        drawText("Date: _______________", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        drawText("Date: _______________", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+
+        // Return y positions for signature fields so tap boxes match lines exactly
+        var pageH = 792;
+        var sigNameY = y + 64; // y after date line, before sig line
+        var sigY = y + 14;     // y of the actual signature lines
+        var pageCount = doc.getPageCount();
 
         var pdfBytes2 = await doc.save();
         var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(pdfBytes2)));
-        return {pdfBase64: b64};
+        return {
+          pdfBase64: b64,
+          pageCount: pageCount,
+          sigYPct: 1 - (sigY / pageH),
+          sigNameYPct: 1 - (sigNameY / pageH),
+          sigHPct: 40/pageH,
+          sigNameHPct: 20/pageH
+        };
       }
       case "getSignRequestById": {
         await initFirebase();
@@ -1967,12 +1985,17 @@ function handleAction(a,v,el,e){
           {name:form.createdBy||S.managerName, email:mgrAcct?mgrAcct.email:"", id:mgrAcct?mgrAcct.id:"mgr_ooo"}
         ];
 
-        // Place signature fields - tech on left, manager on right at bottom
+        // Use exact positions returned from PDF generator
+        var lastPg = pdfResult.pageCount || 1;
+        var sigYPct = pdfResult.sigYPct || 0.87;
+        var sigNameYPct = pdfResult.sigNameYPct || 0.82;
+        var sigHPct = pdfResult.sigHPct || 0.05;
+        var sigNameHPct = pdfResult.sigNameHPct || 0.03;
         var fields = [
-          {signerIdx:0, page:1, type:"name", xPct:0.05, yPct:0.88, wPct:0.38, hPct:0.04},
-          {signerIdx:0, page:1, type:"signature", xPct:0.05, yPct:0.92, wPct:0.38, hPct:0.05},
-          {signerIdx:1, page:1, type:"name", xPct:0.57, yPct:0.88, wPct:0.38, hPct:0.04},
-          {signerIdx:1, page:1, type:"signature", xPct:0.57, yPct:0.92, wPct:0.38, hPct:0.05}
+          {signerIdx:0, page:lastPg, type:"name", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
+          {signerIdx:1, page:lastPg, type:"name", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct}
         ];
 
         var multiId = "ooo_sign_"+Date.now();
