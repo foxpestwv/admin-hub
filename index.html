@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.6.3"; // Increment this with every update
+const APP_VERSION = "2.6.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1056,11 +1056,12 @@ async function gs(fn, data){
 
         var pdfBytes2 = await doc.save();
         var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(pdfBytes2)));
+        // sigYPct = where signature line is, sigNameYPct = where date label is
         return {
           pdfBase64: b64,
           pageCount: pageCount,
-          sigYPct: 1 - (sigNameY / pageH),
-          sigNameYPct: 1 - (sigY2 / pageH),
+          sigYPct: 1 - (sigLineY / pageH) - (44/pageH),  // just above sig line
+          sigNameYPct: 1 - (dateLabelY / pageH) - (18/pageH), // just above date label
           sigHPct: 44/pageH,
           sigNameHPct: 18/pageH
         };
@@ -2000,12 +2001,13 @@ function handleAction(a,v,el,e){
         var sigNameYPct = pdfResult.sigNameYPct || 0.82;
         var sigHPct = pdfResult.sigHPct || 0.05;
         var sigNameHPct = pdfResult.sigNameHPct || 0.03;
-        // signature on the line, date below - no name field (name already printed)
+        // date above sig line, signature on the line
+        // sigNameYPct = date position, sigYPct = signature position
         var fields = [
-          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:0, page:lastPg, type:"date", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigNameHPct},
-          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"date", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigNameHPct}
+          {signerIdx:0, page:lastPg, type:"date", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
+          {signerIdx:1, page:lastPg, type:"date", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct}
         ];
 
         var multiId = "ooo_sign_"+Date.now();
