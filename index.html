@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.2"; // Increment this with every update
+const APP_VERSION = "2.7.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1937,6 +1937,13 @@ function handleAction(a,v,el,e){
     };
     if(S._oooRating) techData.overallRating = S._oooRating;
     gs("saveOOOForm", Object.assign({id:v}, techData)).then(function(){
+      // Update cached forms
+      if(S._oooForms){
+        S._oooForms = S._oooForms.map(function(f){
+          return f.id===v ? Object.assign({},f,techData) : f;
+        });
+        lsSet("hub:oooForms", S._oooForms);
+      }
       showToast("Saved ✓");
     }).catch(function(e){ alert("Error: "+e.message); });
     return;
@@ -1956,6 +1963,13 @@ function handleAction(a,v,el,e){
       techSubmittedAt: new Date().toISOString(), status:"Submitted"
     };
     gs("saveOOOForm", Object.assign({id:v}, tData)).then(function(){
+      // Update cached forms so badge clears immediately
+      if(S._oooForms){
+        S._oooForms = S._oooForms.map(function(f){
+          return f.id===v ? Object.assign({},f,{status:"Submitted",techSubmittedAt:tData.techSubmittedAt}) : f;
+        });
+        lsSet("hub:oooForms", S._oooForms);
+      }
       showToast("Submitted to manager ✓");
       renderOOO();
     }).catch(function(e){ alert("Error: "+e.message); });
@@ -6540,8 +6554,14 @@ async function renderSign(skipReload){
       }
     } catch(e){ console.warn("Load sign requests:", e); }
   }
-  if(S.role==="manager") renderSignManager(pg);
-  else renderSignTech(pg);
+  // If a pending sign request is set, show signing screen regardless of role
+  if(S._pendingSignReq && (S._signView==="multi-signing"||S._signView==="signing")){
+    renderSignTech(pg);
+  } else if(S.role==="manager") {
+    renderSignManager(pg);
+  } else {
+    renderSignTech(pg);
+  }
 }
 
 function renderSignManager(pg){
