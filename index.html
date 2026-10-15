@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.6.4"; // Increment this with every update
+const APP_VERSION = "2.6.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -938,6 +938,8 @@ async function gs(fn, data){
         var oooForms = oooSnap.docs.map(function(d){ return d.data(); });
         // Sort by createdAt descending in JS
         oooForms.sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); });
+        // Cache for badge counts
+        S._oooForms = oooForms;
         return {forms: oooForms};
       }
       case "getOOOForm": {
@@ -2004,9 +2006,9 @@ function handleAction(a,v,el,e){
         // date above sig line, signature on the line
         // sigNameYPct = date position, sigYPct = signature position
         var fields = [
-          {signerIdx:0, page:lastPg, type:"date", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:0, page:lastPg, type:"date", xPct:0.10, yPct:sigNameYPct, wPct:0.33, hPct:sigNameHPct},
           {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"date", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:1, page:lastPg, type:"date", xPct:0.62, yPct:sigNameYPct, wPct:0.33, hPct:sigNameHPct},
           {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct}
         ];
 
@@ -2647,7 +2649,10 @@ function renderDash(){
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0},
     {icon:"📋", label:"Reports", tab:"reports", color:"#1a0a1a", accent:"#d946ef", badge:0},
-    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:0},
+    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:(function(){
+      if(!S._oooForms) return 0;
+      return S._oooForms.filter(function(f){ return f.status==="Submitted"; }).length;
+    })()},
     {icon:"⚙️", label:"Settings", tab:"settings", color:"#1a1a1a", accent:"#94a3b8", badge:0}
   ];
 
@@ -2656,7 +2661,10 @@ function renderDash(){
   var techTiles = [
     {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; }).length},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
-    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:0},
+    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:(function(){
+      if(!S._oooForms) return 0;
+      return S._oooForms.filter(function(f){ return f.status==="Submitted"; }).length;
+    })()},
     {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
   ];
@@ -6411,7 +6419,7 @@ function showMsSigPad(callback){
   var box = document.createElement("div");
   box.style.cssText = "background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;padding:20px;width:100%;max-width:420px;";
   box.innerHTML = "<div style='font-weight:700;font-size:14px;color:#f59e0b;margin-bottom:12px;'>Draw Your Signature</div>"
-    +"<canvas id='ms-sig-pad' style='width:100%;height:160px;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;display:block;touch-action:none;'></canvas>"
+    +"<canvas id='ms-sig-pad' style='width:100%;height:160px;background:#ffffff;border:1px solid #1e3a5f;border-radius:8px;display:block;touch-action:none;'></canvas>"
     +"<div style='display:flex;gap:8px;margin-top:12px;'>"
     +"<button id='ms-sig-clear' style='flex:1;background:#1e3a5f;color:#e2e8f0;border:none;padding:10px;border-radius:8px;cursor:pointer;font-size:13px;'>Clear</button>"
     +"<button id='ms-sig-done' style='flex:2;background:#2563eb;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;'>Done ✓</button>"
