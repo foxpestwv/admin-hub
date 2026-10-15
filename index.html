@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.6.2"; // Increment this with every update
+const APP_VERSION = "2.6.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1030,19 +1030,28 @@ async function gs(fn, data){
         drawText("Technician Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
         drawText("Manager Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
         y -= 50;
-        page.drawLine({start:{x:margin,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        page.drawLine({start:{x:margin+colW+44,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        y -= 14;
+        // Signature line - tap box goes HERE
+        var sigLineY = y;
+        page.drawLine({start:{x:margin,y:sigLineY},end:{x:margin+colW,y:sigLineY},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        page.drawLine({start:{x:margin+colW+44,y:sigLineY},end:{x:margin+colW+44+colW,y:sigLineY},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        y -= 18;
         drawText(f.techName, margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
         drawText(f.createdBy||"", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        y -= 10;
-        drawText("Date: _______________", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        drawText("Date: _______________", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        y -= 18;
+        // Date line - tap box goes HERE
+        var dateLabelY = y;
+        drawText("Date:", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        drawText("Date:", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+        y -= 18;
+        page.drawLine({start:{x:margin+30,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        page.drawLine({start:{x:margin+colW+44+30,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+        // Use these exact Y positions for tap boxes
+        y = dateLabelY;
 
         // Return y positions for signature fields so tap boxes match lines exactly
         var pageH = 792;
-        var sigNameY = y + 64; // y after date line, before sig line
-        var sigY = y + 14;     // y of the actual signature lines
+        var sigNameY = sigLineY + 10;   // signature tap box sits just above sig line
+        var sigY2 = dateLabelY - 8;     // date tap box sits on/below date label
         var pageCount = doc.getPageCount();
 
         var pdfBytes2 = await doc.save();
@@ -1050,10 +1059,10 @@ async function gs(fn, data){
         return {
           pdfBase64: b64,
           pageCount: pageCount,
-          sigYPct: 1 - (sigY / pageH),
-          sigNameYPct: 1 - (sigNameY / pageH),
-          sigHPct: 40/pageH,
-          sigNameHPct: 20/pageH
+          sigYPct: 1 - (sigNameY / pageH),
+          sigNameYPct: 1 - (sigY2 / pageH),
+          sigHPct: 44/pageH,
+          sigNameHPct: 18/pageH
         };
       }
       case "getSignRequestById": {
@@ -1991,11 +2000,12 @@ function handleAction(a,v,el,e){
         var sigNameYPct = pdfResult.sigNameYPct || 0.82;
         var sigHPct = pdfResult.sigHPct || 0.05;
         var sigNameHPct = pdfResult.sigNameHPct || 0.03;
+        // signature on the line, date below - no name field (name already printed)
         var fields = [
-          {signerIdx:0, page:lastPg, type:"name", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
-          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"name", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigNameHPct},
-          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct}
+          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigNameYPct, wPct:0.38, hPct:sigHPct},
+          {signerIdx:0, page:lastPg, type:"date", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigNameHPct},
+          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigNameYPct, wPct:0.38, hPct:sigHPct},
+          {signerIdx:1, page:lastPg, type:"date", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigNameHPct}
         ];
 
         var multiId = "ooo_sign_"+Date.now();
