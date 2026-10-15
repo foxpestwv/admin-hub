@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.9"; // Increment this with every update
+const APP_VERSION = "2.8.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2660,10 +2660,12 @@ function renderDash(){
   if(!pg) return;
   var name = S.managerName || S.currentTech || "";
   // TEMP DEBUG - remove after testing
+  var _debugN = S.currentTech||S.managerName||"?";
   var _debugOoo = "Forms: "+(S._oooForms?S._oooForms.length:"null")+
-    " | Name: "+(S.currentTech||S.managerName||"?")+
+    " | Name: ["+_debugN+"]"+
+    " | Role: "+S.role+
     " | Match: "+(S._oooForms?(S._oooForms.filter(function(f){
-      var n=S.currentTech||S.managerName||""; return f.techName===n&&f.status==="Sent";
+      return f.techName===_debugN&&f.status==="Sent";
     }).length):"?");
   // Get title from account data if available
   var acct = (S.managers||[]).find(function(m){ return m.name===name; })
