@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.7"; // Increment this with every update
+const APP_VERSION = "2.7.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2659,6 +2659,12 @@ function renderDash(){
   var pg = document.getElementById("pg-dashboard");
   if(!pg) return;
   var name = S.managerName || S.currentTech || "";
+  // TEMP DEBUG - remove after testing
+  var _debugOoo = "Forms: "+(S._oooForms?S._oooForms.length:"null")+
+    " | Name: "+(S.currentTech||S.managerName||"?")+
+    " | Match: "+(S._oooForms?(S._oooForms.filter(function(f){
+      var n=S.currentTech||S.managerName||""; return f.techName===n&&f.status==="Sent";
+    }).length):"?");
   // Get title from account data if available
   var acct = (S.managers||[]).find(function(m){ return m.name===name; })
     || (S.techAccounts||[]).find(function(t){ return t.name===name; });
