@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.8"; // Increment this with every update
+const APP_VERSION = "2.7.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2735,6 +2735,7 @@ function renderDash(){
   }).join("");
 
   pg.innerHTML = ""
+    +"<div style='background:#1e3a5f;color:#94a3b8;font-size:11px;padding:6px 10px;border-radius:6px;margin-bottom:10px;text-align:center;'>"+_debugOoo+"</div>"
     // Header card
     +"<div style='background:linear-gradient(135deg,#0f1f38 0%,#1e3a5f 100%);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid #2563eb33;display:flex;align-items:center;gap:16px;'>"
     +"<div data-a='open-profile-photo' style='cursor:pointer;'>"+photoHtml+"</div>"
