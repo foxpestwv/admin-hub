@@ -351,7 +351,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.7.3"; // Increment this with every update
+const APP_VERSION = "2.7.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1133,6 +1133,18 @@ async function gs(fn, data){
               "[Fox Pest Control] All Signatures Complete: "+data.docName,
               "All signers have completed signing "+data.docName+".\n\nSigners: "+allSigners.map(function(s){return s.techName;}).join(", ")+"\n\nFox Pest Control - Willamette Valley"
             );
+            // If this is an OOO form, update its status to Signed
+            if(data.docName && data.docName.indexOf("1-on-1")>=0 && data.oooFormId){
+              await fbUpdate("oooForms", data.oooFormId, {status:"Signed", signedAt:new Date().toISOString()});
+            } else {
+              // Try to find OOO form by multiSignId
+              try {
+                var oooSnap2 = await _db.collection("oooForms").where("multiSignId","==",multiId).get();
+                if(!oooSnap2.empty){
+                  await oooSnap2.docs[0].ref.update({status:"Signed", signedAt:new Date().toISOString()});
+                }
+              } catch(e2){}
+            }
           } else {
             var remaining = allSigners.filter(function(s){ return s.status!=="Signed"; }).map(function(s){ return s.techName; });
             sendEmail(data.managerEmail||"john.kluttz@fox-marketingservices.com",
