@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.1"; // Increment this with every update
+const APP_VERSION = "2.8.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1699,6 +1699,7 @@ function handleAction(a,v,el,e){
     if(S.tab && S.tab!==v){ S._prevTab=S.tab; }
     S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false;
     if(v==="checkout") S._checkView="browse";
+    if(v!=="sign"){ S._pendingSignReq=null; S._signView="list"; }
     render(); return;
   }
   if(a==="nav-back"){
@@ -1905,6 +1906,13 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="ooo-back"||a==="ooo-back-tech"){ renderOOO(); return; }
+  if(a==="sign-cancel"){
+    S._pendingSignReq = null;
+    S._signView = "list";
+    S.tab = "sign";
+    render();
+    return;
+  }
   if(a==="ooo-open"){ renderOOOFormManager(document.getElementById("pg-ooo"), v); return; }
   if(a==="ooo-open-tech"){ renderOOOFormTech(document.getElementById("pg-ooo"), v); return; }
   if(a==="ooo-create"){
@@ -2102,21 +2110,16 @@ function handleAction(a,v,el,e){
   }
   if(a==="app-refresh"){
     var btn = document.getElementById("refresh-btn");
-    if(btn){ btn.style.animation="spin 0.6s linear"; setTimeout(function(){ btn.style.animation=""; }, 600); }
-    // Clear caches
+    if(btn){ btn.style.animation="spin 0.6s linear"; setTimeout(function(){ btn.style.animation=""; }, 1500); }
     S._cachedAdjLog=null; S._cachedOrderHistory=null;
-    // Reload accounts, sign requests, orders, products from Firebase
-    loadAccountsFromSheet().catch(function(){});
-    gs("getSignRequests",null).then(function(d){
-      if(d&&d.signRequests){ S.signRequests=d.signRequests; lsSet("hub:signRequests",S.signRequests); }
-    }).catch(function(){});
-    gs("getOrders",null).then(function(d){
-      if(d&&d.orders){ S.orders=d.orders; lsSet("hub:orders",S.orders); }
-    }).catch(function(){});
-    gs("getProducts",null).then(function(d){
-      if(d&&d.products){ S.products=d.products; lsSet("hub:products",S.products); }
-    }).catch(function(){});
-    setTimeout(function(){ render(); showToast("Refreshed ✓"); }, 1200);
+    // Use syncFromSheet which properly handles all data loading and re-renders
+    syncFromSheet().then(function(){
+      render();
+      showToast("Refreshed ✓");
+    }).catch(function(){
+      render();
+      showToast("Refreshed ✓");
+    });
     return;
   }
   if(a==="set-analytics-avg") { S.analyticsAvgDays=parseInt(v); renderAnalytics(); return; }
