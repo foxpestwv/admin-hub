@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.3"; // Increment this with every update
+const APP_VERSION = "2.8.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1013,16 +1013,26 @@ async function gs(fn, data){
         y -= 10; drawLine(y); y -= 16;
         drawText("MANAGER NOTES (PRIVATE)", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y -= 14;
         drawText("Performance Rating: "+(parseInt(f.mgrRating)||0)+"/5 stars", margin, y, 11, false); y-=16;
-        var mgrFields2 = [
-          {k:"mgrStrengths",l:"Areas of strength"},
-          {k:"mgrCoaching",l:"Coaching opportunities"},
-          {k:"mgrCorrective",l:"Corrective action items"},
-          {k:"mgrNotes",l:"Meeting notes / talking points"}
-        ];
-        mgrFields2.forEach(function(mf){
+        // Draw notes for each manager
+        var allMgrKeys = Object.keys(f).filter(function(k){ return k.startsWith("mgrNotes_"); }).map(function(k){ return k.replace("mgrNotes_",""); });
+        // Also check for old-style keys
+        var hasOldStyle = f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes;
+        if(hasOldStyle && allMgrKeys.length===0) allMgrKeys = [""];
+        allMgrKeys.forEach(function(mk){
+          var prefix = mk?"_"+mk:"";
+          var mgrLabel = mk ? mk.replace(/_/g," ") : "Manager";
           if(y < 180){ page = doc.addPage([612,792]); y=750; }
-          y = drawField(mf.l, f[mf.k], y);
-          y -= 6;
+          drawText(mgrLabel.toUpperCase()+" NOTES", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y-=14;
+          var mgrFields2 = [
+            {k:"mgrStrengths"+prefix, l:"Areas of strength"},
+            {k:"mgrCoaching"+prefix, l:"Coaching opportunities"},
+            {k:"mgrCorrective"+prefix, l:"Corrective action items"},
+            {k:"mgrNotes"+prefix, l:"Meeting notes / talking points"}
+          ];
+          mgrFields2.forEach(function(mf){
+            if(y < 180){ page = doc.addPage([612,792]); y=750; }
+            if(f[mf.k]){ y = drawField(mf.l, f[mf.k], y); y -= 6; }
+          });
         });
 
         // Signature section - always on a fresh area with enough space
@@ -1992,15 +2002,15 @@ function handleAction(a,v,el,e){
     return;
   }
   if(a==="ooo-save-mgr"){
-    var mData = {
-      mgrStrengths: (document.getElementById("ooo-mgr-mgrStrengths")||{}).value||"",
-      mgrCoaching: (document.getElementById("ooo-mgr-mgrCoaching")||{}).value||"",
-      mgrCorrective: (document.getElementById("ooo-mgr-mgrCorrective")||{}).value||"",
-      mgrNotes: (document.getElementById("ooo-mgr-mgrNotes")||{}).value||"",
-      mgrRating: S._oooMgrRating||""
-    };
+    var myKey2 = oooManagerKey(S.managerName||"");
+    var mData = {};
+    mData["mgrStrengths_"+myKey2] = (document.getElementById("ooo-mgr-mgrStrengths_"+myKey2)||{}).value||"";
+    mData["mgrCoaching_"+myKey2] = (document.getElementById("ooo-mgr-mgrCoaching_"+myKey2)||{}).value||"";
+    mData["mgrCorrective_"+myKey2] = (document.getElementById("ooo-mgr-mgrCorrective_"+myKey2)||{}).value||"";
+    mData["mgrNotes_"+myKey2] = (document.getElementById("ooo-mgr-mgrNotes_"+myKey2)||{}).value||"";
+    mData["mgrRating_"+myKey2] = S._oooMgrRating||"";
     gs("saveOOOForm", Object.assign({id:v}, mData)).then(function(){
-      showToast("Manager notes saved ✓");
+      showToast("Your notes saved ✓");
     }).catch(function(e){ alert("Error: "+e.message); });
     return;
   }
@@ -4707,19 +4717,26 @@ function oooTechReadonly(form){
   }).join("");
 }
 
+function oooManagerKey(name){
+  // Convert manager name to a safe field key e.g. "John Kluttz" -> "John_Kluttz"
+  return (name||"").replace(/[^a-zA-Z0-9]/g,"_");
+}
+
 function oooManagerFields(form, editable, formId){
+  var myName = S.managerName||"";
+  var myKey = oooManagerKey(myName);
   var fields = [
-    {k:"mgrStrengths", l:"Areas of strength to highlight"},
-    {k:"mgrCoaching", l:"Coaching opportunities"},
-    {k:"mgrCorrective", l:"Corrective action items (if any)"},
-    {k:"mgrNotes", l:"Meeting talking points / notes"},
+    {k:"mgrStrengths_"+myKey, l:"Areas of strength to highlight"},
+    {k:"mgrCoaching_"+myKey, l:"Coaching opportunities"},
+    {k:"mgrCorrective_"+myKey, l:"Corrective action items (if any)"},
+    {k:"mgrNotes_"+myKey, l:"Meeting talking points / notes"},
   ];
   var ratingHtml = "<div style='margin-bottom:10px;'>"
-    +"<div style='font-size:11px;color:#64748b;margin-bottom:6px;'>OVERALL PERFORMANCE RATING</div>"
-    +renderStars(parseInt(form.mgrRating)||0, editable, "ooo-mgr-rating-"+formId)
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:6px;'>OVERALL PERFORMANCE RATING ("+esc(myName)+")</div>"
+    +renderStars(parseInt(form["mgrRating_"+myKey]||form.mgrRating)||0, editable, "ooo-mgr-rating-"+formId)
     +"</div>";
 
-  return ratingHtml + fields.map(function(f){
+  var mySection = ratingHtml + fields.map(function(f){
     return "<div style='margin-bottom:10px;'>"
       +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:3px;'>"+f.l.toUpperCase()+"</label>"
       +(editable
@@ -4727,6 +4744,30 @@ function oooManagerFields(form, editable, formId){
         :"<div style='font-size:13px;color:"+(form[f.k]?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;'>"+esc(form[f.k]||"Not filled in")+"</div>")
       +"</div>";
   }).join("");
+
+  // Show other managers' notes as read-only
+  var otherMgrHtml = "";
+  var allMgrs = S.managers||[];
+  allMgrs.forEach(function(m){
+    if(m.name===myName) return; // skip own
+    var mk = oooManagerKey(m.name);
+    var hasNotes = form["mgrNotes_"+mk]||form["mgrStrengths_"+mk]||form["mgrCoaching_"+mk]||form["mgrCorrective_"+mk];
+    if(!hasNotes) return;
+    otherMgrHtml += "<div style='margin-top:16px;padding-top:12px;border-top:1px solid #1e3a5f;'>"
+      +"<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:10px;'>"+esc(m.name).toUpperCase()+"'S NOTES (READ ONLY)</div>"
+      +["mgrStrengths","mgrCoaching","mgrCorrective","mgrNotes"].map(function(base){
+        var val = form[base+"_"+mk];
+        if(!val) return "";
+        var labels={mgrStrengths:"Strengths",mgrCoaching:"Coaching",mgrCorrective:"Corrective action",mgrNotes:"Notes"};
+        return "<div style='margin-bottom:8px;'>"
+          +"<div style='font-size:10px;color:#64748b;margin-bottom:2px;'>"+labels[base]+"</div>"
+          +"<div style='font-size:12px;color:#94a3b8;background:#0a1628;padding:6px 8px;border-radius:6px;'>"+esc(val)+"</div>"
+          +"</div>";
+      }).join("")
+      +"</div>";
+  });
+
+  return mySection + otherMgrHtml;
 }
 
 function renderStars(val, editable, id){
