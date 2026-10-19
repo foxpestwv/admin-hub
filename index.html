@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.7"; // Increment this with every update
+const APP_VERSION = "2.8.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2008,7 +2008,9 @@ function handleAction(a,v,el,e){
     mData["mgrCoaching_"+myKey2] = (document.getElementById("ooo-mgr-mgrCoaching_"+myKey2)||{}).value||"";
     mData["mgrCorrective_"+myKey2] = (document.getElementById("ooo-mgr-mgrCorrective_"+myKey2)||{}).value||"";
     mData["mgrNotes_"+myKey2] = (document.getElementById("ooo-mgr-mgrNotes_"+myKey2)||{}).value||"";
-    mData["mgrRating_"+myKey2] = S._oooMgrRating||"";
+    mData["mgrRating_"+myKey2] = S._oooMgrRating||form.mgrRating||"";
+    // Also preserve old-style fields by copying them to new keys if new ones are empty
+    // This migrates existing data on first save
     gs("saveOOOForm", Object.assign({id:v}, mData)).then(function(){
       showToast("Your notes saved ✓");
     }).catch(function(e){ alert("Error: "+e.message); });
@@ -4728,28 +4730,24 @@ function oooManagerKey(name){
 function oooManagerFields(form, editable, formId){
   var myName = S.managerName||"";
   var myKey = oooManagerKey(myName);
-  // Helper to get field value - checks new per-manager key first, falls back to old shared key
-  function getMgrField(base){
-    return form[base+"_"+myKey] || form[base] || "";
-  }
-
-  var fields = [
-    {k:"mgrStrengths_"+myKey, base:"mgrStrengths", l:"Areas of strength to highlight"},
-    {k:"mgrCoaching_"+myKey, base:"mgrCoaching", l:"Coaching opportunities"},
-    {k:"mgrCorrective_"+myKey, base:"mgrCorrective", l:"Corrective action items (if any)"},
-    {k:"mgrNotes_"+myKey, base:"mgrNotes", l:"Meeting talking points / notes"},
+  var mgrFieldDefs = [
+    {newK:"mgrStrengths_"+myKey, oldK:"mgrStrengths", l:"Areas of strength to highlight"},
+    {newK:"mgrCoaching_"+myKey, oldK:"mgrCoaching", l:"Coaching opportunities"},
+    {newK:"mgrCorrective_"+myKey, oldK:"mgrCorrective", l:"Corrective action items (if any)"},
+    {newK:"mgrNotes_"+myKey, oldK:"mgrNotes", l:"Meeting talking points / notes"},
   ];
   var ratingHtml = "<div style='margin-bottom:10px;'>"
     +"<div style='font-size:11px;color:#64748b;margin-bottom:6px;'>OVERALL PERFORMANCE RATING ("+esc(myName)+")</div>"
     +renderStars(parseInt(form["mgrRating_"+myKey]||form.mgrRating)||0, editable, "ooo-mgr-rating-"+formId)
     +"</div>";
 
-  var mySection = ratingHtml + fields.map(function(f){
-    var val = getMgrField(f.base);
+  var mySection = ratingHtml + mgrFieldDefs.map(function(f){
+    // Check new per-manager key first, fall back to old shared key
+    var val = (form[f.newK]!==undefined && form[f.newK]!=="") ? form[f.newK] : (form[f.oldK]||"");
     return "<div style='margin-bottom:10px;'>"
       +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:3px;'>"+f.l.toUpperCase()+"</label>"
       +(editable
-        ?"<textarea class='inp' id='ooo-mgr-"+f.k+"' style='width:100%;height:70px;resize:none;font-size:13px;'>"+esc(val)+"</textarea>"
+        ?"<textarea class='inp' id='ooo-mgr-"+f.newK+"' style='width:100%;height:70px;resize:none;font-size:13px;'>"+esc(val)+"</textarea>"
         :"<div style='font-size:13px;color:"+(val?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;'>"+esc(val||"Not filled in")+"</div>")
       +"</div>";
   }).join("");
