@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.4"; // Increment this with every update
+const APP_VERSION = "2.8.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2052,12 +2052,15 @@ function handleAction(a,v,el,e){
         var dateYPct = pdfResult.dateYPct || 0.90;
         var sigHPct = pdfResult.sigHPct || 0.055;
         var dateHPct = pdfResult.dateHPct || 0.018;
-        var fields = [
+        // Tech (signerIdx:0) on left, Manager (signerIdx:1) on right
+        var allFields = [
           {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
           {signerIdx:0, page:lastPg, type:"date", xPct:0.18, yPct:dateYPct, wPct:0.25, hPct:dateHPct},
           {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
           {signerIdx:1, page:lastPg, type:"date", xPct:0.70, yPct:dateYPct, wPct:0.25, hPct:dateHPct}
         ];
+        // Rename to avoid conflict with outer 'fields' variable
+        var fields = allFields;
 
         var multiId = "ooo_sign_"+Date.now();
         var docName = form.quarter+" 1-on-1: "+form.techName;
@@ -2075,7 +2078,7 @@ function handleAction(a,v,el,e){
             createdBy:S.managerName, date:new Date().toISOString(),
             status:"Pending", formType:"ooo",
             pdfBase64:pdfResult.pdfBase64,
-            fields:fields.filter(function(f){ return f.signerIdx===si; }),
+            fields:allFields.filter(function(f){ return f.signerIdx===si; }),
             pdfSigners:signers,
             note:"Please sign as "+roleLabels[si]+": "+form.quarter+" one-on-one review."
           };
@@ -6370,6 +6373,18 @@ function renderMultiSignTech(pg){
   if(!req){ pg.innerHTML="<div class='card'>No document found.</div>"; return; }
 
   var myName = S.currentTech||S.managerName||"";
+
+  // Verify the current user is the intended signer for this request
+  if(req.techName && req.techName !== myName){
+    pg.innerHTML = "<div class='card' style='text-align:center;padding:30px;'>"
+      +"<div style='font-size:32px;margin-bottom:12px;'>🔒</div>"
+      +"<div style='font-weight:700;font-size:16px;margin-bottom:8px;'>Not your document</div>"
+      +"<div style='color:#64748b;font-size:13px;margin-bottom:16px;'>This signing request is for <strong>"+esc(req.techName)+"</strong>.</div>"
+      +"<button data-a='sign-cancel' style='background:#1e3a5f;color:#e2e8f0;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;'>← Go Back</button>"
+      +"</div>";
+    return;
+  }
+
   var allFields = req.fields||req.pdfFields||[];
 
   pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:12px;'>"
