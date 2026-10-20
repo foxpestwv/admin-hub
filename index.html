@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.6"; // Increment this with every update
+const APP_VERSION = "2.9.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1890,7 +1890,17 @@ function handleAction(a,v,el,e){
   if(a==="checkout-reset") { S.checkDone=false; S.checkItems=[{id:uid(),productId:"",qty:"",notes:""}]; S.checkTech=""; render(); return; }
   if(a==="order-filter") { S.ordersFilter=v; render(); return; }
   if(a==="refresh-orders") { refreshOrders(); return; }
-  if(a==="order-action") { const [id,type]=v.split("|"); S.editOrderId=id; S.editOrderType=type; render(); return; }
+  if(a==="order-action") {
+    const [id,type]=v.split("|");
+    if(type==="deny"){
+      // Deny All - confirm and process immediately
+      if(confirm("Deny all items in this order?")){
+        confirmDeny(id);
+      }
+      return;
+    }
+    S.editOrderId=id; S.editOrderType=type; render(); return;
+  }
   if(a==="order-action-cancel") { S.editOrderId=null; S._itemDecisions={}; render(); return; }
   if(a==="toggle-item-decision") {
     var parts=v.split("|"); var oid=parts[0]; var dec=parts[1];
@@ -3660,7 +3670,18 @@ async function confirmApprove(baseId){
 
     var updatedItems = groupedOrder.items.map(function(item){
       var itemId = baseId+"-"+(item.productId||item.name);
-      var decision = (S._itemDecisions&&S._itemDecisions[itemId])||"approve";
+      // Check both key formats - new format uses productId, old format uses item id
+      var decision = (S._itemDecisions&&(
+        S._itemDecisions[itemId] ||
+        S._itemDecisions[baseId+"-"+(item.id||"")] ||
+        S._itemDecisions[item.id||""] ||
+        // Check by product name too
+        Object.keys(S._itemDecisions||{}).find(function(k){ 
+          return k.indexOf(item.productId||item.name||"")>=0 && S._itemDecisions[k]; 
+        }) && S._itemDecisions[Object.keys(S._itemDecisions||{}).find(function(k){ 
+          return k.indexOf(item.productId||item.name||"")>=0; 
+        })]
+      )) || "approve";
       var qtyInp = document.getElementById("aqty-"+itemId);
       var qty = qtyInp ? (parseInt(qtyInp.value)||item.requestedQty||item.qty||0) : (item.requestedQty||item.qty||0);
       var prod = S.products.find(function(p){ return p.name===item.product||p.name===item.name; });
@@ -3756,10 +3777,20 @@ async function confirmApprove(baseId){
 }
 
 async function confirmDeny(baseId){
-  // Deny All shortcut - sets all to deny and calls confirmApprove which handles it
-  var groupOrders = S.orders.filter(function(o){ return getBaseId(o.id)===baseId && o.status==="Pending"; });
   if(!S._itemDecisions) S._itemDecisions={};
-  groupOrders.forEach(function(o){ S._itemDecisions[o.id]="deny"; });
+  // Set all items to denied for grouped format
+  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || getBaseId(o.id)===baseId; });
+  if(groupedOrder && Array.isArray(groupedOrder.items)){
+    groupedOrder.items.forEach(function(item){
+      // Set all possible key formats so confirmApprove finds them
+      var itemId = baseId+"-"+(item.productId||item.name);
+      S._itemDecisions[itemId]="deny";
+      S._itemDecisions[item.id||itemId]="deny";
+    });
+  }
+  // Also set flat format
+  S.orders.filter(function(o){ return getBaseId(o.id)===baseId; })
+    .forEach(function(o){ S._itemDecisions[o.id]="deny"; });
   await confirmApprove(baseId);
 }
 
