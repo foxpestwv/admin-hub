@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.8"; // Increment this with every update
+const APP_VERSION = "2.8.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3483,9 +3483,16 @@ function renderOrders(){
       items:[]
     };
 
-    if(Array.isArray(o.items) && o.items.length>0){
+    // Parse items if stored as string
+    var parsedItems = o.items;
+    if(typeof parsedItems === "string"){
+      try { parsedItems = JSON.parse(parsedItems); } catch(e){ parsedItems = []; }
+    }
+    if(!Array.isArray(parsedItems)) parsedItems = [];
+
+    if(parsedItems.length>0){
       // Already grouped format from Firebase — use items directly
-      o.items.forEach(function(item){
+      parsedItems.forEach(function(item){
         groups[baseId].items.push({
           id: baseId+"-"+(item.productId||item.name||Math.random()),
           product: item.name||"",
@@ -3499,7 +3506,7 @@ function renderOrders(){
           denyReason: o.denyReason||""
         });
       });
-    } else if(!o.items || o.items.length===0){
+    } else if(parsedItems.length===0){
       // Single flat item format
       groups[baseId].items.push({
         id: o.id,
