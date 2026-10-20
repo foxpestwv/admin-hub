@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.8"; // Increment this with every update
+const APP_VERSION = "2.9.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3760,8 +3760,22 @@ async function confirmApprove(baseId){
   try { await Promise.all(writes); } catch(e){ console.warn("Order writes:", e); }
 
   // One email summarizing both approved and denied
-  var te=techEmail; // Only send to tech on approval/denial
-  if(!te){ console.warn("No tech email found, skipping approval email"); S.editOrderId=null; S._itemDecisions={}; save(); renderOrders(); if(low.length) sendLowEmail(low); return; }
+  var te=techEmail;
+  // Look up tech email from accounts if not in order
+  if(!te && tech){
+    var techAcct = (S.techAccounts||[]).find(function(t){ return t.name===tech; });
+    if(techAcct) te = techAcct.email||"";
+  }
+  if(!te){
+    // No email but still complete the process
+    console.warn("No tech email found, skipping notification email");
+    S.editOrderId=null; S._itemDecisions={}; 
+    try { await Promise.all(writes); } catch(e){ console.warn("Order writes:", e); }
+    save(); renderOrders(); 
+    if(low.length) sendLowEmail(low); 
+    showToast("Order processed ✓");
+    return;
+  }
   var body="Order Decision - Fox Pest Control Willamette Valley\n\n"
     +"Technician: "+tech+"\nDecided By: "+S.managerName+"\n\n";
   if(approvedItems.length) body+="APPROVED:\n  - "+approvedItems.join("\n  - ")+"\n\n";
