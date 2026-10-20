@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.2"; // Increment this with every update
+const APP_VERSION = "3.0.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3676,10 +3676,12 @@ async function confirmApprove(baseId){
 
   reason = (document.getElementById("deny-rsn-"+baseId)||{}).value||"";
 
+  console.log("groupedOrder found:", !!groupedOrder, "baseId:", baseId);
   if(groupedOrder && Array.isArray(groupedOrder.items) && groupedOrder.items.length>0){
     // Grouped format — process items array
     tech = groupedOrder.tech||groupedOrder.techName||"";
     techEmail = groupedOrder.techEmail||"";
+    console.log("Processing grouped order, tech:", tech, "items:", groupedOrder.items.length);
 
     var updatedItems = groupedOrder.items.map(function(item){
       var itemId = baseId+"-"+(item.productId||item.name);
@@ -3787,10 +3789,14 @@ async function confirmApprove(baseId){
 
   // One email summarizing both approved and denied
   var te=techEmail;
-  // Look up tech email from accounts if not in order
+  // Look up email from tech accounts OR manager accounts
   if(!te && tech){
     var techAcct = (S.techAccounts||[]).find(function(t){ return t.name===tech; });
     if(techAcct) te = techAcct.email||"";
+    if(!te){
+      var mgrAcct = (S.managers||[]).find(function(m){ return m.name===tech; });
+      if(mgrAcct) te = mgrAcct.email||"";
+    }
   }
   if(!te){
     // No email but still complete the process
