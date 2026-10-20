@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.3"; // Increment this with every update
+const APP_VERSION = "3.0.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3579,7 +3579,7 @@ function renderOrders(){
   });
 
   var cards = filteredGroups.map(function(group){
-    var baseId = getBaseId(group.items[0].id);
+    var baseId = group.id || getBaseId(group.items[0].id);
     var isActive = S.editOrderId===baseId;
     var anyPending = group.items.some(function(o){ return o.status==="Pending"; });
     var groupStatus = group.status;
