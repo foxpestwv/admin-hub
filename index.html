@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.3"; // Increment this with every update
+const APP_VERSION = "2.9.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3474,8 +3474,14 @@ function getBaseId(orderId){
 }
 
 function renderOrders(){
+  // If no orders loaded yet, fetch them first
+  if(!S.orders || S.orders.length===0){
+    var pg2=document.getElementById("pg-orders");
+    if(pg2) pg2.innerHTML="<div style='text-align:center;padding:40px;color:#64748b;'>Loading orders...</div>";
+    refreshOrders();
+    return;
+  }
   const {orders,products}=S;
-  console.log("renderOrders: total orders="+orders.length+", first="+JSON.stringify(orders[0]||null));
   const filter=S.ordersFilter;
   const pend=orders.filter(o=>o.status==="Pending").length;
   function osc(st){return st==="Pending"?"#f59e0b":st==="Approved"?"#22c55e":"#ef4444";}
