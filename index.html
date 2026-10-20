@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.9"; // Increment this with every update
+const APP_VERSION = "3.0.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1902,6 +1902,17 @@ function handleAction(a,v,el,e){
     S.editOrderId=id; S.editOrderType=type; render(); return;
   }
   if(a==="order-action-cancel") { S.editOrderId=null; S._itemDecisions={}; render(); return; }
+  if(a==="order-delete-orphan"){
+    if(confirm("Delete this order?")){
+      // Remove from S.orders
+      S.orders = S.orders.filter(function(o){ return getBaseId(o.id)!==v && o.id!==v; });
+      lsSet("hub:orders", S.orders);
+      // Try to delete from Firebase too
+      gs("updateOrderStatusServer",{id:v,collection:"pendingOrders",status:"Deleted",approvedBy:S.managerName}).catch(function(){});
+      renderOrders();
+    }
+    return;
+  }
   if(a==="toggle-item-decision") {
     var parts=v.split("|"); var oid=parts[0]; var dec=parts[1];
     if(!S._itemDecisions) S._itemDecisions={};
@@ -3703,6 +3714,7 @@ async function confirmApprove(baseId){
     var overallStatus = allDenied?"Denied":anyApproved?"Approved":"Denied";
 
     // Update Firebase
+    console.log("Updating order ID:", baseId, "status:", overallStatus);
     writes.push(gs("updateOrderStatusServer",{
       id: baseId,
       collection: "pendingOrders",
@@ -3710,10 +3722,22 @@ async function confirmApprove(baseId){
       approvedBy: S.managerName,
       items: JSON.stringify(updatedItems)
     }));
+    // Also try with the full order ID in case baseId differs
+    if(groupedOrder.id !== baseId){
+      console.log("Also trying with full ID:", groupedOrder.id);
+      writes.push(gs("updateOrderStatusServer",{
+        id: groupedOrder.id,
+        collection: "pendingOrders",
+        status: overallStatus,
+        approvedBy: S.managerName,
+        items: JSON.stringify(updatedItems)
+      }));
+    }
 
-    // Move to orderHistory
+    // Move to orderHistory - use actual order ID
+    var histId = groupedOrder.id||baseId;
     writes.push(gs("addOrderHistoryServer",{
-      id: baseId,
+      id: histId,
       date: groupedOrder.date||new Date().toISOString(),
       tech: tech, techEmail: techEmail,
       status: overallStatus,
