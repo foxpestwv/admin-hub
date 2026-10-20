@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.8.9"; // Increment this with every update
+const APP_VERSION = "2.9.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -716,9 +716,19 @@ async function gs(fn, data){
         var ohSnap = await _db.collection("orderHistory").get();
         var ohDocs = ohSnap.docs.map(function(d){ return d.data(); });
         ohDocs.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+        // Return as objects for the Orders tab
+        ohDocs.forEach(function(doc){
+          if(typeof doc.items==="string") try{ doc.items=JSON.parse(doc.items); }catch(e){ doc.items=[]; }
+        });
+        return {orders: ohDocs};
+      }
+      case "getOrderHistoryAnalytics": {
+        await initFirebase();
+        var ohSnap2 = await _db.collection("orderHistory").get();
+        var ohDocs2 = ohSnap2.docs.map(function(d){ return d.data(); });
         // Convert to array format analytics expects: [date, orderId, tech, product, qty, unit]
         var ohRows = [];
-        ohDocs.forEach(function(doc){
+        ohDocs2.forEach(function(doc){
           var items = doc.items;
           if(typeof items==="string") try{ items=JSON.parse(items); }catch(e){ items=[]; }
           (items||[]).forEach(function(item){
@@ -1336,7 +1346,7 @@ async function syncFromSheet(){
     // Load pending orders + order history combined
     try {
       var ordResult = await gs("getPendingServer", null);
-      var histResult = await gs("getOrderHistoryServer", null);
+      var histResult = await gs("getOrderHistoryAnalyticsServer", null);
       var pending = (ordResult && ordResult.orders) ? ordResult.orders : [];
       var history = (histResult && histResult.orders) ? histResult.orders : [];
       // Merge — pending first, then history
@@ -3438,7 +3448,7 @@ async function submitCheckout(){
 async function refreshOrders(){
   try {
     var pendResult = await gs("getPendingServer", null);
-    var histResult = await gs("getOrderHistoryServer", null);
+    var histResult = await gs("getOrderHistoryAnalyticsServer", null);
     var pending = (pendResult && pendResult.orders) ? pendResult.orders : [];
     var history = (histResult && histResult.orders) ? histResult.orders : [];
     S.orders = pending.concat(history.filter(function(h){
@@ -5959,7 +5969,7 @@ async function renderAnalytics(){
       S._cachedAdjLog = adjustments;
     }
     if(orders.length === 0){
-      var orderData = await gs("getOrderHistoryServer", null);
+      var orderData = await gs("getOrderHistoryAnalyticsServer", null);
       orders = orderData && orderData.orders ? orderData.orders : [];
       S._cachedOrderHistory = orders;
     }
