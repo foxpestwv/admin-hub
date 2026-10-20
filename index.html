@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.5"; // Increment this with every update
+const APP_VERSION = "3.0.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1601,7 +1601,9 @@ function login(role){
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
           // Re-render nav to update badge
           var mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
-          document.getElementById("nav").innerHTML=mgrTabs.map(function(t){
+          var navEl = document.getElementById("nav");
+          if(!navEl) return;
+          navEl.innerHTML=mgrTabs.map(function(t){
             return "<button class='nb"+(S.tab===t.id?" on":"")+"' data-a='tab' data-v='"+t.id+"'>"+t.l+(t.id==="orders"&&pending>0?"<span class='bdg'>"+pending+"</span>":"")+"</button>";
           }).join("")+"<button class='nb' id='logout-btn' style='color:#475569;'>Exit</button>";
           // Re-attach logout
