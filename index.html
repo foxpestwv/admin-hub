@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.1"; // Increment this with every update
+const APP_VERSION = "3.0.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -3493,9 +3493,10 @@ async function refreshOrders(){
 
 function getBaseId(orderId){
   if(!orderId) return "unknown";
+  // Handle ord_TIMESTAMP format (new cart system)
+  if(orderId.startsWith("ord_")) return orderId;
   var parts = orderId.split("-");
   // Handle ORD-timestamp (2 parts) and ORD-timestamp-sheet_XX (3 parts)
-  // Always return just ORD-timestamp
   if(parts.length>=2) return parts[0]+"-"+parts[1];
   return orderId;
 }
@@ -3524,6 +3525,7 @@ function renderOrders(){
     if(!groups[baseId]) groups[baseId]={
       id: baseId,
       tech:o.tech||o.techName||o.requestedBy||o.submittedBy||"",
+      id: o.id||o._id||baseId,
       techEmail:o.techEmail||"",
       date:o.date||o.createdAt||"",
       status:o.status||"Pending",
@@ -3666,7 +3668,7 @@ async function confirmApprove(baseId){
 
   // Find the grouped order - it may be stored as a single doc with items array
   // or as multiple flat docs
-  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || getBaseId(o.id)===baseId; });
+  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || o._id===baseId || getBaseId(o.id)===baseId || getBaseId(o._id||"")===baseId; });
   var flatOrders = S.orders.filter(function(o){ return getBaseId(o.id)===baseId && o.status==="Pending"; });
 
   var tech="", techEmail="", reason="";
@@ -3694,7 +3696,7 @@ async function confirmApprove(baseId){
         })]
       )) || "approve";
       var qtyInp = document.getElementById("aqty-"+itemId);
-      var qty = qtyInp ? (parseInt(qtyInp.value)||item.requestedQty||item.qty||0) : (item.requestedQty||item.qty||0);
+      var qty = qtyInp ? (parseInt(qtyInp.value)||item.qty||item.requestedQty||item.qtyOrdered||0) : (item.qty||item.requestedQty||item.qtyOrdered||0);
       var prod = S.products.find(function(p){ return p.name===item.product||p.name===item.name; });
 
       if(decision==="approve"){
@@ -3817,7 +3819,7 @@ async function confirmApprove(baseId){
 async function confirmDeny(baseId){
   if(!S._itemDecisions) S._itemDecisions={};
   // Set all items to denied for grouped format
-  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || getBaseId(o.id)===baseId; });
+  var groupedOrder = S.orders.find(function(o){ return o.id===baseId || o._id===baseId || getBaseId(o.id)===baseId || getBaseId(o._id||"")===baseId; });
   if(groupedOrder && Array.isArray(groupedOrder.items)){
     groupedOrder.items.forEach(function(item){
       // Set all possible key formats so confirmApprove finds them
