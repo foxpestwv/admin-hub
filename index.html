@@ -318,6 +318,11 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
 function load(){
   ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Validate orders format - if stored as arrays (old format), clear them so fresh load happens
+  if(S.orders && S.orders.length>0 && Array.isArray(S.orders[0])){
+    S.orders = [];
+    lsSet("hub:orders", []);
+  }
   // Load starred products
   var starred = lsGet("hub:starredProducts");
   if(starred) S.starredProducts = starred;
@@ -347,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.4"; // Increment this with every update
+const APP_VERSION = "2.9.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -677,6 +682,7 @@ async function gs(fn, data){
         });
         return {orders: parsedPend};
       }
+      case "savePendingOrder":
       case "addPendingOrder": {
         var poId = data.id || "po_"+Date.now();
         var orderDoc = Object.assign({}, data, {id:poId, date:data.date||new Date().toISOString(), status:"Pending"});
