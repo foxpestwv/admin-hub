@@ -347,7 +347,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "2.9.1"; // Increment this with every update
+const APP_VERSION = "2.9.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1577,8 +1577,13 @@ function login(role){
     _refreshInterval = setInterval(async function(){
       try {
         const result = await gs("getPendingServer", null);
-        if(result && result.orders){
-          S.orders = result.orders;
+        const histRes = await gs("getOrderHistoryServer", null);
+        var pendOrders = (result && result.orders) ? result.orders : [];
+        var histOrders = (histRes && histRes.orders) ? histRes.orders : [];
+        S.orders = pendOrders.concat(histOrders.filter(function(h){
+          return !pendOrders.some(function(p){ return p.id===h.id; });
+        }));
+        if(S.orders.length > 0){
           lsSet("hub:orders", S.orders);
           // Update nav badge and dashboard without full re-render
           var pending = S.orders.filter(function(o){ return o.status==="Pending"; }).length;
@@ -3485,7 +3490,7 @@ function renderOrders(){
     var baseId = getBaseId(o.id);
     if(!groups[baseId]) groups[baseId]={
       id: baseId,
-      tech:o.tech||o.techName||"",
+      tech:o.tech||o.techName||o.requestedBy||o.submittedBy||"",
       techEmail:o.techEmail||"",
       date:o.date||o.createdAt||"",
       status:o.status||"Pending",
