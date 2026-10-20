@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.4"; // Increment this with every update
+const APP_VERSION = "3.0.5"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -755,9 +755,15 @@ async function gs(fn, data){
         var updateData2 = {status:data.status, updatedAt:new Date().toISOString(), approvedBy:data.approvedBy||""};
         if(data.approvedQty!==undefined) updateData2.approvedQty = data.approvedQty;
         if(data.items) updateData2.items = data.items;
-        await fbUpdate(col2, data.id, updateData2);
+        // Try pendingOrders first, fall back to orderHistory
+        try {
+          await fbUpdate(col2, data.id, updateData2);
+        } catch(e2){
+          // Try orderHistory collection
+          try { await fbUpdate("orderHistory", data.id, updateData2); } catch(e3){}
+        }
         // Delete from pendingOrders after approval/denial
-        if(col2==="pendingOrders" && (data.status==="Approved"||data.status==="Denied")){
+        if(data.status==="Approved"||data.status==="Denied"){
           try { await fbDelete("pendingOrders", data.id); } catch(e){}
         }
         return {ok:true};
@@ -3676,12 +3682,10 @@ async function confirmApprove(baseId){
 
   reason = (document.getElementById("deny-rsn-"+baseId)||{}).value||"";
 
-  console.log("groupedOrder found:", !!groupedOrder, "baseId:", baseId);
   if(groupedOrder && Array.isArray(groupedOrder.items) && groupedOrder.items.length>0){
     // Grouped format — process items array
     tech = groupedOrder.tech||groupedOrder.techName||"";
     techEmail = groupedOrder.techEmail||"";
-    console.log("Processing grouped order, tech:", tech, "items:", groupedOrder.items.length);
 
     var updatedItems = groupedOrder.items.map(function(item){
       var itemId = baseId+"-"+(item.productId||item.name);
@@ -3718,7 +3722,6 @@ async function confirmApprove(baseId){
     var overallStatus = allDenied?"Denied":anyApproved?"Approved":"Denied";
 
     // Update Firebase
-    console.log("Updating order ID:", baseId, "status:", overallStatus);
     writes.push(gs("updateOrderStatusServer",{
       id: baseId,
       collection: "pendingOrders",
