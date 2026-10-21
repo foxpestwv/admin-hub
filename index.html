@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.6"; // Increment this with every update
+const APP_VERSION = "3.0.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -983,20 +983,27 @@ async function gs(fn, data){
         var lineH = 16;
         var colW = 256;
 
+        function sanitizePdfText(text){
+          // Remove characters that can't be encoded in WinAnsi
+          return String(text||"").replace(/[^ -ÿ]/g, "?").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/–/g,"-").replace(/—/g,"--").replace(/…/g,"...").slice(0,200);
+        }
         function drawText(text, x, yPos, size, bold, color){
-          page.drawText(String(text||"").slice(0,120), {
-            x:x, y:yPos, size:size||10,
-            font:bold?boldFont:font,
-            color:color||PDFLib.rgb(0.1,0.1,0.1),
-            maxWidth:500
-          });
+          try {
+            page.drawText(sanitizePdfText(text), {
+              x:x, y:yPos, size:size||10,
+              font:bold?boldFont:font,
+              color:color||PDFLib.rgb(0.1,0.1,0.1),
+              maxWidth:500
+            });
+          } catch(e){ /* skip unencodable text */ }
         }
         function drawLine(yPos){
           page.drawLine({start:{x:margin,y:yPos},end:{x:562,y:yPos},thickness:0.5,color:PDFLib.rgb(0.8,0.8,0.8)});
         }
         function drawField(label, value, yPos){
           drawText(label, margin, yPos, 8, false, PDFLib.rgb(0.4,0.4,0.4));
-          var lines = String(value||"Not filled in").match(/.{1,80}/g)||["Not filled in"];
+          var safeVal = sanitizePdfText(value||"Not filled in");
+          var lines = safeVal.match(/.{1,80}/g)||["Not filled in"];
           lines.forEach(function(l,i){ drawText(l, margin, yPos-12-(i*12), 10, false); });
           return yPos - 14 - (Math.max(lines.length,1)*12);
         }
@@ -1035,25 +1042,37 @@ async function gs(fn, data){
         y -= 10; drawLine(y); y -= 16;
         drawText("MANAGER NOTES (PRIVATE)", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y -= 14;
         drawText("Performance Rating: "+(parseInt(f.mgrRating)||0)+"/5 stars", margin, y, 11, false); y-=16;
-        // Draw notes for each manager
-        var allMgrKeys = Object.keys(f).filter(function(k){ return k.startsWith("mgrNotes_"); }).map(function(k){ return k.replace("mgrNotes_",""); });
-        // Also check for old-style keys
-        var hasOldStyle = f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes;
-        if(hasOldStyle && allMgrKeys.length===0) allMgrKeys = [""];
-        allMgrKeys.forEach(function(mk){
-          var prefix = mk?"_"+mk:"";
-          var mgrLabel = mk ? mk.replace(/_/g," ") : "Manager";
+        // Draw notes for each manager - handle both old and new key formats
+        var mgrSections = [];
+        // Find all manager keys
+        Object.keys(f).forEach(function(k){
+          if(k.startsWith("mgrNotes_")){
+            var mk = k.replace("mgrNotes_","");
+            if(!mgrSections.find(function(s){ return s.key===mk; })){
+              mgrSections.push({key:mk, label:mk.replace(/_/g," ")});
+            }
+          }
+        });
+        // Fall back to old-style single manager fields
+        if(mgrSections.length===0 && (f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes)){
+          mgrSections.push({key:"", label:"Manager"});
+        }
+        mgrSections.forEach(function(ms){
+          var prefix = ms.key?"_"+ms.key:"";
           if(y < 180){ page = doc.addPage([612,792]); y=750; }
-          drawText(mgrLabel.toUpperCase()+" NOTES", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y-=14;
-          var mgrFields2 = [
+          drawText((ms.label||"Manager").toUpperCase()+" NOTES", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y-=14;
+          var ratingVal = parseInt(f["mgrRating"+prefix]||f.mgrRating)||0;
+          if(ratingVal) { drawText("Performance Rating: "+ratingVal+"/5 stars", margin, y, 10, false); y-=16; }
+          [
             {k:"mgrStrengths"+prefix, l:"Areas of strength"},
             {k:"mgrCoaching"+prefix, l:"Coaching opportunities"},
             {k:"mgrCorrective"+prefix, l:"Corrective action items"},
             {k:"mgrNotes"+prefix, l:"Meeting notes / talking points"}
-          ];
-          mgrFields2.forEach(function(mf){
-            if(y < 180){ page = doc.addPage([612,792]); y=750; }
-            if(f[mf.k]){ y = drawField(mf.l, f[mf.k], y); y -= 6; }
+          ].forEach(function(mf){
+            if(f[mf.k] && String(f[mf.k]).trim()){
+              if(y < 180){ page = doc.addPage([612,792]); y=750; }
+              y = drawField(mf.l, f[mf.k], y); y -= 6;
+            }
           });
         });
 
@@ -4868,14 +4887,22 @@ function oooManagerFields(form, editable, formId){
       +"</div>";
   }).join("");
 
-  // Show other managers' notes as read-only
+  // Show other managers' notes as read-only - find from actual form fields
   var otherMgrHtml = "";
-  var allMgrs = S.managers||[];
-  allMgrs.forEach(function(m){
-    if(m.name===myName) return; // skip own
-    var mk = oooManagerKey(m.name);
+  // Find all manager keys that exist in the form
+  var otherMgrKeys = Object.keys(form).filter(function(k){
+    return k.startsWith("mgrNotes_")||k.startsWith("mgrStrengths_")||k.startsWith("mgrCoaching_")||k.startsWith("mgrCorrective_");
+  }).map(function(k){ return k.split("_").slice(1).join("_"); })
+    .filter(function(mk,i,arr){ return arr.indexOf(mk)===i && mk!==myKey; }); // unique, not own
+
+  otherMgrKeys.forEach(function(mk){
+    var mgrDisplayName = mk.replace(/_/g," ");
     var hasNotes = form["mgrNotes_"+mk]||form["mgrStrengths_"+mk]||form["mgrCoaching_"+mk]||form["mgrCorrective_"+mk];
     if(!hasNotes) return;
+    // Find manager name from accounts or use key
+    var mgrAcct = (S.managers||[]).find(function(m){ return oooManagerKey(m.name)===mk; });
+    var m = {name: mgrAcct?mgrAcct.name:mgrDisplayName};
+    if(true){
     otherMgrHtml += "<div style='margin-top:16px;padding-top:12px;border-top:1px solid #1e3a5f;'>"
       +"<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:10px;'>"+esc(m.name).toUpperCase()+"'S NOTES (READ ONLY)</div>"
       +["mgrStrengths","mgrCoaching","mgrCorrective","mgrNotes"].map(function(base){
@@ -4888,7 +4915,8 @@ function oooManagerFields(form, editable, formId){
           +"</div>";
       }).join("")
       +"</div>";
-  });
+    } // end if(true)
+  }); // end otherMgrKeys.forEach
 
   return mySection + otherMgrHtml;
 }
