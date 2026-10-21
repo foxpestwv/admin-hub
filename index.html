@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.1"; // Increment this with every update
+const APP_VERSION = "3.1.2"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2512,8 +2512,11 @@ function handleAction(a,v,el,e){
     if(tName===null) return;
     var tTitle = prompt("Title:", tech.title||"Technician");
     if(tTitle===null) return;
+    var tPermsChoice = prompt("Permission Level: Enter 1 for Technician (standard) or 2 for Lead Technician (Inventory, Orders, Analytics, Fleet)", tech.perms==="lead"?"2":"1");
+    if(tPermsChoice===null) return;
     tech.name = tName.trim()||tech.name;
     tech.title = tTitle.trim()||"Technician";
+    tech.perms = tPermsChoice==="2" ? "lead" : "tech";
     if(confirm("Update photo?")){
       var inp2 = document.createElement("input");
       inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
@@ -2660,8 +2663,11 @@ function handleAction(a,v,el,e){
     if(tName===null) return;
     var tTitle = prompt("Title:", tech.title||"Technician");
     if(tTitle===null) return;
+    var tPermsChoice = prompt("Permission Level: Enter 1 for Technician (standard) or 2 for Lead Technician (Inventory, Orders, Analytics, Fleet)", tech.perms==="lead"?"2":"1");
+    if(tPermsChoice===null) return;
     tech.name = tName.trim()||tech.name;
     tech.title = tTitle.trim()||"Technician";
+    tech.perms = tPermsChoice==="2" ? "lead" : "tech";
     if(confirm("Update photo?")){
       var inp2 = document.createElement("input");
       inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
