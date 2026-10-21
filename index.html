@@ -985,7 +985,7 @@ async function gs(fn, data){
 
         function sanitizePdfText(text){
           // Remove characters that can't be encoded in WinAnsi
-          return String(text||"").replace(/[^ -ÿ]/g, "?").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/–/g,"-").replace(/—/g,"--").replace(/…/g,"...").slice(0,200);
+          return String(text||"").replace(/[^-ÿ]/g, "?").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/–/g,"-").replace(/—/g,"--").replace(/…/g,"...").slice(0,200);
         }
         function drawText(text, x, yPos, size, bold, color){
           try {
