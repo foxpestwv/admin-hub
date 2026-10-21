@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.0"; // Increment this with every update
+const APP_VERSION = "3.1.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2820,19 +2820,29 @@ function renderDash(){
 
   // Tech tiles
   var pendingTechSign = (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===name; }).length;
+  // Get current tech's permission level
+  var techPerms = S.currentUser && S.currentUser.perms || "tech";
+  var oooBadge = (function(){
+    var myN2 = S.currentTech||S.currentUser&&S.currentUser.name||S.managerName||"";
+    if(!S._oooForms||!myN2) return 0;
+    return S._oooForms.filter(function(f){ return f.techName===myN2 && f.status==="Sent"; }).length;
+  })();
+
   var techTiles = [
     {icon:"🛒", label:"Request Products", tab:"checkout", color:"#1a2f1a", accent:"#22c55e", badge:Object.keys(S.cart||{}).filter(function(k){ return S.cart[k]>0; }).length},
     {icon:"🚐", label:"My Truck", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
-    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:(function(){
-      var myN2 = S.currentTech||S.currentUser&&S.currentUser.name||S.managerName||"";
-      if(!S._oooForms||!myN2) return 0;
-      return S._oooForms.filter(function(f){
-        return f.techName===myN2 && f.status==="Sent";
-      }).length;
-    })()},
+    {icon:"🤝", label:"1-on-1", tab:"ooo", color:"#0a1a2a", accent:"#06b6d4", badge:oooBadge},
     {icon:"📝", label:"Documents", tab:"sign", color:"#2d001a", accent:"#ec4899", badge:pendingTechSign},
     {icon:"📷", label:"Scan", tab:"__scan__", color:"#1a0a2d", accent:"#a855f7", badge:0}
   ];
+
+  // Add elevated tiles for Lead Technicians
+  if(techPerms==="lead"){
+    techTiles.push({icon:"📦", label:"Inventory", tab:"inventory", color:"#1a1a2f", accent:"#6366f1", badge:S.products.filter(function(p){return p.qty<=p.lowAt;}).length});
+    techTiles.push({icon:"🛒", label:"Orders", tab:"orders", color:"#2f1a0a", accent:"#f59e0b", badge:S.orders.filter(function(o){return o.status==="Pending";}).length});
+    techTiles.push({icon:"📊", label:"Analytics", tab:"analytics", color:"#0a2f1a", accent:"#10b981", badge:0});
+    techTiles.push({icon:"🚛", label:"Fleet", tab:"inspect", color:"#1a2f2f", accent:"#06b6d4", badge:0});
+  }
 
   var tiles = S.role==="manager" ? mgrTiles : techTiles;
   var cols = S.role==="manager" ? 3 : 3;
