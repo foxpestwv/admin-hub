@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.0.7"; // Increment this with every update
+const APP_VERSION = "3.1.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1081,25 +1081,39 @@ async function gs(fn, data){
         if(y < 160){ page = doc.addPage([612,792]); y=750; }
         y -= 30; drawLine(y); y -= 20;
         drawText("By signing below, both parties acknowledge this review.", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4)); y -= 30;
-        drawText("Technician Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        drawText("Manager Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        y -= 50;
-        // Signature line - tap box goes HERE
-        var sigLineY = y;
-        page.drawLine({start:{x:margin,y:sigLineY},end:{x:margin+colW,y:sigLineY},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        page.drawLine({start:{x:margin+colW+44,y:sigLineY},end:{x:margin+colW+44+colW,y:sigLineY},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        y -= 18;
-        drawText(f.techName, margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        drawText(f.createdBy||"", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        y -= 18;
-        // Date line - tap box goes HERE
-        var dateLabelY = y;
-        drawText("Date:", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        drawText("Date:", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
-        y -= 18;
-        page.drawLine({start:{x:margin+30,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        page.drawLine({start:{x:margin+colW+44+30,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
-        // Use these exact Y positions for tap boxes
+        // Draw signature section for each signer (2 per row)
+        var signersList = [f.techName];
+        if(f.attendees){
+          JSON.parse(f.attendees).forEach(function(n){ if(signersList.indexOf(n)<0) signersList.push(n); });
+        } else {
+          signersList.push(f.createdBy||"Manager");
+        }
+        var sigLineY = y - 50;
+        var dateLabelY = sigLineY - 36;
+        for(var si2=0; si2<signersList.length; si2+=2){
+          var s1 = signersList[si2]||"";
+          var s2 = signersList[si2+1]||"";
+          if(y < 160){ page = doc.addPage([612,792]); y=750; sigLineY=y-50; dateLabelY=sigLineY-36; }
+          // Labels
+          drawText(s1+" Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          if(s2) drawText(s2+" Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          y -= 50;
+          sigLineY = y;
+          // Signature lines
+          page.drawLine({start:{x:margin,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+          if(s2) page.drawLine({start:{x:margin+colW+44,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+          y -= 18;
+          drawText(s1, margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          if(s2) drawText(s2, margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          y -= 18;
+          dateLabelY = y;
+          drawText("Date:", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          if(s2) drawText("Date:", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
+          y -= 18;
+          page.drawLine({start:{x:margin+30,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+          if(s2) page.drawLine({start:{x:margin+colW+44+30,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
+          y -= 30;
+        }
         y = dateLabelY;
 
         // Return exact y positions from PDF for tap boxes
@@ -1984,6 +1998,15 @@ function handleAction(a,v,el,e){
     }
     return;
   }
+  if(a==="ooo-save-attendees"){
+    var cbs = document.querySelectorAll(".ooo-attendee-cb");
+    var selected = [];
+    cbs.forEach(function(cb){ if(cb.checked) selected.push(cb.getAttribute("data-name")); });
+    gs("saveOOOForm", {id:v, attendees:JSON.stringify(selected)}).then(function(){
+      showToast("Attendees saved ✓");
+    }).catch(function(e){ alert("Error: "+e.message); });
+    return;
+  }
   if(a==="ooo-back"||a==="ooo-back-tech"){ renderOOO(); return; }
   if(a==="sign-cancel"){
     S._pendingSignReq = null;
@@ -2109,10 +2132,22 @@ function handleAction(a,v,el,e){
         var techAcct = (S.techAccounts||[]).find(function(t){ return t.name===form.techName; });
         var mgrAcct = (S.managers||[]).find(function(m){ return m.name===form.createdBy; });
 
-        var signers = [
-          {name:form.techName, email:techAcct?techAcct.email:"", id:techAcct?techAcct.id:"tech_ooo"},
-          {name:form.createdBy||S.managerName, email:mgrAcct?mgrAcct.email:"", id:mgrAcct?mgrAcct.id:"mgr_ooo"}
-        ];
+        // Build signers from attendees list (or default to tech + all managers)
+        var attendeeNames = form.attendees ? JSON.parse(form.attendees) : null;
+        var signers = [];
+        if(attendeeNames && attendeeNames.length>0){
+          // Tech always signs first
+          signers.push({name:form.techName, email:techAcct?techAcct.email:"", id:techAcct?techAcct.id:"tech_ooo"});
+          // Then add attending managers
+          attendeeNames.forEach(function(name){
+            var mAcct = (S.managers||[]).find(function(m){ return m.name===name; });
+            if(mAcct) signers.push({name:mAcct.name, email:mAcct.email||"", id:mAcct.id||name});
+          });
+        } else {
+          // Default: tech + creating manager
+          signers.push({name:form.techName, email:techAcct?techAcct.email:"", id:techAcct?techAcct.id:"tech_ooo"});
+          signers.push({name:form.createdBy||S.managerName, email:mgrAcct?mgrAcct.email:"", id:mgrAcct?mgrAcct.id:"mgr_ooo"});
+        }
 
         // Use exact positions returned from PDF generator
 
@@ -2123,14 +2158,17 @@ function handleAction(a,v,el,e){
         var dateYPct = pdfResult.dateYPct || 0.90;
         var sigHPct = pdfResult.sigHPct || 0.055;
         var dateHPct = pdfResult.dateHPct || 0.018;
-        // Tech (signerIdx:0) on left, Manager (signerIdx:1) on right
-        var allFields = [
-          {signerIdx:0, page:lastPg, type:"signature", xPct:0.05, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:0, page:lastPg, type:"date", xPct:0.18, yPct:dateYPct, wPct:0.25, hPct:dateHPct},
-          {signerIdx:1, page:lastPg, type:"signature", xPct:0.57, yPct:sigYPct, wPct:0.38, hPct:sigHPct},
-          {signerIdx:1, page:lastPg, type:"date", xPct:0.70, yPct:dateYPct, wPct:0.25, hPct:dateHPct}
-        ];
-        // Rename to avoid conflict with outer 'fields' variable
+        // Place signature fields dynamically based on number of signers
+        // 2 signers: side by side. 3+: stack in 2 columns
+        var allFields = [];
+        signers.forEach(function(s, si){
+          var col = si % 2;
+          var row = Math.floor(si / 2);
+          var xBase = col===0 ? 0.05 : 0.57;
+          var yOffset = row * 0.12;
+          allFields.push({signerIdx:si, page:lastPg, type:"signature", xPct:xBase, yPct:sigYPct+yOffset, wPct:0.38, hPct:sigHPct});
+          allFields.push({signerIdx:si, page:lastPg, type:"date", xPct:xBase+0.13, yPct:dateYPct+yOffset, wPct:0.25, hPct:dateHPct});
+        });
         var fields = allFields;
 
         var multiId = "ooo_sign_"+Date.now();
@@ -4821,15 +4859,37 @@ async function renderOOOFormManager(pg, formId){
     +"</div>"
 
     // Actions
+    // Attendees section
+    +"<div class='card' style='margin-bottom:14px;border-color:#3b82f644;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#3b82f6;margin-bottom:12px;'>👥 Meeting Attendees</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Select which managers attended the meeting — they will be required to sign along with the technician.</div>"
+    +(function(){
+      var attendees = form.attendees ? JSON.parse(form.attendees) : null;
+      // Default: tech + all managers
+      // Only managers sign - tech fills out but doesn't sign
+      var people = [];
+      (S.managers||[]).forEach(function(m){ people.push({name:m.name, role:"Manager"}); });
+      return people.map(function(p){
+        var checked = !attendees || attendees.indexOf(p.name)>=0;
+        return "<label style='display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;'>"
+          +"<input type='checkbox' class='ooo-attendee-cb' data-name='"+esc(p.name)+"' "+(checked?"checked":"")+" style='width:16px;height:16px;cursor:pointer;'>"
+          +"<span style='font-size:13px;'>"+esc(p.name)+"</span>"
+          +"<span style='font-size:11px;color:#64748b;'>("+p.role+")</span>"
+          +"</label>";
+      }).join("");
+    })()
+    +"<button type='button' class='btn bg' style='width:100%;padding:8px;font-size:12px;margin-top:8px;' data-a='ooo-save-attendees' data-v='"+formId+"'>Save Attendees</button>"
+    +"</div>"
     +(isEditable
       ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
       :"")
     +"<button class='btn bd' style='width:100%;padding:10px;margin-top:6px;font-size:13px;' data-a='ooo-delete' data-v='"+formId+"'>🗑 Delete Form</button>"
-    +(form.status!=="Signing"&&form.status!=="Signed"&&form.status!=="Complete"
-      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
-      :"")
     +(form.status==="Signing"
-      ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:10px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing document sent — check your Documents tab to sign.</div>"
+      ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:12px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing requests already sent — check your Documents tab.</div>"
+      :form.status==="Signed"||form.status==="Complete"
+      ?"<div style='background:#3b82f622;border:1px solid #3b82f644;border-radius:10px;padding:12px 14px;font-size:13px;color:#3b82f6;margin-top:10px;'>✓ Form fully signed and complete.</div>"
+      :S.role==="manager"
+      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
       :"");
 }
 
