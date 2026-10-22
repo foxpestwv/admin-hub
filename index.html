@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.8"; // Increment this with every update
+const APP_VERSION = "3.1.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2151,15 +2151,15 @@ function handleAction(a,v,el,e){
         var docName = form.quarter+" 1-on-1: "+form.techName;
 
         // Save sign requests for each signer with role label
-        var roleLabels = ["Tech", "Manager"];
         for(var si=0;si<signers.length;si++){
           var signer = signers[si];
           var srId = multiId+"-"+(si+1);
+          var signerRole = si===0 ? "Tech" : "Manager";
           var srData = {
             id:srId, multiSignId:multiId, isMultiSign:true,
-            docName:docName+" ("+roleLabels[si]+")",
+            docName:docName+" ("+signerRole+")",
             techName:signer.name, techEmail:signer.email,
-            signerRole:roleLabels[si],
+            signerRole:signerRole,
             createdBy:S.managerName, date:new Date().toISOString(),
             status:"Pending", formType:"ooo",
             pdfBase64:pdfResult.pdfBase64,
@@ -2176,7 +2176,7 @@ function handleAction(a,v,el,e){
               ? "As the technician, please review and sign your "+form.quarter+" one-on-one."
               : "As the manager, please sign the completed "+form.quarter+" one-on-one for "+form.techName+".";
             sendEmail(signer.email,
-              "[Fox Pest Control] Please sign: "+docName+" ("+roleLabels[si]+")",
+              "[Fox Pest Control] Please sign: "+docName+" ("+signerRole+")",
               "Hi "+signer.name+",\n\n"+roleMsg+"\n\nLog in and go to Documents:\nhttps://foxpestwv.github.io/admin-hub\n\nFox Pest Control - Willamette Valley"
             );
           }
