@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.9"; // Increment this with every update
+const APP_VERSION = "3.2.0"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2165,7 +2165,7 @@ function handleAction(a,v,el,e){
             pdfBase64:pdfResult.pdfBase64,
             fields:allFields.filter(function(f){ return f.signerIdx===si; }),
             pdfSigners:signers,
-            note:"Please sign as "+roleLabels[si]+": "+form.quarter+" one-on-one review."
+            note:"Please sign as "+signerRole+": "+form.quarter+" one-on-one review."
           };
           await gs("saveSignRequest", srData);
           S.signRequests.unshift(srData);
