@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.3"; // Increment this with every update
+const APP_VERSION = "3.1.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2112,6 +2112,12 @@ function handleAction(a,v,el,e){
     // Generate PDF of the form and send as multi-sign document
     (async function(){
       try {
+        // Check current status first to prevent duplicates
+        var formCheck = await gs("getOOOForm", {id:v});
+        if(formCheck && formCheck.status==="Signing"){
+          alert("Signing requests have already been sent. Check your Documents tab.");
+          return;
+        }
         showToast("Generating signing document...");
         var form = await gs("getOOOForm", {id:v});
         if(!form){ alert("Form not found."); return; }
@@ -2140,8 +2146,11 @@ function handleAction(a,v,el,e){
           signers.push({name:form.techName, email:techAcct?techAcct.email:"", id:techAcct?techAcct.id:"tech_ooo"});
           // Then add attending managers
           attendeeNames.forEach(function(name){
-            var mAcct = (S.managers||[]).find(function(m){ return m.name===name; });
-            if(mAcct) signers.push({name:mAcct.name, email:mAcct.email||"", id:mAcct.id||name});
+            var mAcct = (S.managers||[]).find(function(m){ return m.name===name || m.name.toLowerCase()===name.toLowerCase(); });
+            var tAcct2 = (S.techAccounts||[]).find(function(t){ return t.name===name || t.name.toLowerCase()===name.toLowerCase(); });
+            var acct2 = mAcct||tAcct2;
+            // Add as signer with whatever info we have
+            signers.push({name:name, email:acct2?acct2.email||"":"", id:acct2?acct2.id||name:name});
           });
         } else {
           // Default: tech + creating manager
