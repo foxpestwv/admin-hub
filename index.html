@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.7"; // Increment this with every update
+const APP_VERSION = "3.1.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -4893,13 +4893,17 @@ async function renderOOOFormManager(pg, formId){
       ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
       :"")
     +"<button class='btn bd' style='width:100%;padding:10px;margin-top:6px;font-size:13px;' data-a='ooo-delete' data-v='"+formId+"'>🗑 Delete Form</button>"
-    +(form.status==="Signing"
+    +(form.status==="Signing" && (S.signRequests||[]).some(function(r){ return r.multiSignId===form.multiSignId && r.status==="Pending"; })
       ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:12px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing requests already sent — check your Documents tab.</div>"
       :form.status==="Signed"||form.status==="Complete"
       ?"<div style='background:#3b82f622;border:1px solid #3b82f644;border-radius:10px;padding:12px 14px;font-size:13px;color:#3b82f6;margin-top:10px;'>✓ Form fully signed and complete.</div>"
       :S.role==="manager"
       ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
       :"");
+  // If status is Signing but no sign requests exist, reset to Submitted
+  if(form.status==="Signing" && !(S.signRequests||[]).some(function(r){ return r.multiSignId===form.multiSignId; })){
+    gs("saveOOOForm", {id:formId, status:"Submitted"}).catch(function(){});
+  }
 }
 
 function oooTechReadonly(form){
