@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.2"; // Increment this with every update
+const APP_VERSION = "3.2.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2069,7 +2069,7 @@ function handleAction(a,v,el,e){
     mData["mgrCoaching_"+myKey2] = (document.getElementById("ooo-mgr-mgrCoaching_"+myKey2)||{}).value||"";
     mData["mgrCorrective_"+myKey2] = (document.getElementById("ooo-mgr-mgrCorrective_"+myKey2)||{}).value||"";
     mData["mgrNotes_"+myKey2] = (document.getElementById("ooo-mgr-mgrNotes_"+myKey2)||{}).value||"";
-    mData["mgrRating_"+myKey2] = S._oooMgrRating||form.mgrRating||"";
+    mData["mgrRating_"+myKey2] = S._oooMgrRating||"";
     // Also preserve old-style fields by copying them to new keys if new ones are empty
     // This migrates existing data on first save
     gs("saveOOOForm", Object.assign({id:v}, mData)).then(function(){
