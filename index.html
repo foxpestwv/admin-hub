@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.1.6"; // Increment this with every update
+const APP_VERSION = "3.1.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1612,8 +1612,8 @@ function login(role){
   if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-  // Only load what's needed for the current tab - no full sync on login
-  loadAccountsFromSheet().catch(function(){});
+  // Load all data once on login (no background repeat)
+  syncFromSheet();
   saveAccountsToSheet();
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
