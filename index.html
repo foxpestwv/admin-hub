@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.0"; // Increment this with every update
+const APP_VERSION = "3.2.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -973,7 +973,8 @@ async function gs(fn, data){
       case "generateOOOPdf": {
         // Build PDF using pdf-lib directly in browser
         var f = data.form;
-        if(typeof PDFLib === "undefined") return {pdfBase64:null};
+        if(typeof PDFLib === "undefined") return {pdfBase64:null, error:"PDFLib not loaded"};
+        try {
         var doc = await PDFLib.PDFDocument.create();
         var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
         var boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -1129,11 +1130,12 @@ async function gs(fn, data){
         return {
           pdfBase64: b64,
           pageCount: pageCount,
-          sigYPct: 1 - (sigLineY / pageH) - (44/pageH),  // box above sig line
-          dateYPct: 1 - (dateLineY / pageH) - (14/pageH), // box above date line
+          sigYPct: 1 - (sigLineY / pageH) - (44/pageH),
+          dateYPct: 1 - (dateLineY / pageH) - (14/pageH),
           sigHPct: 44/pageH,
           dateHPct: 14/pageH
         };
+        } catch(pdfErr){ console.error("PDF gen error:", pdfErr); return {pdfBase64:null, error:pdfErr.message}; }
       }
       case "getSignRequestById": {
         await initFirebase();
@@ -2096,8 +2098,11 @@ function handleAction(a,v,el,e){
         // Actually, build it as a text-based PDF via Apps Script
         var pdfResult = await gs("generateOOOPdf", {formId:v, formHtml:formHtml, form:form});
 
+        console.log("PDF result:", pdfResult ? "ok, b64 length="+( pdfResult.pdfBase64?pdfResult.pdfBase64.length:0) : "null");
         if(!pdfResult || !pdfResult.pdfBase64){
-          alert("Could not generate PDF. Please try again.");
+          // Try to get the actual error
+          var pdfErr = pdfResult && pdfResult.error ? pdfResult.error : "PDF generation returned no data";
+          alert("Could not generate PDF: " + pdfErr);
           return;
         }
 
