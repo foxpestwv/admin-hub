@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.0"; // Increment this with every update
+const APP_VERSION = "3.3.1"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1079,10 +1079,14 @@ async function gs(fn, data){
             }
           }
         });
-        // Fall back to old-style ONLY if no per-manager keys exist
-        if(mgrSections.length===0 && (f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes||f.mgrRating)){
-          mgrSections.push({key:"", label:"Manager"});
+        // Fall back to old-style ONLY if NO per-manager sections found at all
+        if(mgrSections.length===0){
+          // Check old style fields
+          var oldRating = parseInt(f.mgrRating)||0;
+          var oldHasContent = oldRating>0 || f.mgrStrengths || f.mgrCoaching || f.mgrCorrective || f.mgrNotes;
+          if(oldHasContent) mgrSections.push({key:"", label:"Manager"});
         }
+        // If we have per-manager sections, never show the old-style section
         mgrSections.forEach(function(ms){
           var prefix = ms.key?"_"+ms.key:"";
           var ratingKey = ms.key ? "mgrRating_"+ms.key : "mgrRating";
