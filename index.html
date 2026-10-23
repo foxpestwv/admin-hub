@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.6"; // Increment this with every update
+const APP_VERSION = "3.2.7"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1015,8 +1015,9 @@ async function gs(fn, data){
         }
         function drawField(label, value, yPos){
           drawText(label, margin, yPos, 8, false, PDFLib.rgb(0.4,0.4,0.4));
-          var safeVal = sanitizePdfText(value||"Not filled in");
-          var lines = safeVal.match(/.{1,80}/g)||["Not filled in"];
+          var strVal = (value!==undefined && value!==null && value!=="") ? String(value) : "Not filled in";
+          console.log("drawField:", label, "=>", strVal.slice(0,30));
+          var lines = strVal.match(/.{1,80}/g)||[strVal];
           lines.forEach(function(l,i){ drawText(l, margin, yPos-12-(i*12), 10, false); });
           return yPos - 14 - (Math.max(lines.length,1)*12);
         }
