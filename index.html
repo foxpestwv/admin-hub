@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.3"; // Increment this with every update
+const APP_VERSION = "3.3.4"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1061,8 +1061,6 @@ async function gs(fn, data){
         });
 
         y -= 10; drawLine(y); y -= 16;
-        drawText("MANAGER NOTES (PRIVATE)", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y -= 14;
-        drawText("Performance Rating: "+(parseInt(f.mgrRating)||0)+"/5 stars", margin, y, 11, false); y-=16;
         // Draw notes for each manager - handle both old and new key formats
         var mgrSections = [];
         // Find all per-manager keys
