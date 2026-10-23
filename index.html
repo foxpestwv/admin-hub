@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.7"; // Increment this with every update
+const APP_VERSION = "3.2.8"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -976,9 +976,17 @@ async function gs(fn, data){
         if(typeof PDFLib === "undefined") return {pdfBase64:null, error:"PDFLib not loaded"};
         try {
         var doc = await PDFLib.PDFDocument.create();
-        // Use Times Roman which embeds properly for pdf.js rendering
-        var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
-        var boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+        // Fetch and embed actual font so pdf.js can render it
+        var fontUrl = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; // not used
+        var font, boldFont;
+        try {
+          var fontBytes = await fetch("https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2").then(function(r){return r.arrayBuffer();});
+          font = await doc.embedFont(fontBytes);
+          boldFont = font;
+        } catch(fe){
+          font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+          boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+        }
         var page = doc.addPage([612, 792]);
         var y = 750;
         var margin = 50;
@@ -1016,7 +1024,6 @@ async function gs(fn, data){
         function drawField(label, value, yPos){
           drawText(label, margin, yPos, 8, false, PDFLib.rgb(0.4,0.4,0.4));
           var strVal = (value!==undefined && value!==null && value!=="") ? String(value) : "Not filled in";
-          console.log("drawField:", label, "=>", strVal.slice(0,30));
           var lines = strVal.match(/.{1,80}/g)||[strVal];
           lines.forEach(function(l,i){ drawText(l, margin, yPos-12-(i*12), 10, false); });
           return yPos - 14 - (Math.max(lines.length,1)*12);
