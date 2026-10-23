@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.8"; // Increment this with every update
+const APP_VERSION = "3.2.9"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1065,24 +1065,26 @@ async function gs(fn, data){
         drawText("Performance Rating: "+(parseInt(f.mgrRating)||0)+"/5 stars", margin, y, 11, false); y-=16;
         // Draw notes for each manager - handle both old and new key formats
         var mgrSections = [];
-        // Find all manager keys
+        // Find all per-manager keys
         Object.keys(f).forEach(function(k){
-          if(k.startsWith("mgrNotes_")){
-            var mk = k.replace("mgrNotes_","");
+          if(k.startsWith("mgrNotes_")||k.startsWith("mgrStrengths_")||k.startsWith("mgrCoaching_")||k.startsWith("mgrCorrective_")){
+            var mk = k.split("_").slice(1).join("_");
             if(!mgrSections.find(function(s){ return s.key===mk; })){
               mgrSections.push({key:mk, label:mk.replace(/_/g," ")});
             }
           }
         });
-        // Fall back to old-style single manager fields
+        // Fall back to old-style ONLY if no per-manager keys exist
         if(mgrSections.length===0 && (f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes)){
           mgrSections.push({key:"", label:"Manager"});
         }
         mgrSections.forEach(function(ms){
           var prefix = ms.key?"_"+ms.key:"";
+          var ratingVal = parseInt(f["mgrRating"+prefix])||0;
+          var hasContent = ratingVal || f["mgrStrengths"+prefix] || f["mgrCoaching"+prefix] || f["mgrCorrective"+prefix] || f["mgrNotes"+prefix];
+          if(!hasContent) return; // skip empty sections
           if(y < 180){ page = doc.addPage([612,792]); y=750; }
           drawText((ms.label||"Manager").toUpperCase()+" NOTES", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y-=14;
-          var ratingVal = parseInt(f["mgrRating"+prefix]||f.mgrRating)||0;
           if(ratingVal) { drawText("Performance Rating: "+ratingVal+"/5 stars", margin, y, 10, false); y-=16; }
           [
             {k:"mgrStrengths"+prefix, l:"Areas of strength"},
