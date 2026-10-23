@@ -316,8 +316,19 @@ const S = {
 function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function save(){["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>lsSet("hub:"+k,S[k]));}
+function selectBranch(branchId){
+  S.branch = branchId;
+  S.branchName = BRANCHES[branchId] ? BRANCHES[branchId].name : "Willamette Valley";
+  save();
+  document.getElementById("login-step-branch").style.display = "none";
+  document.getElementById("login-step-email").style.display = "block";
+}
+
 function load(){
-  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders","branch","branchName"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Default branch
+  if(!S.branch) S.branch = "willamette";
+  if(!S.branchName) S.branchName = "Willamette Valley";
   // Validate orders format - if stored as arrays (old format), clear them so fresh load happens
   if(S.orders && S.orders.length>0 && Array.isArray(S.orders[0])){
     S.orders = [];
@@ -352,7 +363,14 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.6"; // Increment this with every update
+const APP_VERSION = "3.3.7";
+const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
+
+// Branch configuration
+const BRANCHES = {
+  willamette: { name: "Willamette Valley", id: "willamette" },
+  spokane: { name: "Spokane", id: "spokane" }
+}; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -2761,6 +2779,18 @@ function setPage(id){
 function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
+  // If branch already set, hide branch selector
+  var branchStep = document.getElementById("login-step-branch");
+  var emailStep = document.getElementById("login-step-email");
+  if(branchStep && emailStep){
+    if(S.branch){
+      branchStep.style.display = "none";
+      emailStep.style.display = "block";
+    } else {
+      branchStep.style.display = "block";
+      emailStep.style.display = "none";
+    }
+  }
   // Nav
   const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
   var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"}];
@@ -2801,6 +2831,7 @@ function renderDash(){
   var pg = document.getElementById("pg-dashboard");
   if(!pg) return;
   var name = S.managerName || S.currentTech || "";
+  var branchDisplay = S.branchName || (S.branch==="spokane"?"Spokane":"Willamette Valley");
   // TEMP DEBUG - remove after testing
 
   // Get title from account data if available
@@ -4771,6 +4802,9 @@ async function renderOOOManager(pg){
   try {
     var result = await gs("getOOOForms", null);
     var forms = result && result.forms ? result.forms : [];
+    // Filter by current branch
+    var myBranch2 = S.branch||"willamette";
+    forms = forms.filter(function(f){ return !f.branch||f.branch===myBranch2; });
     var listDiv = document.getElementById("ooo-list");
     if(!listDiv) return;
 
@@ -4807,7 +4841,10 @@ async function renderOOOTech(pg){
     var result = await gs("getOOOForms", null);
     var forms = result && result.forms ? result.forms : [];
     var myName2 = S.currentTech||S.managerName||"";
-    var myForms = forms.filter(function(f){ return f.techName===myName2 && f.status!=="Archived"; });
+    var myBranch = S.branch||"willamette";
+    var myForms = forms.filter(function(f){ 
+      return f.techName===myName2 && f.status!=="Archived" && (!f.branch||f.branch===myBranch); 
+    });
     var listDiv = document.getElementById("ooo-tech-list");
     if(!listDiv) return;
 
@@ -8002,6 +8039,7 @@ async function signSubmitTech(){
                   signedPdfBase64: signedB64,
                   techName: "All Signers",
                   managerEmail: "john.kluttz@fox-marketingservices.com",
+                  branch: S.branch||"willamette",
                   docName: finalDocName
                 })
               }).catch(function(e){ console.warn("Drive save:",e.message); });
@@ -8545,6 +8583,8 @@ document.addEventListener("change",function(e){
 
 // Check for guest signing token BEFORE load() to prevent login screen showing
 var _guestToken = new URLSearchParams(window.location.search).get("sign");
+// If branch already selected, skip branch step
+var _savedBranch = (function(){ try{ return JSON.parse(localStorage.getItem("hub:branch")); }catch(e){ return null; } })();
 if(_guestToken){
   // Hide everything until guest UI is ready
   document.addEventListener("DOMContentLoaded", function(){
