@@ -319,16 +319,20 @@ function save(){["managers","techAccounts","managerName","trucks","techs","techE
 function selectBranch(branchId){
   S.branch = branchId;
   S.branchName = BRANCHES[branchId] ? BRANCHES[branchId].name : "Willamette Valley";
+  S.branchChosen = true;
   save();
   document.getElementById("login-step-branch").style.display = "none";
   document.getElementById("login-step-email").style.display = "block";
 }
 
 function load(){
-  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders","branch","branchName"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
-  // Default branch
-  if(!S.branch) S.branch = "willamette";
-  if(!S.branchName) S.branchName = "Willamette Valley";
+  ["managers","techAccounts","managerName","trucks","techs","techEmails","cats","inspFields","inspections","products","checkouts","orders","truckInventories","restockOrders","branch","branchName","branchChosen"].forEach(k=>{const v=lsGet("hub:"+k);if(v!=null)S[k]=v;});
+  // Default branch - but only skip selector if explicitly chosen before
+  if(!S.branch){
+    S.branch = "willamette";
+    S.branchName = "Willamette Valley";
+    S.branchChosen = false; // Will show selector
+  }
   // Validate orders format - if stored as arrays (old format), clear them so fresh load happens
   if(S.orders && S.orders.length>0 && Array.isArray(S.orders[0])){
     S.orders = [];
@@ -363,7 +367,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.7";
+const APP_VERSION = "3.3.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2779,11 +2783,11 @@ function setPage(id){
 function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
-  // If branch already set, hide branch selector
+  // Show branch selector unless user has explicitly chosen before
   var branchStep = document.getElementById("login-step-branch");
   var emailStep = document.getElementById("login-step-email");
-  if(branchStep && emailStep){
-    if(S.branch){
+  if(branchStep && emailStep && !S.role){
+    if(S.branchChosen){
       branchStep.style.display = "none";
       emailStep.style.display = "block";
     } else {
