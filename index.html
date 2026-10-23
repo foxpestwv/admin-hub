@@ -94,7 +94,7 @@ input,textarea,select,button{font-family:inherit;}
     <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Fox Pest Control - Willamette Valley</p>
 
     <!-- Step 0: Branch Selection -->
-    <div id="login-step-branch" style="display:none;">
+    <div id="login-step-branch" style="display:block;">
       <div style="font-size:13px;color:#64748b;margin-bottom:16px;text-align:center;">Select your branch to continue</div>
       <button class="btn bg" onclick="selectBranch('willamette')" style="width:100%;padding:14px;font-size:15px;margin-bottom:10px;">🌲 Willamette Valley</button>
       <button class="btn bg" onclick="selectBranch('spokane')" style="width:100%;padding:14px;font-size:15px;">🏔 Spokane</button>
@@ -338,8 +338,22 @@ function load(){
   if(!S.branch){
     S.branch = "willamette";
     S.branchName = "Willamette Valley";
-    S.branchChosen = false; // Will show selector
+    S.branchChosen = false;
   }
+  // Show correct login step immediately
+  setTimeout(function(){
+    var bs = document.getElementById("login-step-branch");
+    var es = document.getElementById("login-step-email");
+    if(bs && es && !S.role){
+      if(S.branchChosen){
+        bs.style.display = "none";
+        es.style.display = "block";
+      } else {
+        bs.style.display = "block";
+        es.style.display = "none";
+      }
+    }
+  }, 0);
   // Validate orders format - if stored as arrays (old format), clear them so fresh load happens
   if(S.orders && S.orders.length>0 && Array.isArray(S.orders[0])){
     S.orders = [];
@@ -374,7 +388,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.9";
+const APP_VERSION = "3.4.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
