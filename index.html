@@ -93,8 +93,15 @@ input,textarea,select,button{font-family:inherit;}
     <h2 style="text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;">Admin Hub</h2>
     <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Fox Pest Control - Willamette Valley</p>
 
+    <!-- Step 0: Branch Selection -->
+    <div id="login-step-branch" style="display:none;">
+      <div style="font-size:13px;color:#64748b;margin-bottom:16px;text-align:center;">Select your branch to continue</div>
+      <button class="btn bg" onclick="selectBranch('willamette')" style="width:100%;padding:14px;font-size:15px;margin-bottom:10px;">🌲 Willamette Valley</button>
+      <button class="btn bg" onclick="selectBranch('spokane')" style="width:100%;padding:14px;font-size:15px;">🏔 Spokane</button>
+    </div>
+
     <!-- Step 1: Email -->
-    <div id="login-step-email">
+    <div id="login-step-email" style="display:none;">
       <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Your Email</label>
       <input type="email" id="login-email" class="inp" placeholder="yourname@fox-marketingservices.com" style="margin-bottom:12px;">
       <div id="email-err" style="text-align:center;color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;"></div>
@@ -367,7 +374,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.8";
+const APP_VERSION = "3.3.9";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2784,15 +2791,17 @@ function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
   // Show branch selector unless user has explicitly chosen before
-  var branchStep = document.getElementById("login-step-branch");
-  var emailStep = document.getElementById("login-step-email");
-  if(branchStep && emailStep && !S.role){
-    if(S.branchChosen){
-      branchStep.style.display = "none";
-      emailStep.style.display = "block";
-    } else {
-      branchStep.style.display = "block";
-      emailStep.style.display = "none";
+  if(!S.role){
+    var branchStep = document.getElementById("login-step-branch");
+    var emailStep = document.getElementById("login-step-email");
+    if(branchStep && emailStep){
+      if(S.branchChosen){
+        branchStep.style.display = "none";
+        emailStep.style.display = "block";
+      } else {
+        branchStep.style.display = "block";
+        emailStep.style.display = "none";
+      }
     }
   }
   // Nav
