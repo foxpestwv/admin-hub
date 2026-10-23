@@ -345,15 +345,17 @@ function load(){
     var bs = document.getElementById("login-step-branch");
     var es = document.getElementById("login-step-email");
     if(bs && es && !S.role){
-      if(S.branchChosen){
+      if(S.branchChosen && S.branch){
+        // Returning user - skip branch selector
         bs.style.display = "none";
         es.style.display = "block";
       } else {
+        // New user or branch not chosen - show selector
         bs.style.display = "block";
         es.style.display = "none";
       }
     }
-  }, 0);
+  }, 50);
   // Validate orders format - if stored as arrays (old format), clear them so fresh load happens
   if(S.orders && S.orders.length>0 && Array.isArray(S.orders[0])){
     S.orders = [];
@@ -388,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.0";
+const APP_VERSION = "3.4.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
