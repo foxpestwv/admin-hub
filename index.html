@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.1"; // Increment this with every update
+const APP_VERSION = "3.3.3"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -1079,19 +1079,18 @@ async function gs(fn, data){
             }
           }
         });
-        // Fall back to old-style ONLY if NO per-manager sections found at all
-        if(mgrSections.length===0){
-          // Check old style fields
-          var oldRating = parseInt(f.mgrRating)||0;
-          var oldHasContent = oldRating>0 || f.mgrStrengths || f.mgrCoaching || f.mgrCorrective || f.mgrNotes;
-          if(oldHasContent) mgrSections.push({key:"", label:"Manager"});
+        // Only fall back to old-style if no per-manager sections AND old fields have real content
+        if(mgrSections.length===0 && (f.mgrStrengths||f.mgrCoaching||f.mgrCorrective||f.mgrNotes)){
+          mgrSections.push({key:"", label:"Manager"});
         }
-        // If we have per-manager sections, never show the old-style section
+        // Never show old-style mgrRating alone - it creates phantom sections
         mgrSections.forEach(function(ms){
           var prefix = ms.key?"_"+ms.key:"";
           var ratingKey = ms.key ? "mgrRating_"+ms.key : "mgrRating";
           var ratingVal = parseInt(f[ratingKey])||0;
-          var hasContent = ratingVal || f["mgrStrengths"+prefix] || f["mgrCoaching"+prefix] || f["mgrCorrective"+prefix] || f["mgrNotes"+prefix];
+          // For per-manager sections (ms.key exists), only show if they have actual text content
+          var hasTextContent = f["mgrStrengths"+prefix] || f["mgrCoaching"+prefix] || f["mgrCorrective"+prefix] || f["mgrNotes"+prefix];
+          var hasContent = ms.key ? (ratingVal > 0 || hasTextContent) : hasTextContent;
           if(!hasContent) return; // skip empty sections
           if(y < 180){ page = doc.addPage([612,792]); y=750; }
           drawText((ms.label||"Manager").toUpperCase()+" NOTES", margin, y, 9, true, PDFLib.rgb(0.96,0.62,0.04)); y-=14;
@@ -2102,7 +2101,7 @@ function handleAction(a,v,el,e){
     mData["mgrCoaching_"+myKey2] = (document.getElementById("ooo-mgr-mgrCoaching_"+myKey2)||{}).value||"";
     mData["mgrCorrective_"+myKey2] = (document.getElementById("ooo-mgr-mgrCorrective_"+myKey2)||{}).value||"";
     mData["mgrNotes_"+myKey2] = (document.getElementById("ooo-mgr-mgrNotes_"+myKey2)||{}).value||"";
-    mData["mgrRating_"+myKey2] = S._oooMgrRating||"";
+    if(S._oooMgrRating && S._oooMgrRating>0) mData["mgrRating_"+myKey2] = S._oooMgrRating;
     // Also preserve old-style fields by copying them to new keys if new ones are empty
     // This migrates existing data on first save
     gs("saveOOOForm", Object.assign({id:v}, mData)).then(function(){
