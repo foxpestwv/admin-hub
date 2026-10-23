@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.3.5"; // Increment this with every update
+const APP_VERSION = "3.3.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -7994,6 +7994,7 @@ async function signSubmitTech(){
               }
 
               // Save final merged PDF to Drive
+              var finalDocName = (req.docName||"Document").replace(/ \(Tech\)| \(Manager\)/g,"")+" - Fully Signed";
               fetch(EMAIL_BRIDGE,{
                 method:"POST", headers:{"Content-Type":"text/plain"},
                 body: JSON.stringify({
@@ -8001,9 +8002,27 @@ async function signSubmitTech(){
                   signedPdfBase64: signedB64,
                   techName: "All Signers",
                   managerEmail: "john.kluttz@fox-marketingservices.com",
-                  docName: (req.docName||"Document")+" - Fully Signed"
+                  docName: finalDocName
                 })
               }).catch(function(e){ console.warn("Drive save:",e.message); });
+
+              // Update OOO form status to Signed
+              var oooMultiId = req.multiSignId||req.id;
+              if(S._oooForms){
+                S._oooForms = S._oooForms.map(function(f){
+                  if(f.multiSignId===oooMultiId) return Object.assign({},f,{status:"Signed"});
+                  return f;
+                });
+                lsSet("hub:oooForms", S._oooForms);
+              }
+              // Update Firebase OOO form status
+              gs("saveOOOForm", {id:oooMultiId, status:"Signed"}).catch(function(){
+                // Try finding form by multiSignId
+                gs("getOOOForms", null).then(function(r){
+                  var match = (r.forms||[]).find(function(f){ return f.multiSignId===oooMultiId; });
+                  if(match) gs("saveOOOForm", {id:match.id, status:"Signed"}).catch(function(){});
+                }).catch(function(){});
+              });
             }
             // If not all signed yet, just save this signer's data (already done above)
           } catch(e){ console.warn("Multi-sign submit:",e.message); }
