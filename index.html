@@ -352,7 +352,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.2.5"; // Increment this with every update
+const APP_VERSION = "3.2.6"; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
 const firebaseConfig = {
@@ -977,8 +977,8 @@ async function gs(fn, data){
         try {
         var doc = await PDFLib.PDFDocument.create();
         // Use Times Roman which embeds properly for pdf.js rendering
-        var font = await doc.embedFont(PDFLib.StandardFonts.TimesRoman);
-        var boldFont = await doc.embedFont(PDFLib.StandardFonts.TimesRomanBold);
+        var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+        var boldFont = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold);
         var page = doc.addPage([612, 792]);
         var y = 750;
         var margin = 50;
@@ -990,14 +990,25 @@ async function gs(fn, data){
           return String(text||"").replace(/[^-ÿ]/g, "?").replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/–/g,"-").replace(/—/g,"--").replace(/…/g,"...").slice(0,200);
         }
         function drawText(text, x, yPos, size, bold, color){
+          if(!text) return;
+          var s = String(text).slice(0,400);
+          // Try full text first, then fall back char by char
           try {
-            page.drawText(sanitizePdfText(text), {
-              x:x, y:yPos, size:size||10,
-              font:bold?boldFont:font,
-              color:color||PDFLib.rgb(0.1,0.1,0.1),
-              maxWidth:500
-            });
-          } catch(e){ /* skip unencodable text */ }
+            page.drawText(s, {x:x, y:yPos, size:size||10, font:bold?boldFont:font, color:color||PDFLib.rgb(0.1,0.1,0.1), maxWidth:500});
+          } catch(e){
+            // Strip problem characters and retry
+            var safe = "";
+            for(var i=0;i<s.length;i++){
+              var c = s.charCodeAt(i);
+              if(c>=32 && c<=126) safe += s[i];
+              else if(c===8216||c===8217) safe += "'";
+              else if(c===8220||c===8221) safe += '"';
+              else if(c===8211||c===8212) safe += "-";
+              else if(c===8230) safe += "...";
+              else safe += " ";
+            }
+            try { page.drawText(safe, {x:x, y:yPos, size:size||10, font:bold?boldFont:font, color:color||PDFLib.rgb(0.1,0.1,0.1), maxWidth:500}); } catch(e2){}
+          }
         }
         function drawLine(yPos){
           page.drawLine({start:{x:margin,y:yPos},end:{x:562,y:yPos},thickness:0.5,color:PDFLib.rgb(0.8,0.8,0.8)});
