@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.2";
+const APP_VERSION = "3.4.3";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -5401,7 +5401,7 @@ function renderSettings(){
   }
 
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
-    +tabBar+body;
+    +superAdminBar+tabBar+body;
 
   // Wire up live input changes for cats/items
   setTimeout(function(){
