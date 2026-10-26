@@ -398,7 +398,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.6";
+const APP_VERSION = "3.5.7";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1543,6 +1543,7 @@ function showRoleStep(){
 }
 
 function showEmailStep(){
+  document.getElementById("login-step-branch").style.display="none";
   document.getElementById("login-step-pin").style.display="none";
   document.getElementById("login-step-role").style.display="none";
   document.getElementById("login-step-email").style.display="block";
@@ -1719,7 +1720,15 @@ function logout(){
   loginDiv.style.display="flex";
   var pk1 = document.getElementById("pk1");
   if(!pk1){ location.reload(); return; }
-  showEmailStep();
+  // Always show branch selector on logout
+  var bs = document.getElementById("login-step-branch");
+  var es = document.getElementById("login-step-email");
+  var rs = document.getElementById("login-step-role");
+  var ps = document.getElementById("login-step-pin");
+  if(bs) bs.style.display="block";
+  if(es) es.style.display="none";
+  if(rs) rs.style.display="none";
+  if(ps) ps.style.display="none";
 }
 
 // ─── Event Delegation ────────────────────────────────────────────────────────
