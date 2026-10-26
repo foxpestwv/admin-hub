@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.3";
+const APP_VERSION = "3.4.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -5219,6 +5219,8 @@ function renderSettings(){
       return "<button class='btn "+(tab===t.id?"bp":"bg")+"' style='padding:7px 14px;font-size:13px;white-space:nowrap;' data-a='settings-tab' data-v='"+t.id+"'>"+t.l+"</button>";
     }).join("")+"</div>";
 
+  var _saEmail2 = (S.currentUser&&S.currentUser.email)||S.loginEmail||"";
+  var isSuperAdmin = typeof SUPER_ADMINS!=="undefined" && SUPER_ADMINS.indexOf(_saEmail2)>=0;
   const superAdminBar = isSuperAdmin
     ?"<div class='card' style='margin-bottom:14px;border:1px solid #f59e0b44;'>"
       +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:10px;'>⚡ Super Admin — Switch Branch</div>"
