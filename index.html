@@ -432,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.4";
+const APP_VERSION = "3.8.5";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -3164,7 +3164,7 @@ function render(){
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
     document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
-    var homePg = document.getElementById("pg-home");
+    var homePg = document.getElementById("pg-dashboard");
     if(homePg){ homePg.style.display="block"; }
     renderSuperAdmin();
     return;
@@ -5552,7 +5552,7 @@ function buildOOOFormHtml(form){
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 function renderSuperAdmin(){
-  var pg = document.getElementById("pg-home");
+  var pg = document.getElementById("pg-dashboard");
   if(!pg) return;
 
   // If viewing a branch's settings, show that
