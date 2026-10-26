@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.3";
+const APP_VERSION = "3.7.5";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -610,29 +610,44 @@ async function gs(fn, data){
       case "getProducts": {
         var prodBranch = (data&&data.branch)||"willamette";
         var prods = await fbGet("products");
+        // Load branch-specific quantities
+        var qtyDoc = await _db.collection("config").doc("quantities_"+prodBranch).get();
+        var branchQtys = qtyDoc.exists ? qtyDoc.data() : {};
+        // Load hidden products for this branch
+        var hiddenDoc = await _db.collection("config").doc("hiddenProducts_"+prodBranch).get();
+        var hiddenProds = hiddenDoc.exists ? hiddenDoc.data() : {};
         var parsedProds = (prods||[]).filter(function(p){
-          // Filter by branch - products with no branch tag belong to willamette
-          return !p.branch || p.branch===prodBranch;
+          return !hiddenProds[p.id||p._id||""];
         }).map(function(p){
+          var pid = p.id||p._id||"";
+          var qty = branchQtys[pid]!==undefined ? Number(branchQtys[pid]) : 
+                    (prodBranch==="willamette" ? Number(p.qty)||0 : 0);
           return {
-            id: p.id||p._id||"",
+            id: pid,
             name: p.name||"",
             unit: p.unit||"each",
-            qty: Number(p.qty)||0,
+            qty: qty,
             lowAt: Number(p.lowAt)||0,
             reorderNote: p.reorderNote||"",
             truckWarnAbove: Number(p.truckWarnAbove)||0,
             createdAt: p.createdAt||"",
             upc: p.upc||"",
             sdsUrl: p.sdsUrl||"",
-            labelUrl: p.labelUrl||"",
-            branch: p.branch||"willamette"
+            labelUrl: p.labelUrl||""
           };
         });
-        return {products: parsedProds};
+        return {products: parsedProds, hiddenCount: Object.keys(hiddenProds).filter(function(k){return hiddenProds[k];}).length};
       }
       case "updateQty": {
-        await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
+        var qtyBranch = (data&&data.branch)||"willamette";
+        if(qtyBranch==="willamette"){
+          // Legacy: also update the product doc itself for willamette
+          await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
+        }
+        // Save to branch-specific quantities doc
+        var qtyUpdate = {};
+        qtyUpdate[data.id] = data.qty;
+        await _db.collection("config").doc("quantities_"+qtyBranch).set(qtyUpdate, {merge:true});
         return {ok:true};
       }
       case "updateProductUpc": {
@@ -660,15 +675,31 @@ async function gs(fn, data){
           qty: 0, lowAt: data.lowAt||0,
           truckWarnAbove: data.truckWarnAbove||0,
           reorderNote: data.reorderNote||"",
-          createdAt: new Date().toISOString(),
-          branch: (data&&data.branch)||"willamette"
+          createdAt: new Date().toISOString()
         };
         await fbSet("products", newProd.id, newProd);
         return {ok:true, product: newProd};
       }
-      case "removeProductFromSheet": {
-        await fbDelete("products", data.id);
+      case "removeProductFromSheet":
+      case "hideProduct": {
+        // Hide product for this branch only - don't delete from shared catalog
+        var hideBranch = (data&&data.branch)||"willamette";
+        var hideUpdate = {};
+        hideUpdate[data.id] = true;
+        await _db.collection("config").doc("hiddenProducts_"+hideBranch).set(hideUpdate, {merge:true});
         return {ok:true};
+      }
+      case "unhideProduct": {
+        var unhideBranch = (data&&data.branch)||"willamette";
+        var unhideUpdate = {};
+        unhideUpdate[data.id] = false;
+        await _db.collection("config").doc("hiddenProducts_"+unhideBranch).set(unhideUpdate, {merge:true});
+        return {ok:true};
+      }
+      case "getHiddenProducts": {
+        var ghBranch = (data&&data.branch)||"willamette";
+        var ghDoc = await _db.collection("config").doc("hiddenProducts_"+ghBranch).get();
+        return {hidden: ghDoc.exists ? ghDoc.data() : {}};
       }
 
       // ── ADJUSTMENT LOG ───────────────────────────────────────────────────────
