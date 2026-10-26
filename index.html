@@ -432,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.9";
+const APP_VERSION = "3.8.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1793,6 +1793,14 @@ function showSetPin(){
     S.currentUser.tempPin = "";
     // Update in managers or techAccounts
     if(S.role==="superadmin"){
+    // Show app, hide login
+    document.getElementById("login").style.display="none";
+    document.getElementById("app").style.display="block";
+    // Navigate to home page
+    S.currentTab = "dashboard";
+    document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
+    var homePg = document.getElementById("pg-home");
+    if(homePg) homePg.style.display="block";
     renderSuperAdmin();
     return;
   }
@@ -1850,7 +1858,7 @@ function showBranchStep(){
 function updateAdminDots(){
   var dots = document.getElementById("admin-dots");
   if(!dots) return;
-  dots.innerHTML = [0,1,2,3].map(function(i){
+  dots.innerHTML = [0,1,2,3,4,5].map(function(i){
     var filled = i < _adminPin.length;
     return "<div style='width:12px;height:12px;border-radius:50%;background:"+(filled?"#f59e0b":"#1e3a5f")+";'></div>";
   }).join("");
@@ -1872,6 +1880,15 @@ function adminPinDigit(n){
   updateAdminDots();
   if(_adminPin.length===6) adminPinSubmit();
 }
+
+// Keyboard support for admin PIN
+document.addEventListener("keydown", function(e){
+  var adminStep = document.getElementById("login-step-admin");
+  if(!adminStep || adminStep.style.display==="none") return;
+  if(e.key>="0" && e.key<="9") adminPinDigit(e.key);
+  else if(e.key==="Backspace") adminPinBack();
+  else if(e.key==="Escape") showBranchStep();
+});
 
 function adminPinSubmit(){
   if(_adminPin===SUPER_ADMIN_PIN){
@@ -2046,7 +2063,7 @@ document.addEventListener("input",function(e){
   if(t.id==="new-truck-inp"||t.id==="new-tech-inp") {}
 });
 
-function handleAction(a,v,el,e){
+async function handleAction(a,v,el,e){
   if(a==="pin") { pinTap(v); return; }
   if(a==="logout") { logout(); return; }
   if(a==="tab") {
@@ -2247,20 +2264,88 @@ function handleAction(a,v,el,e){
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
   if(a==="sa-enter-branch"){
     var parts = v.split("|");
-    S.branch=parts[0]; S.branchName=parts[1]||parts[0];
-    S.role="manager"; // Switch to manager view for this branch
-    lsSet("hub:branch",S.branch); lsSet("hub:branchName",S.branchName);
-    syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
-    render();
+    S._saViewBranch = {id:parts[0], name:parts[1]||parts[0]};
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-back"){
+    S._saViewBranch = null;
+    renderSuperAdmin();
     return;
   }
   if(a==="sa-add-branch"){
     var bName = prompt("Branch name:");
     if(!bName) return;
     var bId = bName.toLowerCase().replace(/[^a-z0-9]/g,"_");
-    initFirebase().then(function(){
-      return _db.collection("branches").doc(bId).set({name:bName, createdAt:new Date().toISOString()});
-    }).then(function(){ showToast(bName+" added ✓"); renderSuperAdmin(); });
+    await initFirebase();
+    await _db.collection("branches").doc(bId).set({name:bName, createdAt:new Date().toISOString()});
+    showToast(bName+" added ✓");
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-delete-branch"){
+    var dParts = v.split("|");
+    if(!confirm("Delete branch "+dParts[1]+"? This cannot be undone.")) return;
+    await initFirebase();
+    await _db.collection("branches").doc(dParts[0]).delete();
+    showToast(dParts[1]+" deleted");
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-add-manager"){
+    var mName = prompt("Manager name:");
+    if(!mName) return;
+    var mEmail = prompt("Manager email:");
+    if(!mEmail) return;
+    var mTitle = prompt("Title (e.g. Branch Manager):")||"Manager";
+    var mPin = prompt("Temporary PIN (4-8 digits):");
+    if(!mPin||mPin.length<4){ alert("PIN must be at least 4 digits"); return; }
+    var branchAccts = await gs("getAccounts",{branch:v});
+    var newMgr = {name:mName,email:mEmail.toLowerCase(),title:mTitle,tempPin:mPin,isTemp:true,pin:"",id:"mgr_"+Date.now()};
+    var mgrs2 = (branchAccts.managers||[]).concat([newMgr]);
+    await gs("saveAccounts",{branch:v,managers:mgrs2,techAccounts:branchAccts.techAccounts||[],trucks:branchAccts.trucks||[],cats:branchAccts.cats||[],inspFields:branchAccts.inspFields||[]});
+    showToast(mName+" added ✓");
+    S._saViewBranch = {id:v, name:S._saViewBranch&&S._saViewBranch.name||v};
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-remove-manager"){
+    var rmParts = v.split("|");
+    if(!confirm("Remove this manager?")) return;
+    var rmAccts = await gs("getAccounts",{branch:rmParts[0]});
+    var rmMgrs = (rmAccts.managers||[]).filter(function(m){return m.email!==rmParts[1];});
+    await gs("saveAccounts",{branch:rmParts[0],managers:rmMgrs,techAccounts:rmAccts.techAccounts||[],trucks:rmAccts.trucks||[],cats:rmAccts.cats||[],inspFields:rmAccts.inspFields||[]});
+    showToast("Manager removed");
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-add-tech"){
+    var tName = prompt("Technician name:");
+    if(!tName) return;
+    var tEmail = prompt("Technician email:");
+    if(!tEmail) return;
+    var tPin = prompt("Temporary PIN (4-8 digits):");
+    if(!tPin||tPin.length<4){ alert("PIN must be at least 4 digits"); return; }
+    var tAccts = await gs("getAccounts",{branch:v});
+    var newTech = {name:tName,email:tEmail.toLowerCase(),title:"Technician",tempPin:tPin,isTemp:true,pin:"",id:"tech_"+Date.now(),perms:"tech"};
+    var techs2 = (tAccts.techAccounts||[]).concat([newTech]);
+    await gs("saveAccounts",{branch:v,managers:tAccts.managers||[],techAccounts:techs2,trucks:tAccts.trucks||[],cats:tAccts.cats||[],inspFields:tAccts.inspFields||[]});
+    showToast(tName+" added ✓");
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-remove-tech"){
+    var rtParts = v.split("|");
+    if(!confirm("Remove this technician?")) return;
+    var rtAccts = await gs("getAccounts",{branch:rtParts[0]});
+    var rtTechs = (rtAccts.techAccounts||[]).filter(function(t){return t.email!==rtParts[1];});
+    await gs("saveAccounts",{branch:rtParts[0],managers:rtAccts.managers||[],techAccounts:rtTechs,trucks:rtAccts.trucks||[],cats:rtAccts.cats||[],inspFields:rtAccts.inspFields||[]});
+    showToast("Technician removed");
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-manage-products"){
+    showToast("Coming soon - manage shared product catalog");
     return;
   }
   // switch-branch is handled at login screen only
@@ -5471,27 +5556,93 @@ function buildOOOFormHtml(form){
 function renderSuperAdmin(){
   var pg = document.getElementById("pg-home");
   if(!pg) return;
-  pg.innerHTML = "<div style='padding:16px;'>"
-    +"<div style='display:flex;align-items:center;gap:12px;margin-bottom:20px;'>"
-    +"<div style='font-size:32px;'>⚙</div>"
-    +"<div><div style='font-size:20px;font-weight:700;'>Super Admin</div>"
-    +"<div style='font-size:13px;color:#64748b;'>Fox Pest Control</div></div></div>"
-    +"<div style='font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;'>Branches</div>"
-    +"<div id='sa-branch-list'><div style='color:#64748b;'>Loading...</div></div>"
+
+  // If viewing a branch's settings, show that
+  if(S._saViewBranch){
+    renderSuperAdminBranch(pg);
+    return;
+  }
+
+  pg.innerHTML = "<div style='padding:16px;max-width:600px;margin:0 auto;'>"
+    +"<div style='display:flex;align-items:center;gap:12px;margin-bottom:24px;'>"
+    +"<div style='width:48px;height:48px;background:#f59e0b22;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;'>⚙</div>"
+    +"<div><div style='font-size:22px;font-weight:700;'>Super Admin</div>"
+    +"<div style='font-size:13px;color:#64748b;'>Fox Pest Control Management Console</div></div></div>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Branches</div>"
+    +"<div id='sa-branch-list'><div style='color:#64748b;padding:20px;text-align:center;'>Loading...</div></div>"
+    +"<button class='btn bp' data-a='sa-add-branch' style='width:100%;padding:13px;margin-top:12px;'>+ Add New Branch</button>"
+    +"<div style='margin-top:24px;border-top:1px solid #1e3a5f;padding-top:16px;'>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Shared Product Catalog</div>"
+    +"<button class='btn bg' data-a='sa-manage-products' style='width:100%;padding:12px;'>🧪 Manage Shared Products</button>"
+    +"</div>"
     +"</div>";
-  // Load branches
+
   gs("getBranches",null).then(function(res){
     var branches = res&&res.branches||[];
     var listDiv = document.getElementById("sa-branch-list");
     if(!listDiv) return;
+    if(branches.length===0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:16px;'>No branches yet</div>";
+      return;
+    }
     listDiv.innerHTML = branches.map(function(b){
-      return "<div class='card' style='margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;'>"
-        +"<div><div style='font-weight:600;'>"+esc(b.name)+"</div>"
-        +"<div style='font-size:12px;color:#64748b;'>"+esc(b.id)+"</div></div>"
-        +"<button class='btn bp' data-a='sa-enter-branch' data-v='"+b.id+"|"+b.name+"' style='padding:8px 14px;font-size:13px;'>Enter →</button>"
-        +"</div>";
-    }).join("")
-    +"<button class='btn bg' data-a='sa-add-branch' style='width:100%;padding:12px;margin-top:8px;'>+ Add Branch</button>";
+      return "<div class='card' style='margin-bottom:10px;'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+        +"<div>"
+        +"<div style='font-weight:600;font-size:16px;'>"+esc(b.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>ID: "+esc(b.id)+"</div>"
+        +"</div>"
+        +"<div style='display:flex;gap:8px;'>"
+        +"<button class='btn bp' data-a='sa-enter-branch' data-v='"+b.id+"|"+b.name+"' style='padding:8px 14px;font-size:13px;'>⚙ Settings</button>"
+        +"<button class='btn' style='padding:8px 14px;font-size:13px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' data-a='sa-delete-branch' data-v='"+b.id+"|"+b.name+"'>🗑</button>"
+        +"</div></div></div>";
+    }).join("");
+  });
+}
+
+function renderSuperAdminBranch(pg){
+  var b = S._saViewBranch;
+  pg.innerHTML = "<div style='padding:16px;max-width:600px;margin:0 auto;'>"
+    +"<div style='display:flex;align-items:center;gap:10px;margin-bottom:20px;'>"
+    +"<button class='btn bg' data-a='sa-back' style='padding:8px 12px;'>← Back</button>"
+    +"<div><div style='font-size:18px;font-weight:700;'>"+esc(b.name)+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>Branch Settings</div></div></div>"
+    +"<div id='sa-branch-settings'><div style='color:#64748b;text-align:center;padding:20px;'>Loading...</div></div>"
+    +"</div>";
+
+  // Load this branch's accounts and render settings
+  gs("getAccounts",{branch:b.id}).then(function(res){
+    var mgrs = res&&res.managers||[];
+    var techs = res&&res.techAccounts||[];
+    var settingsDiv = document.getElementById("sa-branch-settings");
+    if(!settingsDiv) return;
+
+    var html = "<div class='card' style='margin-bottom:12px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>Managers ("+mgrs.length+")</div>"
+      +mgrs.map(function(m){
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
+          +"<div><div style='font-weight:600;'>"+esc(m.name)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
+          +"<div style='font-size:11px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
+          +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
+          +"data-a='sa-remove-manager' data-v='"+b.id+"|"+m.email+"'>Remove</button>"
+          +"</div>";
+      }).join("")
+      +"<button class='btn bp' data-a='sa-add-manager' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Manager</button>"
+      +"</div>"
+      +"<div class='card' style='margin-bottom:12px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>Technicians ("+techs.length+")</div>"
+      +techs.map(function(t){
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
+          +"<div><div style='font-weight:600;'>"+esc(t.name)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email)+"</div></div>"
+          +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
+          +"data-a='sa-remove-tech' data-v='"+b.id+"|"+t.email+"'>Remove</button>"
+          +"</div>";
+      }).join("")
+      +"<button class='btn bp' data-a='sa-add-tech' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Technician</button>"
+      +"</div>";
+    settingsDiv.innerHTML = html;
   });
 }
 
