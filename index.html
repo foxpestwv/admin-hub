@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.6";
+const APP_VERSION = "3.6.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -939,7 +939,9 @@ async function gs(fn, data){
         await initFirebase();
         var brSnap = await _db.collection("branches").get();
         if(brSnap.empty) return {branches:[{id:"willamette",name:"Willamette Valley"},{id:"spokane",name:"Spokane"}]};
-        return {branches: brSnap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); })};
+        var brDocs = brSnap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+        brDocs.sort(function(a,b){ return a.id==="willamette"?-1:b.id==="willamette"?1:a.name.localeCompare(b.name); });
+        return {branches: brDocs};
       }
       case "getAccountsServer":
       case "getAccounts": {
@@ -1752,6 +1754,12 @@ async function loadBranchList(){
     listDiv.innerHTML = "<button class='btn bg branch-btn' data-bid='willamette' data-bname='Willamette Valley' style='width:100%;padding:14px;font-size:15px;margin-bottom:10px;'>🌲 Willamette Valley</button>"
       +"<button class='btn bg branch-btn' data-bid='spokane' data-bname='Spokane' style='width:100%;padding:14px;font-size:15px;'>🏔 Spokane</button>";
   }
+  // Attach click handlers directly to branch buttons
+  listDiv.querySelectorAll(".branch-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      selectBranch(btn.getAttribute("data-bid"), btn.getAttribute("data-bname"));
+    });
+  });
 }
 
 function logout(){
