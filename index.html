@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.9";
+const APP_VERSION = "3.5.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2005,10 +2005,12 @@ function handleAction(a,v,el,e){
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
   if(a==="switch-branch"){
     S.branch=v; S.branchName=v==="spokane"?"Spokane":"Willamette Valley"; S.branchChosen=true;
-    // Clear in-memory data only - don't wipe localStorage
-    S.managers=[]; S.techAccounts=[]; S.orders=[]; S.signRequests=[];
-    S._oooForms=null;
     lsSet("hub:branch",v); lsSet("hub:branchName",S.branchName); lsSet("hub:branchChosen",true);
+    // Load branch-specific accounts from cache first
+    var _bm = lsGet("hub:managers_"+v)||[];
+    var _bt = lsGet("hub:techAccounts_"+v)||[];
+    S.managers=_bm; S.techAccounts=_bt;
+    S.orders=[]; S.signRequests=[]; S._oooForms=null;
     syncFromSheet(); showToast("Switched to "+S.branchName+" ✓"); render(); return;
   }
   if(a==="restock-view") { S._restockView=v; renderRestock(); return; }
