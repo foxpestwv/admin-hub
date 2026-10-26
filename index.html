@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.1";
+const APP_VERSION = "3.7.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1502,7 +1502,7 @@ async function syncFromSheet(){
     }
     // Only load pending orders on sync - history loads when Orders tab opens
     try {
-      var ordResult = await gs("getPendingServer", null);
+      var ordResult = await gs("getPendingServer", {branch:S.branch||"willamette"});
       var pending = (ordResult && ordResult.orders) ? ordResult.orders : [];
       // Merge pending with existing cached history
       var cachedOrders = S.orders||[];
@@ -1610,20 +1610,20 @@ async function checkEmail(){
   var isMgr = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
   var isTech = S.techAccounts.find(function(t){ return t.email.toLowerCase()===email; });
   
-  // Super admin can log into any branch even if not in that branch's accounts
+  // Super admin can log into any branch without appearing in that branch's accounts
   var isSuperAdminEmail = typeof SUPER_ADMINS!=="undefined" && SUPER_ADMINS.indexOf(email)>=0;
   if(!isMgr && !isTech && isSuperAdminEmail){
-    // Create a temporary manager account for super admin
-    isMgr = {
-      name:"John Kluttz", email:email, 
-      title:"Super Admin", role:"manager",
-      pin: S.managers&&S.managers.length>0 ? null : null
-    };
-    // Use actual pin from willamette account if available
-    if(S.managers&&S.managers.length>0){
-      var realAcct = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
-      if(realAcct) isMgr = realAcct;
-    }
+    // Load their real willamette account for PIN verification only
+    try {
+      var saRes = await gs("getAccounts", {branch:"willamette"});
+      var saAcct = (saRes&&saRes.managers||[]).find(function(m){ return m.email.toLowerCase()===email; });
+      if(saAcct){
+        // Add temporarily to S.managers for PIN check only - marked as superAdmin
+        saAcct = Object.assign({}, saAcct, {isSuperAdmin:true});
+        S.managers = [saAcct];
+        isMgr = saAcct;
+      }
+    } catch(e){}
   }
   
   if(!isMgr && !isTech){
@@ -1741,8 +1741,15 @@ function login(role){
   if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-  // Load all data once on login - accounts already in S.managers from selectBranch
-  syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
+  // If super admin logged into a foreign branch, restore real branch managers after sync
+  var _isSuperAdminLogin = S.currentUser && S.currentUser.isSuperAdmin;
+  syncFromSheet().then(function(){
+    if(_isSuperAdminLogin){
+      // Remove super admin from managers display - they're invisible in this branch
+      S.managers = S.managers.filter(function(m){ return !m.isSuperAdmin; });
+    }
+    render();
+  }).catch(function(){ render(); });
   // Don't call saveAccountsToSheet here - it overwrites branch accounts
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
