@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.0.8";
+const APP_VERSION = "4.0.9";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -3622,7 +3622,7 @@ function renderInv(){
       </div>
     </div>` : "";
 
-  pg.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><h2 style="font-size:20px;font-weight:700;">Inventory</h2><div style="display:flex;gap:6px;"><button class="btn bp" style="font-size:11px;padding:5px 10px;" data-a="inv-show-add">+ Add Product</button><button class="btn bg" style="font-size:11px;padding:5px 10px;" data-a="sync">Sync</button></div></div>
+  pg.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><h2 style="font-size:20px;font-weight:700;">Inventory</h2><div style="display:flex;gap:6px;"><button class="btn bg" style="font-size:11px;padding:5px 10px;" data-a="sync">Sync</button></div></div>
     <p style="color:#475569;font-size:13px;margin-bottom:16px;">From Active Inventory sheet</p>
     ${low.length>0?`<div style="background:#431407;border:1px solid #c2410c;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;"><span style="color:#fb923c;">!</span><span style="color:#fb923c;font-size:13px;font-weight:500;">${low.length} item${low.length>1?"s":""} low on stock</span></div>`:""}
     ${addPanel}
@@ -5798,7 +5798,7 @@ function renderSettings(){
       +"<input type='number' class='inp' id='new-prod-lowat' placeholder='Low at'>"
       +"<input type='number' class='inp' id='new-prod-warn' placeholder='Truck warn'>"
       +"</div>"
-      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-prod'>Add Product</button>"
+
       +((S._hiddenProductCount||0)>0?"<button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:10px;margin-top:8px;'>👁 Restore Hidden Products ("+(S._hiddenProductCount||0)+")</button>":"")
       +"</div>";
 
