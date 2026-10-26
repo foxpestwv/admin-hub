@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.4";
+const APP_VERSION = "3.9.5";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2989,7 +2989,11 @@ async function handleAction(a,v,el,e){
     var truck2=(document.getElementById("new-tech-truck")||{}).value||"";
     if(!name2.trim()){alert("Please enter a name.");return;}
     if(!S.techAccounts) S.techAccounts=[];
-    S.techAccounts.push({id:"tech-"+Date.now(),name:name2.trim(),email:email2.trim(),truck:truck2.trim(),pin:"",tempPin:"1234",isTemp:true});
+    var newTechObj = {id:"tech-"+Date.now(),name:name2.trim(),email:email2.trim().toLowerCase(),truck:truck2.trim(),pin:"",tempPin:"1234",isTemp:true,perms:"tech"};
+    S.techAccounts.push(newTechObj);
+    if(!S.techs.includes(name2.trim())) S.techs.push(name2.trim());
+    gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+    lsSet("hub:techAccounts", S.techAccounts);
     save(); renderSettings(); return;
   }
   if(a==="del-tech") {
