@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.6";
+const APP_VERSION = "3.9.7";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -3001,11 +3001,11 @@ async function handleAction(a,v,el,e){
     var dtName = S.techAccounts[dtIdx] ? S.techAccounts[dtIdx].name : "this technician";
     if(confirm("Remove "+dtName+"? This cannot be undone.")){
       S.techAccounts.splice(dtIdx,1);
-      // Also remove from techs list
       S.techs = S.techs.filter(function(t){ return t!==dtName; });
-      gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
       lsSet("hub:techAccounts", S.techAccounts);
       lsSet("hub:techs", S.techs);
+      showToast(dtName+" removed ✓");
       renderSettings();
     }
     return;
@@ -5874,15 +5874,9 @@ function renderSettings(){
 async function removeProd(id){
   const p = S.products.find(function(x){return x.id===id;});
   if(!p) return;
-  // If no row number, sync first to get it
-  if(!p.row){
-    alert("Product row number unknown. Please tap Sync first to refresh sheet data, then try removing again.");
-    return;
-  }
-  if(!confirm("Remove "+p.name+" from inventory? This will remove it from both the app and the sheet.")) return;
-  // Remove from sheet FIRST before updating app
+  if(!confirm("Hide "+p.name+" from your branch? You can restore it in Settings → Products.")) return;
   try {
-    const result = await gs("removeProductFromSheetServer",{row:p.row});
+    const result = await gs("hideProduct",{id:id, branch:S.branch||"willamette"});
     if(result && result.ok){
       S.products = S.products.filter(function(x){return x.id!==id;});
       S._restockId=null; S._adjId=null;
