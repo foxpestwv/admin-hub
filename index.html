@@ -400,7 +400,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.9";
+const APP_VERSION = "3.6.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1592,6 +1592,22 @@ async function checkEmail(){
 
   var isMgr = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
   var isTech = S.techAccounts.find(function(t){ return t.email.toLowerCase()===email; });
+  
+  // Super admin can log into any branch even if not in that branch's accounts
+  var isSuperAdminEmail = typeof SUPER_ADMINS!=="undefined" && SUPER_ADMINS.indexOf(email)>=0;
+  if(!isMgr && !isTech && isSuperAdminEmail){
+    // Create a temporary manager account for super admin
+    isMgr = {
+      name:"John Kluttz", email:email, 
+      title:"Super Admin", role:"manager",
+      pin: S.managers&&S.managers.length>0 ? null : null
+    };
+    // Use actual pin from willamette account if available
+    if(S.managers&&S.managers.length>0){
+      var realAcct = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
+      if(realAcct) isMgr = realAcct;
+    }
+  }
   
   if(!isMgr && !isTech){
     if(err) err.textContent="Email not found. Please check and try again.";
