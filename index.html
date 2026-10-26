@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.2";
+const APP_VERSION = "3.5.3";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2016,27 +2016,22 @@ function handleAction(a,v,el,e){
   if(a==="deny-order") { confirmDeny(v); return; }
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
   if(a==="switch-branch"){
-    S.branch=v; S.branchName=v==="spokane"?"Spokane":"Willamette Valley"; S.branchChosen=true;
-    lsSet("hub:branch",v); lsSet("hub:branchName",S.branchName); lsSet("hub:branchChosen",true);
-    // Clear all branch-specific data
-    S.managers=[]; S.techAccounts=[]; S.orders=[]; S.signRequests=[]; S._oooForms=null;
-    S.products=[]; S.trucks=[]; S.cats=[];
-    // Load accounts for new branch immediately
-    (async function(){
-      try {
-        var res = await gs("getAccountsServer", {branch:v});
-        S.managers = res&&res.managers||[];
-        S.techAccounts = res&&res.techAccounts||[];
-        lsSet("hub:managers_"+v, S.managers);
-        lsSet("hub:techAccounts_"+v, S.techAccounts);
-        lsSet("hub:managers", S.managers);
-        lsSet("hub:techAccounts", S.techAccounts);
-      } catch(e){ console.warn("Branch switch accounts:", e.message); }
-      syncFromSheet();
-      showToast("Switched to "+S.branchName+" ✓");
-      render();
-    })();
-    render(); // render immediately with empty state
+    var newBranch = v;
+    var newBranchName = v==="spokane"?"Spokane":"Willamette Valley";
+    // Save branch choice to localStorage then reload page
+    lsSet("hub:branch", newBranch);
+    lsSet("hub:branchName", newBranchName);
+    lsSet("hub:branchChosen", true);
+    // Clear all cached data for clean reload
+    lsSet("hub:managers", null);
+    lsSet("hub:techAccounts", null);
+    lsSet("hub:orders", null);
+    lsSet("hub:signRequests", null);
+    lsSet("hub:oooForms", null);
+    lsSet("hub:products", null);
+    showToast("Switching to "+newBranchName+"...");
+    // Reload page so everything starts fresh for new branch
+    setTimeout(function(){ window.location.reload(); }, 800);
     return;
   }
   if(a==="restock-view") { S._restockView=v; renderRestock(); return; }
