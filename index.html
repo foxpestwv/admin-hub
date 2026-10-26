@@ -91,7 +91,7 @@ input,textarea,select,button{font-family:inherit;}
   <div id="logo-login" style="height:80px;width:200px;margin-bottom:32px;"></div>
   <div style="background:#0f1f38;border-radius:16px;padding:32px;width:100%;max-width:340px;border:1px solid #1e3a5f;">
     <h2 style="text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;">Admin Hub</h2>
-    <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Fox Pest Control - Willamette Valley</p>
+    <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;" id="login-branch-display">Fox Pest Control</p>
 
     <!-- Step 0: Branch Selection -->
     <div id="login-step-branch" style="display:block;">
@@ -336,6 +336,8 @@ function selectBranch(branchId){
   lsSet("hub:branch", branchId);
   lsSet("hub:branchName", S.branchName);
   lsSet("hub:branchChosen", true);
+  var disp = document.getElementById("login-branch-display");
+  if(disp) disp.textContent = "Fox Pest Control - " + S.branchName;
   document.getElementById("login-step-branch").style.display = "none";
   document.getElementById("login-step-email").style.display = "block";
 }
@@ -398,7 +400,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.7";
+const APP_VERSION = "3.5.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1729,6 +1731,8 @@ function logout(){
   if(es) es.style.display="none";
   if(rs) rs.style.display="none";
   if(ps) ps.style.display="none";
+  var disp2 = document.getElementById("login-branch-display");
+  if(disp2) disp2.textContent = "Fox Pest Control";
 }
 
 // ─── Event Delegation ────────────────────────────────────────────────────────
@@ -2855,18 +2859,7 @@ function setPage(id){
 function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
-  // Show branch selector when not logged in (unless coming from super admin switch)
-  if(!S.role){
-    var branchStep = document.getElementById("login-step-branch");
-    var emailStep = document.getElementById("login-step-email");
-    if(branchStep && emailStep){
-      // Only show email if email step is already visible (super admin switch)
-      if(emailStep.style.display!=="block"){
-        branchStep.style.display = "block";
-        emailStep.style.display = "none";
-      }
-    }
-  }
+  // Branch display handled by logout() and selectBranch() directly
   // Nav
   const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
   var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"}];
