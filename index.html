@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.2";
+const APP_VERSION = "3.7.3";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -608,8 +608,12 @@ async function gs(fn, data){
 
       // ── PRODUCTS ────────────────────────────────────────────────────────────
       case "getProducts": {
+        var prodBranch = (data&&data.branch)||"willamette";
         var prods = await fbGet("products");
-        var parsedProds = (prods||[]).map(function(p){
+        var parsedProds = (prods||[]).filter(function(p){
+          // Filter by branch - products with no branch tag belong to willamette
+          return !p.branch || p.branch===prodBranch;
+        }).map(function(p){
           return {
             id: p.id||p._id||"",
             name: p.name||"",
@@ -621,7 +625,8 @@ async function gs(fn, data){
             createdAt: p.createdAt||"",
             upc: p.upc||"",
             sdsUrl: p.sdsUrl||"",
-            labelUrl: p.labelUrl||""
+            labelUrl: p.labelUrl||"",
+            branch: p.branch||"willamette"
           };
         });
         return {products: parsedProds};
@@ -655,7 +660,8 @@ async function gs(fn, data){
           qty: 0, lowAt: data.lowAt||0,
           truckWarnAbove: data.truckWarnAbove||0,
           reorderNote: data.reorderNote||"",
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          branch: (data&&data.branch)||"willamette"
         };
         await fbSet("products", newProd.id, newProd);
         return {ok:true, product: newProd};
