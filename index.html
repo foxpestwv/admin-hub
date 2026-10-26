@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.8";
+const APP_VERSION = "3.6.9";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -946,8 +946,15 @@ async function gs(fn, data){
       case "getAccountsServer":
       case "getAccounts": {
         await initFirebase();
-        var acctDoc = await _db.collection("config").doc("accounts").get();
-        if(acctDoc.exists) return acctDoc.data();
+        var branchKey4 = (data&&data.branch)||"willamette";
+        // Try branch-specific document first
+        var acctDocB = await _db.collection("config").doc("accounts_"+branchKey4).get();
+        if(acctDocB.exists) return acctDocB.data();
+        // Fall back to legacy only for willamette
+        if(branchKey4==="willamette"){
+          var acctDocLeg = await _db.collection("config").doc("accounts").get();
+          if(acctDocLeg.exists) return acctDocLeg.data();
+        }
         return {managers:[], techAccounts:[], trucks:[], cats:[], inspFields:[]};
       }
       case "getSignRequests": {
