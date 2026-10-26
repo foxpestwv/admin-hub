@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.3";
+const APP_VERSION = "3.5.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1366,7 +1366,7 @@ function fbParseArray(val){
 
 async function loadAccountsFromSheet(){
   try {
-    const result = await gs("getAccountsServer", null);
+    const result = await gs("getAccountsServer", {branch:S.branch||"willamette"});
     if(result){
       var mgrs = fbParseArray(result.managers);
       if(mgrs.length){ S.managers = mgrs; lsSet("hub:managers", S.managers); }
