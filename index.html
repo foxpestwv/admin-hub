@@ -96,8 +96,7 @@ input,textarea,select,button{font-family:inherit;}
     <!-- Step 0: Branch Selection -->
     <div id="login-step-branch" style="display:block;">
       <div style="font-size:13px;color:#64748b;margin-bottom:16px;text-align:center;">Select your branch to continue</div>
-      <button class="btn bg" onclick="selectBranch('willamette')" style="width:100%;padding:14px;font-size:15px;margin-bottom:10px;">🌲 Willamette Valley</button>
-      <button class="btn bg" onclick="selectBranch('spokane')" style="width:100%;padding:14px;font-size:15px;">🏔 Spokane</button>
+      <div id="branch-list"><div style="text-align:center;color:#64748b;padding:20px;">Loading branches...</div></div>
     </div>
 
     <!-- Step 1: Email -->
@@ -400,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.2";
+const APP_VERSION = "3.6.3";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1724,9 +1723,9 @@ function login(role){
   if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-  // Load all data once on login (no background repeat)
+  // Load all data once on login - accounts already in S.managers from selectBranch
   syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
-  saveAccountsToSheet();
+  // Don't call saveAccountsToSheet here - it overwrites branch accounts
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
 }
@@ -1749,6 +1748,8 @@ function logout(){
   if(ps) ps.style.display="none";
   var disp2 = document.getElementById("login-branch-display");
   if(disp2) disp2.textContent = "Fox Pest Control";
+  // Load branch list dynamically
+  loadBranchList();
 }
 
 // ─── Event Delegation ────────────────────────────────────────────────────────
@@ -8693,6 +8694,8 @@ if(_guestToken){
 }
 
 load(); // Load from localStorage immediately - fast
+// Load branch list on initial page load
+setTimeout(function(){ if(!S.role) loadBranchList(); }, 100);
 
 // Check for guest signing token in URL
 (async function(){
