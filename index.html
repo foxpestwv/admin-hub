@@ -399,8 +399,10 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.5";
+const APP_VERSION = "3.7.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
+const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
+var _adminPin = "";
 
 // Branch configuration
 const BRANCHES = {
@@ -1757,7 +1759,11 @@ function showSetPin(){
     S.currentUser.isTemp = false;
     S.currentUser.tempPin = "";
     // Update in managers or techAccounts
-    if(S.role==="manager"){
+    if(S.role==="superadmin"){
+    renderSuperAdmin();
+    return;
+  }
+  if(S.role==="manager"){
       S.managers = S.managers.map(function(m){ return m.id===S.currentUser.id ? S.currentUser : m; });
     } else {
       S.techAccounts = S.techAccounts.map(function(t){ return t.id===S.currentUser.id ? S.currentUser : t; });
@@ -1792,6 +1798,71 @@ function login(role){
   setTimeout(function(){ showWelcomeSplash(); }, 600);
 }
 
+function showAdminLogin(){
+  document.getElementById("login-step-branch").style.display="none";
+  document.getElementById("login-step-email").style.display="none";
+  document.getElementById("login-step-role").style.display="none";
+  document.getElementById("login-step-pin").style.display="none";
+  document.getElementById("login-step-admin").style.display="block";
+  _adminPin = "";
+  updateAdminDots();
+}
+
+function showBranchStep(){
+  document.getElementById("login-step-admin").style.display="none";
+  document.getElementById("login-step-branch").style.display="block";
+  _adminPin = "";
+}
+
+function updateAdminDots(){
+  var dots = document.getElementById("admin-dots");
+  if(!dots) return;
+  dots.innerHTML = [0,1,2,3].map(function(i){
+    var filled = i < _adminPin.length;
+    return "<div style='width:12px;height:12px;border-radius:50%;background:"+(filled?"#f59e0b":"#1e3a5f")+";'></div>";
+  }).join("");
+}
+
+function adminPinBack(){
+  _adminPin = _adminPin.slice(0,-1);
+  updateAdminDots();
+}
+
+function adminPinClear(){
+  _adminPin = "";
+  updateAdminDots();
+}
+
+function adminPinDigit(n){
+  if(_adminPin.length>=6) return;
+  _adminPin += n;
+  updateAdminDots();
+  if(_adminPin.length===6) adminPinSubmit();
+}
+
+function adminPinSubmit(){
+  if(_adminPin===SUPER_ADMIN_PIN){
+    // Login as super admin
+    S.branch = "all";
+    S.branchName = "All Branches";
+    S.role = "superadmin";
+    S.managerName = "John Kluttz";
+    S.currentUser = {name:"John Kluttz", email:"john.kluttz@fox-marketingservices.com", title:"Super Admin", role:"superadmin"};
+    lsSet("hub:branch","all");
+    lsSet("hub:branchName","All Branches");
+    document.getElementById("login").style.display="none";
+    document.getElementById("app").style.display="block";
+    // Load all branch data
+    syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
+    render();
+  } else {
+    var status = document.getElementById("admin-pin-status");
+    if(status) status.textContent = "Incorrect PIN - try again";
+    _adminPin = "";
+    updateAdminDots();
+  }
+}
+
 async function loadBranchList(){
   var listDiv = document.getElementById("branch-list");
   if(!listDiv) return;
@@ -1818,6 +1889,8 @@ async function loadBranchList(){
 
 function logout(){
   S.role=null; S.currentUser=null; S.checkTech=""; pin=""; loginEmail=""; loginRole="";
+  S.branch=null; S.branchName=null; S.branchChosen=false;
+  lsSet("hub:branch",null); lsSet("hub:branchName",null); lsSet("hub:branchChosen",false);
   document.getElementById("app").style.display="none";
   var loginDiv = document.getElementById("login");
   loginDiv.style.display="flex";
@@ -2139,6 +2212,24 @@ function handleAction(a,v,el,e){
   if(a==="approve-order") { confirmApprove(v); return; }
   if(a==="deny-order") { confirmDeny(v); return; }
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
+  if(a==="sa-enter-branch"){
+    var parts = v.split("|");
+    S.branch=parts[0]; S.branchName=parts[1]||parts[0];
+    S.role="manager"; // Switch to manager view for this branch
+    lsSet("hub:branch",S.branch); lsSet("hub:branchName",S.branchName);
+    syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
+    render();
+    return;
+  }
+  if(a==="sa-add-branch"){
+    var bName = prompt("Branch name:");
+    if(!bName) return;
+    var bId = bName.toLowerCase().replace(/[^a-z0-9]/g,"_");
+    initFirebase().then(function(){
+      return _db.collection("branches").doc(bId).set({name:bName, createdAt:new Date().toISOString()});
+    }).then(function(){ showToast(bName+" added ✓"); renderSuperAdmin(); });
+    return;
+  }
   // switch-branch is handled at login screen only
   if(a==="super-switch-branch"){
     // Log out cleanly then preselect branch
@@ -5344,6 +5435,33 @@ function buildOOOFormHtml(form){
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+function renderSuperAdmin(){
+  var pg = document.getElementById("pg-home");
+  if(!pg) return;
+  pg.innerHTML = "<div style='padding:16px;'>"
+    +"<div style='display:flex;align-items:center;gap:12px;margin-bottom:20px;'>"
+    +"<div style='font-size:32px;'>⚙</div>"
+    +"<div><div style='font-size:20px;font-weight:700;'>Super Admin</div>"
+    +"<div style='font-size:13px;color:#64748b;'>Fox Pest Control</div></div></div>"
+    +"<div style='font-size:13px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;'>Branches</div>"
+    +"<div id='sa-branch-list'><div style='color:#64748b;'>Loading...</div></div>"
+    +"</div>";
+  // Load branches
+  gs("getBranches",null).then(function(res){
+    var branches = res&&res.branches||[];
+    var listDiv = document.getElementById("sa-branch-list");
+    if(!listDiv) return;
+    listDiv.innerHTML = branches.map(function(b){
+      return "<div class='card' style='margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;'>"
+        +"<div><div style='font-weight:600;'>"+esc(b.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(b.id)+"</div></div>"
+        +"<button class='btn bp' data-a='sa-enter-branch' data-v='"+b.id+"|"+b.name+"' style='padding:8px 14px;font-size:13px;'>Enter →</button>"
+        +"</div>";
+    }).join("")
+    +"<button class='btn bg' data-a='sa-add-branch' style='width:100%;padding:12px;margin-top:8px;'>+ Add Branch</button>";
+  });
+}
+
 function renderSettings(){
   const pg = document.getElementById("pg-settings");
   if(!pg) return;
