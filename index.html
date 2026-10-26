@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.0";
+const APP_VERSION = "3.5.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1389,7 +1389,19 @@ async function loadAccountsFromSheet(){
 
 async function saveAccountsToSheet(){
   try {
-    await gs("saveAccountsServer", {managers: S.managers, techAccounts: S.techAccounts, trucks: S.trucks, cats: S.cats, inspFields: S.inspFields});
+    // Never save empty managers - prevents cross-branch data corruption
+    if(!S.managers || S.managers.length===0){
+      console.warn("saveAccountsToSheet: skipping - no managers to save");
+      return;
+    }
+    await gs("saveAccountsServer", {
+      branch: S.branch||"willamette",
+      managers: S.managers,
+      techAccounts: S.techAccounts,
+      trucks: S.trucks,
+      cats: S.cats,
+      inspFields: S.inspFields
+    });
   } catch(e){ console.warn("Save accounts:", e.message); }
 }
 
