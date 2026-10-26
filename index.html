@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.0.4";
+const APP_VERSION = "4.0.5";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -5711,6 +5711,7 @@ function renderSettings(){
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Access Control</h2>"
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Managers</div>"
       +mgrRows
+      +"<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='add-mgr'>+ Add Manager</button>"
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;margin-top:14px;'>Technicians</div>"
       +techRows
       +"<div class='card' style='margin-top:14px;padding:14px;'>"
