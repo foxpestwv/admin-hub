@@ -400,7 +400,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.8";
+const APP_VERSION = "3.5.9";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1709,7 +1709,7 @@ function login(role){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
   // Load all data once on login (no background repeat)
-  syncFromSheet();
+  syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
   saveAccountsToSheet();
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
