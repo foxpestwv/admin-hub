@@ -398,7 +398,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.5.5";
+const APP_VERSION = "3.5.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2024,6 +2024,25 @@ function handleAction(a,v,el,e){
   if(a==="deny-order") { confirmDeny(v); return; }
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
   // switch-branch is handled at login screen only
+  if(a==="super-switch-branch"){
+    // Log out cleanly then preselect branch
+    S.role=null; S.currentUser=null; S.checkTech=""; pin=""; loginEmail=""; loginRole="";
+    S.managers=[]; S.techAccounts=[]; S.orders=[]; S.signRequests=[];
+    S._oooForms=null; S.products=[];
+    lsSet("hub:managers",null); lsSet("hub:techAccounts",null);
+    lsSet("hub:orders",null); lsSet("hub:signRequests",null);
+    lsSet("hub:oooForms",null); lsSet("hub:products",null);
+    // Pre-select the branch so they skip the selector
+    selectBranch(v);
+    // Show login
+    document.getElementById("app").style.display="none";
+    document.getElementById("login").style.display="block";
+    document.getElementById("login-step-branch").style.display="none";
+    document.getElementById("login-step-email").style.display="block";
+    document.getElementById("login-step-role").style.display="none";
+    document.getElementById("login-step-pin").style.display="none";
+    return;
+  }
   if(a==="restock-view") { S._restockView=v; renderRestock(); return; }
   if(a==="restock-add-prod") { restockAddProd(); return; }
   if(a==="restock-remove-extra") { snapshotRestockQtys(); if(S._restockExtras) S._restockExtras.splice(parseInt(v),1); renderRestock(); return; }
@@ -2827,13 +2846,16 @@ function setPage(id){
 function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
-  // Always show branch selector when not logged in
+  // Show branch selector when not logged in (unless coming from super admin switch)
   if(!S.role){
     var branchStep = document.getElementById("login-step-branch");
     var emailStep = document.getElementById("login-step-email");
     if(branchStep && emailStep){
-      branchStep.style.display = "block";
-      emailStep.style.display = "none";
+      // Only show email if email step is already visible (super admin switch)
+      if(emailStep.style.display!=="block"){
+        branchStep.style.display = "block";
+        emailStep.style.display = "none";
+      }
     }
   }
   // Nav
@@ -5241,8 +5263,10 @@ function renderSettings(){
     ?"<div class='card' style='margin-bottom:14px;border:1px solid #f59e0b44;'>"
       +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;'>⚡ Super Admin</div>"
       +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Current branch: <strong style='color:#e2e8f0;'>"+esc(S.branchName||"Willamette Valley")+"</strong></div>"
-      +"<div style='font-size:11px;color:#475569;'>To switch branches, log out and select a different branch at login.</div>"
-      +"</div>"
+      +"<div style='display:flex;gap:8px;margin-top:8px;'>"
+      +"<button class='btn bg' style='flex:1;padding:8px;font-size:12px;' data-a='super-switch-branch' data-v='willamette'>🌲 Willamette</button>"
+      +"<button class='btn bg' style='flex:1;padding:8px;font-size:12px;' data-a='super-switch-branch' data-v='spokane'>🏔 Spokane</button>"
+      +"</div></div>"
     :"";
 
   var body = "";
