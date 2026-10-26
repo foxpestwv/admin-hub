@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.7";
+const APP_VERSION = "3.9.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -5879,6 +5879,7 @@ async function removeProd(id){
     const result = await gs("hideProduct",{id:id, branch:S.branch||"willamette"});
     if(result && result.ok){
       S.products = S.products.filter(function(x){return x.id!==id;});
+      S._hiddenProductCount = (S._hiddenProductCount||0) + 1;
       S._restockId=null; S._adjId=null;
       save(); renderInv();
     } else {
