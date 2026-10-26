@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.5";
+const APP_VERSION = "3.9.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2968,7 +2968,7 @@ async function handleAction(a,v,el,e){
     return;
   }
 
-  if(a==="add-tech") { const inp=document.getElementById("new-tech-inp"); if(inp&&inp.value.trim()){S.techs.push(inp.value.trim());save();render();} return; }
+  // add-tech handled below in settings section
   if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
