@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.0";
+const APP_VERSION = "3.9.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1039,6 +1039,9 @@ async function gs(fn, data){
         await initFirebase();
         var srSnap = await _db.collection("signRequests").get();
         var srDocs = srSnap.docs.map(function(d){ return Object.assign({_id:d.id},d.data()); });
+        // Filter by branch
+        var srBranch = data&&data.branch;
+        if(srBranch) srDocs = srDocs.filter(function(r){ return !r.branch||r.branch===srBranch; });
         srDocs.sort(function(a,b){ return (b.createdAt||b.date||"").localeCompare(a.createdAt||a.date||""); });
         return {signRequests: srDocs};
       }
@@ -7360,7 +7363,7 @@ async function renderSign(skipReload){
   // Load fresh sign requests from sheet unless we just updated locally
   if(!skipReload){
     try {
-      var signData = await gs("getSignRequestsServer", null);
+      var signData = await gs("getSignRequestsServer", {branch:S.branch||"willamette"});
       var rawReqs = signData && (signData.signRequests || signData.requests || []);
       if(rawReqs && rawReqs.length >= 0){
         // Parse any JSON string fields
