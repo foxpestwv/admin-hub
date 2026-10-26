@@ -143,8 +143,41 @@ input,textarea,select,button{font-family:inherit;}
       </div>
       <button style="background:transparent;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:12px;width:100%;text-align:center;" id="back-to-email-btn">Use a different email</button>
     </div>
+
+    <!-- Super Admin PIN Step -->
+    <div id="login-step-admin" style="display:none;">
+      <div style="font-size:13px;color:#64748b;margin-bottom:12px;text-align:center;">Super Admin Access</div>
+      <div style="text-align:center;color:#f59e0b;font-size:12px;font-weight:600;margin-bottom:10px;">ADMINISTRATOR</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-bottom:8px;">
+        <div id="admin-dots" style="display:flex;gap:6px;">
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#1e3a5f;"></div>
+        </div>
+      </div>
+      <div id="admin-pin-status" style="text-align:center;font-size:12px;color:#64748b;margin-bottom:12px;">Ready - tap a number</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:240px;margin:0 auto;">
+        <button class="pk admin-pin-btn" data-n="1">1</button>
+        <button class="pk admin-pin-btn" data-n="2">2</button>
+        <button class="pk admin-pin-btn" data-n="3">3</button>
+        <button class="pk admin-pin-btn" data-n="4">4</button>
+        <button class="pk admin-pin-btn" data-n="5">5</button>
+        <button class="pk admin-pin-btn" data-n="6">6</button>
+        <button class="pk admin-pin-btn" data-n="7">7</button>
+        <button class="pk admin-pin-btn" data-n="8">8</button>
+        <button class="pk admin-pin-btn" data-n="9">9</button>
+        <button class="pk" onclick="adminPinClear()">C</button>
+        <button class="pk admin-pin-btn" data-n="0">0</button>
+        <button class="pk del" onclick="adminPinBack()">←</button>
+      </div>
+      <button onclick="showBranchStep()" style="background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;margin-top:12px;width:100%;text-align:center;">← Back</button>
+    </div>
   </div>
   <p style="color:#334155;font-size:12px;margin-top:24px;">Fox Pest Control - Willamette Valley Branch</p>
+  <button onclick="showAdminLogin()" style="background:none;border:none;color:#1e3a5f;font-size:11px;margin-top:12px;cursor:pointer;padding:4px 8px;opacity:0.4;">⚙</button>
 </div>
 
 <div id="app" style="display:none;">
@@ -399,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.7.6";
+const APP_VERSION = "3.7.7";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
