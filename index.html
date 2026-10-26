@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.1";
+const APP_VERSION = "3.9.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -810,6 +810,9 @@ async function gs(fn, data){
           if(typeof o.items==="string") try{ o.items=JSON.parse(o.items); }catch(e){ o.items=[]; }
           return o;
         });
+        // Filter by branch
+        var pendBranch3 = data&&data.branch;
+        if(pendBranch3) parsedPend = parsedPend.filter(function(o){ return !o.branch||o.branch===pendBranch3; });
         return {orders: parsedPend};
       }
       case "savePendingOrder":
@@ -3972,7 +3975,7 @@ async function submitCheckout(){
 // ─── Orders ───────────────────────────────────────────────────────────────────
 async function refreshOrders(){
   try {
-    var pendResult = await gs("getPendingServer", null);
+    var pendResult = await gs("getPendingServer", {branch:S.branch||"willamette"});
     var histResult = await gs("getOrderHistoryServer", null);
     var pending = (pendResult && pendResult.orders) ? pendResult.orders : [];
     var history = (histResult && histResult.orders) ? histResult.orders : [];
