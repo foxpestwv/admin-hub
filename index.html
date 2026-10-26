@@ -432,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.3";
+const APP_VERSION = "3.8.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1929,9 +1929,6 @@ function logout(){
   S.role=null; S.currentUser=null; S.checkTech=""; pin=""; loginEmail=""; loginRole="";
   S.branch=null; S.branchName=null; S.branchChosen=false; S._saViewBranch=null;
   lsSet("hub:branch",null); lsSet("hub:branchName",null); lsSet("hub:branchChosen",false);
-  // Restore header
-  var hdr3 = document.getElementById("hdr");
-  if(hdr3) hdr3.style.display="";
   document.getElementById("app").style.display="none";
   var loginDiv = document.getElementById("login");
   loginDiv.style.display="flex";
@@ -3166,19 +3163,11 @@ function render(){
   if(S.role==="superadmin"){
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
-    // Hide regular nav elements
-    var hdr = document.getElementById("hdr");
-    if(hdr) hdr.style.display="none";
-    // Show all pages hidden, then show home
     document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
     var homePg = document.getElementById("pg-home");
     if(homePg){ homePg.style.display="block"; }
     renderSuperAdmin();
     return;
-  } else {
-    // Make sure header shows for non-superadmin
-    var hdr2 = document.getElementById("hdr");
-    if(hdr2) hdr2.style.display="";
   }
   // Branch display handled by logout() and selectBranch() directly
   // Nav
