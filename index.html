@@ -432,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.1";
+const APP_VERSION = "3.8.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1792,19 +1792,7 @@ function showSetPin(){
     S.currentUser.isTemp = false;
     S.currentUser.tempPin = "";
     // Update in managers or techAccounts
-    if(S.role==="superadmin"){
-    // Show app, hide login
-    document.getElementById("login").style.display="none";
-    document.getElementById("app").style.display="block";
-    // Navigate to home page
-    S.currentTab = "dashboard";
-    document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
-    var homePg = document.getElementById("pg-home");
-    if(homePg) homePg.style.display="block";
-    renderSuperAdmin();
-    return;
-  }
-  if(S.role==="manager"){
+    if(S.role==="manager"){
       S.managers = S.managers.map(function(m){ return m.id===S.currentUser.id ? S.currentUser : m; });
     } else {
       S.techAccounts = S.techAccounts.map(function(t){ return t.id===S.currentUser.id ? S.currentUser : t; });
@@ -3171,6 +3159,17 @@ function setPage(id){
 function render(){
   // Don't render normal UI if guest signing is active
   if(new URLSearchParams(window.location.search).get("sign")) return;
+  // Super admin gets its own console
+  if(S.role==="superadmin"){
+    document.getElementById("login").style.display="none";
+    document.getElementById("app").style.display="block";
+    S.currentTab = "dashboard";
+    document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
+    var homePg = document.getElementById("pg-home");
+    if(homePg) homePg.style.display="block";
+    renderSuperAdmin();
+    return;
+  }
   // Branch display handled by logout() and selectBranch() directly
   // Nav
   const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
