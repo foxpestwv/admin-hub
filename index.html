@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.9";
+const APP_VERSION = "3.7.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -582,12 +582,15 @@ async function gs(fn, data){
 
       // ── ACCOUNTS ────────────────────────────────────────────────────────────
       case "getAccounts": {
-        var cfg = await fbGet("config","accounts");
+        var brKey = (data&&data.branch)||"willamette";
+        var cfg = await fbGet("config","accounts_"+brKey);
+        if(!cfg && brKey==="willamette") cfg = await fbGet("config","accounts");
         return cfg || {managers:[],techAccounts:[],trucks:[],cats:[],inspFields:[]};
       }
       case "saveAccounts":
       case "saveAccountsServer": {
-        await fbSet("config","accounts",{
+        var brKeySave = (data&&data.branch)||"willamette";
+        await fbSet("config","accounts_"+brKeySave,{
           managers: data.managers||[],
           techAccounts: data.techAccounts||[],
           trucks: data.trucks||[],
