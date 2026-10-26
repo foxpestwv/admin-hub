@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.7";
+const APP_VERSION = "3.8.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -3128,7 +3128,10 @@ async function handleAction(a,v,el,e){
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 function setPage(id){
-  document.querySelectorAll(".pg").forEach(p=>p.classList.remove("on"));
+  document.querySelectorAll(".pg").forEach(function(p){
+    p.classList.remove("on");
+    p.style.display=""; // Clear any inline display overrides
+  });
   const pg=document.getElementById("pg-"+id);
   if(pg) pg.classList.add("on");
 }
@@ -3140,9 +3143,9 @@ function render(){
   if(S.role==="superadmin"){
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
-    document.querySelectorAll(".pg").forEach(function(p){ p.style.display="none"; });
+    document.querySelectorAll(".pg").forEach(function(p){ p.classList.remove("on"); p.style.display=""; });
     var homePg = document.getElementById("pg-dashboard");
-    if(homePg){ homePg.style.display="block"; }
+    if(homePg){ homePg.classList.add("on"); }
     renderSuperAdmin();
     return;
   }
