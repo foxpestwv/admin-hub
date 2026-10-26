@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.3";
+const APP_VERSION = "3.6.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -1728,6 +1728,24 @@ function login(role){
   // Don't call saveAccountsToSheet here - it overwrites branch accounts
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
+}
+
+async function loadBranchList(){
+  var listDiv = document.getElementById("branch-list");
+  if(!listDiv) return;
+  listDiv.innerHTML = "<div style='text-align:center;color:#64748b;padding:10px;'>Loading...</div>";
+  try {
+    var res = await gs("getBranches", null);
+    var branches = res&&res.branches||[];
+    var icons = {willamette:"🌲", spokane:"🏔"};
+    listDiv.innerHTML = branches.map(function(b){
+      var icon = icons[b.id]||"🏢";
+      return "<button class='btn bg branch-btn' data-bid='"+b.id+"' data-bname='"+b.name+"' style='width:100%;padding:14px;font-size:15px;margin-bottom:10px;'>"+icon+" "+b.name+"</button>";
+    }).join("");
+  } catch(e){
+    listDiv.innerHTML = "<button class='btn bg branch-btn' data-bid='willamette' data-bname='Willamette Valley' style='width:100%;padding:14px;font-size:15px;margin-bottom:10px;'>🌲 Willamette Valley</button>"
+      +"<button class='btn bg branch-btn' data-bid='spokane' data-bname='Spokane' style='width:100%;padding:14px;font-size:15px;'>🏔 Spokane</button>";
+  }
 }
 
 function logout(){
