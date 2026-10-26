@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.8";
+const APP_VERSION = "3.9.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -932,7 +932,9 @@ async function gs(fn, data){
 
       // ── TECHS ─────────────────────────────────────────────────────────────────
       case "getTechs": {
-        var cfg2 = await fbGet("config","accounts");
+        var techBranch = (data&&data.branch)||"willamette";
+        var cfg2 = await fbGet("config","accounts_"+techBranch);
+        if(!cfg2 && techBranch==="willamette") cfg2 = await fbGet("config","accounts");
         var techs2 = (cfg2&&cfg2.techAccounts)||[];
         return {techs: techs2.map(function(t){ return {name:t.name, email:t.email||"", truck:t.truck||""}; })};
       }
@@ -1466,7 +1468,8 @@ function fbParseArray(val){
 
 async function loadAccountsFromSheet(){
   try {
-    const result = await gs("getAccountsServer", {branch:S.branch||"willamette"});
+    var currentBranch = S.branch||"willamette";
+    const result = await gs("getAccountsServer", {branch:currentBranch});
     if(result){
       var mgrs = fbParseArray(result.managers);
       if(mgrs.length){ S.managers = mgrs; lsSet("hub:managers", S.managers); }
@@ -1508,10 +1511,11 @@ async function saveAccountsToSheet(){
 async function syncFromSheet(){
   badge("syncing");
   try {
-    const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",null),gs("getTechsServer",null),gs("getRestockOrdersServer",null),gs("getInspectionsServer",null),gs("getTruckInventoryServer",null)]);
+    var _syncBranch = {branch:S.branch||"willamette"};
+    const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",_syncBranch),gs("getTechsServer",_syncBranch),gs("getRestockOrdersServer",_syncBranch),gs("getInspectionsServer",_syncBranch),gs("getTruckInventoryServer",_syncBranch)]);
     // Also load sign requests fresh
     try {
-      var srResult = await gs("getSignRequestsServer", null);
+      var srResult = await gs("getSignRequestsServer", _syncBranch);
       var srArr = srResult && (srResult.signRequests || srResult.requests || []);
       if(srArr && srArr.length >= 0){
         S.signRequests = srArr.map(function(r){
@@ -4555,7 +4559,7 @@ async function onBarcodeScanned(code){
     document.getElementById("scanner-result").textContent = "Scanned: "+code+" — searching...";
     // Reload products fresh from Firebase to get latest UPCs
     try {
-      var fp2 = await gs("getProductsServer", null);
+      var fp2 = await gs("getProductsServer", {branch:S.branch||"willamette"});
       if(fp2&&fp2.products) { S.products=fp2.products; lsSet("hub:products",S.products); }
     } catch(e){}
     // Normalize UPC for comparison - strip whitespace and leading zeros
