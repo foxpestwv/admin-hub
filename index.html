@@ -432,7 +432,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.8.5";
+const APP_VERSION = "3.8.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1682,22 +1682,6 @@ async function checkEmail(){
   var isMgr = S.managers.find(function(m){ return m.email.toLowerCase()===email; });
   var isTech = S.techAccounts.find(function(t){ return t.email.toLowerCase()===email; });
   
-  // Super admin can log into any branch without appearing in that branch's accounts
-  var isSuperAdminEmail = typeof SUPER_ADMINS!=="undefined" && SUPER_ADMINS.indexOf(email)>=0;
-  if(!isMgr && !isTech && isSuperAdminEmail){
-    // Load their real willamette account for PIN verification only
-    try {
-      var saRes = await gs("getAccounts", {branch:"willamette"});
-      var saAcct = (saRes&&saRes.managers||[]).find(function(m){ return m.email.toLowerCase()===email; });
-      if(saAcct){
-        // Add temporarily to S.managers for PIN check only - marked as superAdmin
-        saAcct = Object.assign({}, saAcct, {isSuperAdmin:true});
-        S.managers = [saAcct];
-        isMgr = saAcct;
-      }
-    } catch(e){}
-  }
-  
   if(!isMgr && !isTech){
     if(err) err.textContent="Email not found. Please check and try again.";
     return;
@@ -1813,15 +1797,7 @@ function login(role){
   if(role==="manager" && S.currentUser) S.currentTech=S.currentUser.name;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-  // If super admin logged into a foreign branch, restore real branch managers after sync
-  var _isSuperAdminLogin = S.currentUser && S.currentUser.isSuperAdmin;
-  syncFromSheet().then(function(){
-    if(_isSuperAdminLogin){
-      // Remove super admin from managers display - they're invisible in this branch
-      S.managers = S.managers.filter(function(m){ return !m.isSuperAdmin; });
-    }
-    render();
-  }).catch(function(){ render(); });
+  syncFromSheet().then(function(){ render(); }).catch(function(){ render(); });
   // Don't call saveAccountsToSheet here - it overwrites branch accounts
   // Show welcome splash after login
   setTimeout(function(){ showWelcomeSplash(); }, 600);
