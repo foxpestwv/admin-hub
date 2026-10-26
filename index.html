@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.5";
+const APP_VERSION = "3.4.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -2003,6 +2003,11 @@ function handleAction(a,v,el,e){
   if(a==="approve-order") { confirmApprove(v); return; }
   if(a==="deny-order") { confirmDeny(v); return; }
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
+  if(a==="switch-branch"){
+    S.branch=v; S.branchName=v==="spokane"?"Spokane":"Willamette Valley"; S.branchChosen=true;
+    lsSet("hub:branch",v); lsSet("hub:branchName",S.branchName); lsSet("hub:branchChosen",true);
+    syncFromSheet(); showToast("Switched to "+S.branchName+" ✓"); render(); return;
+  }
   if(a==="restock-view") { S._restockView=v; renderRestock(); return; }
   if(a==="restock-add-prod") { restockAddProd(); return; }
   if(a==="restock-remove-extra") { snapshotRestockQtys(); if(S._restockExtras) S._restockExtras.splice(parseInt(v),1); renderRestock(); return; }
