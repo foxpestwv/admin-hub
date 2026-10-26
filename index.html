@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.8";
+const APP_VERSION = "4.0.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2969,7 +2969,7 @@ async function handleAction(a,v,el,e){
   }
 
   // add-tech handled below in settings section
-  if(a==="del-tech") { if(confirm("Remove?")){S.techs.splice(parseInt(v),1);save();render();} return; }
+  // del-tech handled in settings section below
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
   if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
@@ -5795,6 +5795,7 @@ function renderSettings(){
       +"<input type='number' class='inp' id='new-prod-warn' placeholder='Truck warn'>"
       +"</div>"
       +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-prod'>Add Product</button>"
+      +(hiddenCount>0?"<button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:10px;margin-top:8px;'>👁 Restore Hidden Products ("+hiddenCount+")</button>":"")
       +"</div>";
 
   } else if(tab==="inspection"){
