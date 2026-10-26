@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.0.3";
+const APP_VERSION = "4.0.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -5773,14 +5773,17 @@ function renderSettings(){
   } else if(tab==="products"){
     var prodRows = S.products.map(function(p){
       return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
         +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
         +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Remove</button>"
         +"</div>"
         +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;'>"
-        +"<div><div style='color:#64748b;'>Unit</div><div style='font-weight:600;'>"+esc(p.unit)+"</div></div>"
-        +"<div><div style='color:#64748b;'>Low At</div><div style='font-weight:600;'>"+p.lowAt+"</div></div>"
-        +"<div><div style='color:#64748b;'>Truck Warn</div><div style='font-weight:600;'>"+(p.truckWarnAbove||"—")+"</div></div>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Unit</div>"
+        +"<input class='inp' style='font-size:12px;padding:4px 6px;' data-field='unit' data-pid='"+p.id+"' value='"+esc(p.unit)+"'></div>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Low At</div>"
+        +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='lowAt' data-pid='"+p.id+"' value='"+p.lowAt+"'></div>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Truck Warn</div>"
+        +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='truckWarnAbove' data-pid='"+p.id+"' value='"+(p.truckWarnAbove||0)+"'></div>"
         +"</div></div>";
     }).join("");
 
@@ -5844,6 +5847,16 @@ function renderSettings(){
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
     +superAdminBar+tabBar+body;
 
+  // Wire up product field changes
+  pg.querySelectorAll("input[data-pid]").forEach(function(inp){
+    inp.addEventListener("change", function(){
+      var pid = inp.getAttribute("data-pid");
+      var field = inp.getAttribute("data-field");
+      var val = field==="unit" ? inp.value : parseInt(inp.value)||0;
+      var prod = S.products.find(function(p){return p.id===pid;});
+      if(prod){ prod[field]=val; save(); gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){}); }
+    });
+  });
   // Wire up live input changes for cats/items
   setTimeout(function(){
     pg.querySelectorAll("[data-field]").forEach(function(el){
