@@ -390,7 +390,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.4.1";
+const APP_VERSION = "3.4.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -5218,6 +5218,15 @@ function renderSettings(){
     +tabs.map(function(t){
       return "<button class='btn "+(tab===t.id?"bp":"bg")+"' style='padding:7px 14px;font-size:13px;white-space:nowrap;' data-a='settings-tab' data-v='"+t.id+"'>"+t.l+"</button>";
     }).join("")+"</div>";
+
+  const superAdminBar = isSuperAdmin
+    ?"<div class='card' style='margin-bottom:14px;border:1px solid #f59e0b44;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:10px;'>⚡ Super Admin — Switch Branch</div>"
+      +"<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(S.branch==="willamette"?"bp":"bg")+"' style='flex:1;padding:10px;' data-a='switch-branch' data-v='willamette'>🌲 Willamette</button>"
+      +"<button class='btn "+(S.branch==="spokane"?"bp":"bg")+"' style='flex:1;padding:10px;' data-a='switch-branch' data-v='spokane'>🏔 Spokane</button>"
+      +"</div></div>"
+    :"";
 
   var body = "";
 
