@@ -399,7 +399,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.6.5";
+const APP_VERSION = "3.6.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 
 // Branch configuration
@@ -934,6 +934,12 @@ async function gs(fn, data){
         var gtDoc = await _db.collection("guestTokens").doc(data.token).get();
         if(!gtDoc.exists) return {ok:false, error:"Invalid or expired link"};
         return Object.assign({ok:true}, gtDoc.data());
+      }
+      case "getBranches": {
+        await initFirebase();
+        var brSnap = await _db.collection("branches").get();
+        if(brSnap.empty) return {branches:[{id:"willamette",name:"Willamette Valley"},{id:"spokane",name:"Spokane"}]};
+        return {branches: brSnap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); })};
       }
       case "getAccountsServer":
       case "getAccounts": {
