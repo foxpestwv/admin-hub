@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "3.9.2";
+const APP_VERSION = "3.9.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2095,7 +2095,7 @@ async function handleAction(a,v,el,e){
         if(acct2){ acct2.photo = dataUrl; }
         S._userPhoto = dataUrl;
         // Save accounts to Firebase
-        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
         lsSet("hub:managers", S.managers);
         lsSet("hub:techAccounts", S.techAccounts);
         renderDash();
@@ -2853,7 +2853,7 @@ async function handleAction(a,v,el,e){
     var dmName = S.managers[dmIdx] ? S.managers[dmIdx].name : "this manager";
     if(confirm("Remove "+dmName+"? This cannot be undone.")){
       S.managers.splice(dmIdx,1);
-      gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
       lsSet("hub:managers", S.managers);
       renderSettings();
     }
@@ -2879,7 +2879,7 @@ async function handleAction(a,v,el,e){
         var reader = new FileReader();
         reader.onload = async function(ev){
           mgr.photo = ev.target.result;
-          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
           lsSet("hub:managers", S.managers);
           renderSettings();
           inp.remove();
@@ -2889,7 +2889,7 @@ async function handleAction(a,v,el,e){
       inp.click();
     } else {
       (async function(){
-        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
         lsSet("hub:managers", S.managers);
         renderSettings();
       })();
@@ -2922,7 +2922,7 @@ async function handleAction(a,v,el,e){
         var reader2 = new FileReader();
         reader2.onload = async function(ev){
           tech.photo = ev.target.result;
-          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
           lsSet("hub:techAccounts", S.techAccounts);
           renderSettings();
           inp2.remove();
@@ -2932,7 +2932,7 @@ async function handleAction(a,v,el,e){
       inp2.click();
     } else {
       (async function(){
-        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
         lsSet("hub:techAccounts", S.techAccounts);
         renderSettings();
       })();
@@ -2999,7 +2999,7 @@ async function handleAction(a,v,el,e){
       S.techAccounts.splice(dtIdx,1);
       // Also remove from techs list
       S.techs = S.techs.filter(function(t){ return t!==dtName; });
-      gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
       lsSet("hub:techAccounts", S.techAccounts);
       lsSet("hub:techs", S.techs);
       renderSettings();
@@ -3034,7 +3034,7 @@ async function handleAction(a,v,el,e){
         var reader = new FileReader();
         reader.onload = async function(ev){
           mgr.photo = ev.target.result;
-          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
           lsSet("hub:managers", S.managers);
           renderSettings();
           inp.remove();
@@ -3044,7 +3044,7 @@ async function handleAction(a,v,el,e){
       inp.click();
     } else {
       (async function(){
-        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
         lsSet("hub:managers", S.managers);
         renderSettings();
       })();
@@ -3077,7 +3077,7 @@ async function handleAction(a,v,el,e){
         var reader2 = new FileReader();
         reader2.onload = async function(ev){
           tech.photo = ev.target.result;
-          await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
           lsSet("hub:techAccounts", S.techAccounts);
           renderSettings();
           inp2.remove();
@@ -3087,7 +3087,7 @@ async function handleAction(a,v,el,e){
       inp2.click();
     } else {
       (async function(){
-        await gs("saveAccountsServer", {managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
         lsSet("hub:techAccounts", S.techAccounts);
         renderSettings();
       })();
