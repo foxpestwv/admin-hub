@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.9";
+const APP_VERSION = "4.2.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2148,6 +2148,11 @@ async function handleAction(a,v,el,e){
     if(S.tab==="checkout" && S._checkView!=="cart") filterProductList();
     else renderCheckout();
     return;
+  }
+  if(a==="check-toggle-cat"){
+    if(!S._checkOpenCats) S._checkOpenCats={};
+    S._checkOpenCats[v] = S._checkOpenCats[v]===true ? false : true;
+    renderCheck(); return;
   }
   if(a==="check-starred-only"){
     S.checkStarredOnly=!S.checkStarredOnly;
@@ -3878,6 +3883,22 @@ function renderCheckout(){
     return a.name.localeCompare(b.name);
   });
 
+  // Group by category for non-search view
+  if(!S._checkOpenCats) S._checkOpenCats = {};
+  var checkCatOrder = ["General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+  var checkCatMap = {};
+  prods.forEach(function(p){
+    var cat = p.category||"General Pest";
+    if(!checkCatMap[cat]) checkCatMap[cat] = [];
+    checkCatMap[cat].push(p);
+  });
+  var checkSortedCats = Object.keys(checkCatMap).sort(function(a,b){
+    var ai=checkCatOrder.indexOf(a),bi=checkCatOrder.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1; if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+
   var cartCount = Object.keys(S.cart).filter(function(k){ return S.cart[k]>0; }).length;
 
   var html = "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
@@ -3896,7 +3917,9 @@ function renderCheckout(){
     +(prods.length===0
       ?"<div style='text-align:center;color:#64748b;padding:40px 20px;'>"+
         (starredOnly?"No starred products yet. Tap ⭐ on any product to star it.":"No products found.")+"</div>"
-      : prods.map(function(p){
+      : (search||starredOnly
+        // Flat list when searching or starred only
+        ? prods.map(function(p){
           var starred = S.starredProducts[p.id];
           var inCart = S.cart[p.id]||0;
           var stockColor = p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
@@ -3913,7 +3936,38 @@ function renderCheckout(){
             +"<button data-a='add-to-cart-direct' data-v='"+p.id+"' style='background:#22c55e;color:#000;border:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation;'>+Cart</button>"
             +"</div>"
             +"</div>";
-        }).join("")+"</div>");
+        }).join("")
+        // Category sections when not searching or filtering starred
+        : checkSortedCats.map(function(cat){
+            var isOpen2 = S._checkOpenCats[cat]===true;
+            var catProds2 = checkCatMap[cat]||[];
+            var catHtml2 = "<div style='margin-bottom:4px;'>"
+              +"<button class='btn' style='width:100%;text-align:left;padding:10px 14px;background:#0f2040;border:1px solid #1e3a5f;border-radius:8px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;' data-a='check-toggle-cat' data-v='"+esc(cat)+"'>"
+              +"<span style='font-weight:600;font-size:13px;color:#f59e0b;'>"+esc(cat)+"</span>"
+              +"<span style='color:#64748b;font-size:12px;'>"+catProds2.length+" items "+(isOpen2?"▲":"▼")+"</span>"
+              +"</button>";
+            if(isOpen2){
+              catProds2.forEach(function(p){
+                var starred2=S.starredProducts[p.id];
+                var inCart2=S.cart[p.id]||0;
+                var stockColor2=p.qty<=0?"#ef4444":p.qty<=p.lowAt?"#f97316":"#22c55e";
+                var stockLabel2=p.qty<=0?" (OUT)":p.qty<=p.lowAt?" (LOW)":"";
+                catHtml2 += "<div style='background:#0f1f38;border:1px solid "+(inCart2>0?"#f59e0b":"#1e3a5f")+";border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;'>"
+                  +"<button type='button' tabindex='-1' data-a='toggle-star-product' data-v='"+p.id+"' style='background:none;border:none;font-size:22px;cursor:pointer;padding:0;flex-shrink:0;touch-action:manipulation;'>"+(starred2?"⭐":"☆")+"</button>"
+                  +"<div style='flex:1;min-width:0;'>"
+                  +"<div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+                  +"<div style='font-size:11px;color:"+stockColor2+";'>"+p.qty+" "+esc(p.unit)+" on hand"+stockLabel2+"</div>"
+                  +(inCart2>0?"<div style='font-size:11px;color:#f59e0b;'>"+inCart2+" in cart</div>":"")
+                  +"</div>"
+                  +"<button type='button' data-a='add-to-cart-tap' data-v='"+p.id+"' style='background:#1e3a5f;border:none;border-radius:8px;padding:8px 14px;color:#e2e8f0;font-size:20px;cursor:pointer;'>+</button>"
+                  +"</div>";
+              });
+            }
+            return catHtml2+"</div>";
+          }).join("")
+      )
+    )
+    +"</div>";
 
   pg.innerHTML = html;
 
