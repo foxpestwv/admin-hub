@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.2";
+const APP_VERSION = "4.1.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2260,12 +2260,14 @@ async function handleAction(a,v,el,e){
   }
   if(a==="unhide-product"){
     await gs("unhideProduct", {id:v, branch:S.branch||"willamette"});
+    // Update local product list
     var pRes2 = await gs("getProducts", {branch:S.branch||"willamette"});
     S.products = pRes2.products||[];
     S._hiddenProductCount = Math.max(0,(S._hiddenProductCount||1)-1);
     lsSet("hub:products", S.products);
     showToast("Product restored ✓");
-    S.settingsTab="products"; renderSettings();
+    // Stay on hidden products page and refresh it
+    handleAction("show-hidden-products", "", null, null);
     return;
   }
   if(a==="sa-enter-branch"){
@@ -5916,8 +5918,12 @@ async function removeProd(id){
     if(result && result.ok){
       S.products = S.products.filter(function(x){return x.id!==id;});
       S._hiddenProductCount = (S._hiddenProductCount||0) + 1;
+      lsSet("hub:products", S.products);
       S._restockId=null; S._adjId=null;
-      save(); renderInv();
+      save();
+      // Re-render whichever view is active
+      if(S.currentTab==="settings") renderSettings();
+      else renderInv();
     } else {
       alert("Could not remove from sheet. Please sync and try again.");
     }
