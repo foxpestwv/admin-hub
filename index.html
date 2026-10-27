@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.3.5";
+const APP_VERSION = "4.3.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2984,30 +2984,11 @@ async function handleAction(a,v,el,e){
     tech.perms = tPermsChoice==="2" ? "lead" : "tech";
     // If title is still default, update it to match permission level
     if(tech.title==="Technician"||tech.title==="Lead Technician") tech.title = autoTitle;
-    if(confirm("Update photo?")){
-      var inp2 = document.createElement("input");
-      inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
-      document.body.appendChild(inp2);
-      inp2.onchange = function(e){
-        var file2 = e.target.files[0]; if(!file2){ inp2.remove(); return; }
-        var reader2 = new FileReader();
-        reader2.onload = async function(ev){
-          tech.photo = ev.target.result;
-          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-          lsSet("hub:techAccounts", S.techAccounts);
-          renderSettings();
-          inp2.remove();
-        };
-        reader2.readAsDataURL(file2);
-      };
-      inp2.click();
-    } else {
-      (async function(){
-        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-        lsSet("hub:techAccounts", S.techAccounts);
-        renderSettings();
-      })();
-    }
+    // Save text changes immediately
+    await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+    lsSet("hub:techAccounts", S.techAccounts);
+    renderSettings();
+    showToast("Saved ✓");
     return;
   }
   if(a==="reset-mgr-pin") { resetMgrPin(parseInt(v)); return; }
@@ -3107,31 +3088,11 @@ async function handleAction(a,v,el,e){
     mgr.name = newName.trim()||mgr.name;
     if(newEmail.trim()) mgr.email = newEmail.trim().toLowerCase();
     mgr.title = newTitle.trim()||"Manager";
-    // Photo upload - must be triggered directly from button click
-    if(confirm("Update photo?")){
-      var inp = document.createElement("input");
-      inp.type="file"; inp.accept="image/*"; inp.style.display="none";
-      document.body.appendChild(inp);
-      inp.onchange = function(e){
-        var file = e.target.files[0]; if(!file){ inp.remove(); return; }
-        var reader = new FileReader();
-        reader.onload = async function(ev){
-          mgr.photo = ev.target.result;
-          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-          lsSet("hub:managers", S.managers);
-          renderSettings();
-          inp.remove();
-        };
-        reader.readAsDataURL(file);
-      };
-      inp.click();
-    } else {
-      (async function(){
-        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-        lsSet("hub:managers", S.managers);
-        renderSettings();
-      })();
-    }
+    // Save text changes immediately
+    await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+    lsSet("hub:managers", S.managers);
+    renderSettings();
+    showToast("Saved ✓");
     return;
   }
   if(a==="edit-tech-acct") {
@@ -3151,30 +3112,11 @@ async function handleAction(a,v,el,e){
     tech.perms = tPermsChoice==="2" ? "lead" : "tech";
     // If title is still default, update it to match permission level
     if(tech.title==="Technician"||tech.title==="Lead Technician") tech.title = autoTitle;
-    if(confirm("Update photo?")){
-      var inp2 = document.createElement("input");
-      inp2.type="file"; inp2.accept="image/*"; inp2.style.display="none";
-      document.body.appendChild(inp2);
-      inp2.onchange = function(e){
-        var file2 = e.target.files[0]; if(!file2){ inp2.remove(); return; }
-        var reader2 = new FileReader();
-        reader2.onload = async function(ev){
-          tech.photo = ev.target.result;
-          await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-          lsSet("hub:techAccounts", S.techAccounts);
-          renderSettings();
-          inp2.remove();
-        };
-        reader2.readAsDataURL(file2);
-      };
-      inp2.click();
-    } else {
-      (async function(){
-        await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
-        lsSet("hub:techAccounts", S.techAccounts);
-        renderSettings();
-      })();
-    }
+    // Save text changes immediately
+    await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+    lsSet("hub:techAccounts", S.techAccounts);
+    renderSettings();
+    showToast("Saved ✓");
     return;
   }
   if(a==="reset-mgr-pin") {
