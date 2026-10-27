@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.1";
+const APP_VERSION = "4.1.2";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2237,6 +2237,37 @@ async function handleAction(a,v,el,e){
   if(a==="approve-order") { confirmApprove(v); return; }
   if(a==="deny-order") { confirmDeny(v); return; }
   if(a==="settings-tab") { S.settingsTab=v; render(); return; }
+  if(a==="show-hidden-products"){
+    var hRes3 = await gs("getHiddenProducts", {branch:S.branch||"willamette"});
+    var hiddenIds3 = Object.keys(hRes3.hidden||{}).filter(function(k){return hRes3.hidden[k];});
+    if(hiddenIds3.length===0){ showToast("No hidden products"); return; }
+    var allProds3 = await gs("getProducts", {branch:"willamette"});
+    var pg4 = document.getElementById("pg-settings");
+    if(!pg4) return;
+    var html3 = "<div style='padding:4px;'>"
+      +"<button class='btn bg' data-a='settings-tab' data-v='products' style='margin-bottom:14px;'>← Back to Products</button>"
+      +"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Hidden Products</h2>";
+    hiddenIds3.forEach(function(id){
+      var p3 = (allProds3.products||[]).find(function(p){return p.id===id;})||{id:id,name:id};
+      html3 += "<div class='card' style='margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;'>"
+        +"<span style='font-weight:600;'>"+esc(p3.name)+"</span>"
+        +"<button class='btn bp' style='padding:6px 14px;font-size:12px;' data-a='unhide-product' data-v='"+id+"'>Restore</button>"
+        +"</div>";
+    });
+    html3 += "</div>";
+    pg4.innerHTML = html3;
+    return;
+  }
+  if(a==="unhide-product"){
+    await gs("unhideProduct", {id:v, branch:S.branch||"willamette"});
+    var pRes2 = await gs("getProducts", {branch:S.branch||"willamette"});
+    S.products = pRes2.products||[];
+    S._hiddenProductCount = Math.max(0,(S._hiddenProductCount||1)-1);
+    lsSet("hub:products", S.products);
+    showToast("Product restored ✓");
+    S.settingsTab="products"; renderSettings();
+    return;
+  }
   if(a==="sa-enter-branch"){
     var parts = v.split("|");
     S._saViewBranch = {id:parts[0], name:parts[1]||parts[0]};
