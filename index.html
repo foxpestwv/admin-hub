@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.2.6";
+const APP_VERSION = "4.2.8";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -831,7 +831,7 @@ async function gs(fn, data){
         // Call Apps Script to write quantities to order spreadsheet
         var bridgeResp = await fetch(EMAIL_BRIDGE, {
           method:"POST", headers:{"Content-Type":"text/plain"},
-          body: JSON.stringify({action:"writeToOrderSheet", items:data.items||data})
+          body: JSON.stringify({action:"writeToOrderSheet", branch:S.branch||"willamette", items:data.items||data})
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return bridgeResp;
       }
@@ -4096,7 +4096,7 @@ async function submitCartOrder(){
   try {
     await gs("savePendingOrder", orderDoc);
     // Write to order sheet
-    gs("writeToOrderSheet", {items:selectedItems}).catch(function(){});
+    gs("writeToOrderSheet", {branch:S.branch||"willamette", items:selectedItems}).catch(function(){});
     // Email manager
     var itemList = selectedItems.map(function(i){ return "- "+i.name+" x"+i.qty; }).join("\n");
     sendEmail("john.kluttz@fox-marketingservices.com",
@@ -6623,7 +6623,7 @@ async function restockSendEmail(){
   try { await gs("saveRestockOrderServer", {order:order}); } catch(e){ console.warn("Save restock order:", e); }
   // Write to order spreadsheet
   try {
-    const orderResult = await gs("writeToOrderSheetServer", {items:selectedItems});
+    const orderResult = await gs("writeToOrderSheetServer", {branch:S.branch||"willamette", items:selectedItems});
     if(orderResult&&orderResult.ok){
       if(orderResult.notFound&&orderResult.notFound.length>0){
         alert("Restock request sent!\n\nNote: The following products were not found in the order spreadsheet and need to be added manually:\n\n- "+orderResult.notFound.join("\n- "));
@@ -8514,7 +8514,7 @@ async function submitMultiSign(){
       techSig: techSigUrl||null,
       signedPdfBase64: outB64,
       signedDate: new Date().toISOString(),
-      managerEmail: "john.kluttz@fox-marketingservices.com"
+      managerEmail: (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com")
     });
 
     if(result&&result.ok){
@@ -8689,7 +8689,7 @@ async function signSubmitTech(){
             techEmail: req.techEmail||"",
             techSig: sigData,
             managerSig: req.managerSig||"",
-            managerEmail: "john.kluttz@fox-marketingservices.com",
+            managerEmail: (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
             isQA: req.isQA||false,
             isRA: req.isRA||false,
             docName: req.docName||"",
@@ -8788,7 +8788,7 @@ async function signSubmitTech(){
                   action:"submitMultiSign",
                   signedPdfBase64: signedB64,
                   techName: "All Signers",
-                  managerEmail: "john.kluttz@fox-marketingservices.com",
+                  managerEmail: (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
                   branch: S.branch||"willamette",
                   docName: finalDocName
                 })
