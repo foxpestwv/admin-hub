@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.3.0";
+const APP_VERSION = "4.3.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -6414,6 +6414,8 @@ function renderRestock(){
   if(view==="receiving") { renderRestockReceiving(pg); return; }
 
   // Menu view
+  // Filter by current branch
+  S.restockOrders = (S.restockOrders||[]).filter(function(o){ return !o.branch||o.branch===(S.branch||"willamette"); });
   const pending = S.restockOrders.filter(function(o){ return o.status==="Pending"||o.status==="Partial"; });
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Restock Orders</h2>"
     +"<p style='color:#475569;font-size:13px;margin-bottom:24px;'>Manage warehouse restocking for "+(S.branchName||"Willamette Valley")+".</p>"
