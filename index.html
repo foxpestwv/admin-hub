@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.8";
+const APP_VERSION = "4.1.9";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2386,7 +2386,16 @@ async function handleAction(a,v,el,e){
       var freshProds = await gs("getProducts", {branch:"willamette"});
       S.products = freshProds.products||[];
       lsSet("hub:products", S.products);
-      showToast("Done! "+added+" added, "+updated+" updated out of "+sheetProds.length+" sheet products ✓");
+      // Show completion popup
+      var overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;";
+      overlay.innerHTML = "<div style='background:#0f1f38;border:1px solid #22c55e;border-radius:16px;padding:32px;max-width:300px;text-align:center;'>"
+        +"<div style='font-size:48px;margin-bottom:12px;'>✅</div>"
+        +"<div style='font-size:18px;font-weight:700;color:#22c55e;margin-bottom:8px;'>Product Import Complete</div>"
+        +"<div style='font-size:13px;color:#94a3b8;margin-bottom:20px;'>"+added+" new products added<br>"+updated+" products updated<br>"+sheetProds.length+" total in catalog</div>"
+        +"<button class='btn bp' style='width:100%;padding:12px;' onclick='this.parentElement.parentElement.remove();'>Done</button>"
+        +"</div>";
+      document.body.appendChild(overlay);
     } catch(e){ showToast("Import error: "+e.message); }
     return;
   }
