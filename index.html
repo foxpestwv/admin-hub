@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.3.1";
+const APP_VERSION = "4.3.3";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2972,8 +2972,11 @@ async function handleAction(a,v,el,e){
     if(newName===null) return;
     var newTitle = prompt("Title:", mgr.title||"Manager");
     if(newTitle===null) return;
+    var newEmail = prompt("Email:", mgr.email||"");
+    if(newEmail===null) return;
     mgr.name = newName.trim()||mgr.name;
     mgr.title = newTitle.trim()||"Manager";
+    if(newEmail.trim()) mgr.email = newEmail.trim().toLowerCase();
     // Photo upload
     if(confirm("Update photo?")){
       var inp = document.createElement("input");
@@ -3007,11 +3010,14 @@ async function handleAction(a,v,el,e){
     if(!tech) return;
     var tName = prompt("Name:", tech.name||"");
     if(tName===null) return;
+    var tEmail = prompt("Email:", tech.email||"");
+    if(tEmail===null) return;
     var tTitle = prompt("Title:", tech.title||"Technician");
     if(tTitle===null) return;
     var tPermsChoice = prompt("Permission Level: Enter 1 for Technician (standard) or 2 for Lead Technician (Inventory, Orders, Analytics, Fleet)", tech.perms==="lead"?"2":"1");
     if(tPermsChoice===null) return;
     tech.name = tName.trim()||tech.name;
+    if(tEmail.trim()) tech.email = tEmail.trim().toLowerCase();
     // Auto-set title based on permissions if title matches default
     var autoTitle = tPermsChoice==="2" ? "Lead Technician" : "Technician";
     tech.title = tTitle.trim() ? tTitle.trim() : autoTitle;
