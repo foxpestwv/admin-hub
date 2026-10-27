@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.2.3";
+const APP_VERSION = "4.2.4";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -2153,7 +2153,7 @@ async function handleAction(a,v,el,e){
   if(a==="check-toggle-cat"){
     if(!S._checkOpenCats) S._checkOpenCats={};
     S._checkOpenCats[v] = S._checkOpenCats[v]===true ? false : true;
-    renderCheck(); return;
+    renderCheckout(); return;
   }
   if(a==="check-starred-only"){
     S.checkStarredOnly=!S.checkStarredOnly;
@@ -2390,10 +2390,15 @@ async function handleAction(a,v,el,e){
           await gs("addProductToSheet", {name:sp.name, unit:sp.unit||"each", category:sp.category||"General Pest", lowAt:0, truckWarnAbove:0, reorderNote:""});
           added++;
         } else {
-          // Update category and unit if changed
+          // Always update category and unit
           var needsUpdate = false;
           if(sp.unit && match.unit !== sp.unit){ await gs("updateProductField", {id:match.id, field:"unit", value:sp.unit}); needsUpdate=true; }
           if(sp.category && match.category !== sp.category){ await gs("updateProductField", {id:match.id, field:"category", value:sp.category}); needsUpdate=true; }
+          // Force category update even if same - ensures all products get tagged
+          if(!match.category || match.category==="General Pest" && sp.category!=="General Pest"){
+            await gs("updateProductField", {id:match.id, field:"category", value:sp.category});
+            needsUpdate=true;
+          }
           if(needsUpdate) updated++;
         }
       }
