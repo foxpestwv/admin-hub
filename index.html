@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.4";
+const APP_VERSION = "4.1.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -708,6 +708,7 @@ async function gs(fn, data){
         var newProd = {
           id: "prod_"+Date.now(),
           name: data.name, unit: data.unit||"each",
+          category: data.category||"General Pest",
           qty: 0, lowAt: data.lowAt||0,
           truckWarnAbove: data.truckWarnAbove||0,
           reorderNote: data.reorderNote||"",
@@ -2352,8 +2353,41 @@ async function handleAction(a,v,el,e){
     renderSuperAdmin();
     return;
   }
-  if(a==="sa-manage-products"){
-    showToast("Coming soon - manage shared product catalog");
+  if(a==="sa-import-products"){
+    showToast("Importing products from order sheet...");
+    try {
+      var importResult = await fetch(EMAIL_BRIDGE, {
+        method:"POST", headers:{"Content-Type":"text/plain"},
+        body: JSON.stringify({action:"importProductsFromSheet", data:{}})
+      });
+      var importData = await importResult.json();
+      if(!importData.ok){ showToast("Import failed: "+(importData.error||"unknown error")); return; }
+      var sheetProds = importData.products||[];
+      // Get existing products
+      var existingProds = await gs("getProducts", {branch:"willamette"});
+      var existing = existingProds.products||[];
+      var added = 0; var updated = 0;
+      for(var i=0;i<sheetProds.length;i++){
+        var sp = sheetProds[i];
+        var match = existing.find(function(p){ return p.name.toLowerCase()===sp.name.toLowerCase(); });
+        if(!match){
+          // Add new product with category
+          await gs("addProductToSheet", {name:sp.name, unit:sp.unit||"each", category:sp.category||"General Pest", lowAt:0, truckWarnAbove:0, reorderNote:""});
+          added++;
+        } else {
+          // Update category and unit if changed
+          var needsUpdate = false;
+          if(sp.unit && match.unit !== sp.unit){ await gs("updateProductField", {id:match.id, field:"unit", value:sp.unit}); needsUpdate=true; }
+          if(sp.category && match.category !== sp.category){ await gs("updateProductField", {id:match.id, field:"category", value:sp.category}); needsUpdate=true; }
+          if(needsUpdate) updated++;
+        }
+      }
+      // Reload products
+      var freshProds = await gs("getProducts", {branch:"willamette"});
+      S.products = freshProds.products||[];
+      lsSet("hub:products", S.products);
+      showToast("Done! "+added+" added, "+updated+" updated out of "+sheetProds.length+" sheet products ✓");
+    } catch(e){ showToast("Import error: "+e.message); }
     return;
   }
   // switch-branch is handled at login screen only
@@ -2981,6 +3015,11 @@ async function handleAction(a,v,el,e){
   if(a==="send-mgr-login-email") { sendLoginEmail("manager", parseInt(v)); return; }
   if(a==="ti-add-prod") { tiAddProd(); return; }
   if(a==="inv-show-add") { S._showAddProd=!S._showAddProd; renderInv(); return; }
+  if(a==="inv-toggle-cat"){ 
+    if(!S._invOpenCats) S._invOpenCats={};
+    S._invOpenCats[v] = S._invOpenCats[v]===false ? true : false;
+    renderInv(); return; 
+  }
   if(a==="remove-prod") { removeProd(v); return; }
   if(a==="inv-cancel-add") { S._showAddProd=false; renderInv(); return; }
   if(a==="inv-add-prod") { invAddProduct(); return; }
@@ -5598,7 +5637,8 @@ function renderSuperAdmin(){
     +"<button class='btn bp' data-a='sa-add-branch' style='width:100%;padding:13px;margin-top:12px;'>+ Add New Branch</button>"
     +"<div style='margin-top:24px;border-top:1px solid #1e3a5f;padding-top:16px;'>"
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Shared Product Catalog</div>"
-    +"<button class='btn bg' data-a='sa-manage-products' style='width:100%;padding:12px;'>🧪 Manage Shared Products</button>"
+    +"<button class='btn bg' data-a='sa-import-products' style='width:100%;padding:12px;margin-bottom:8px;'>📥 Sync Products from Order Sheet</button>"
+    +"<div style='font-size:11px;color:#475569;text-align:center;'>Reads order sheet and adds/updates products in Firebase</div>"
     +"</div>"
     +"</div>";
 
