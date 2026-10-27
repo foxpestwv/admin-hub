@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.0.9";
+const APP_VERSION = "4.1.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -5790,17 +5790,7 @@ function renderSettings(){
 
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
       +prodRows
-      +"<div class='card' style='margin-top:14px;padding:14px;'>"
-      +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Product</div>"
-      +"<input type='text' class='inp' id='new-prod-name' placeholder='Product name' style='margin-bottom:8px;'>"
-      +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;'>"
-      +"<input type='text' class='inp' id='new-prod-unit' placeholder='Unit (e.g. Can)'>"
-      +"<input type='number' class='inp' id='new-prod-lowat' placeholder='Low at'>"
-      +"<input type='number' class='inp' id='new-prod-warn' placeholder='Truck warn'>"
-      +"</div>"
-
-      +((S._hiddenProductCount||0)>0?"<button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:10px;margin-top:8px;'>👁 Restore Hidden Products ("+(S._hiddenProductCount||0)+")</button>":"")
-      +"</div>";
+      +((S._hiddenProductCount||0)>0?"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products ("+(S._hiddenProductCount||0)+")</button></div>":"");
 
   } else if(tab==="inspection"){
     var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Sync Inspection Settings to All Devices</button>";
