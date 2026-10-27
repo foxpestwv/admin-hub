@@ -433,7 +433,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.1.0";
+const APP_VERSION = "4.1.1";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -5790,7 +5790,7 @@ function renderSettings(){
 
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
       +prodRows
-      +((S._hiddenProductCount||0)>0?"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products ("+(S._hiddenProductCount||0)+")</button></div>":"");
+      +"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products"+(S._hiddenProductCount>0?" ("+S._hiddenProductCount+")":"")+"</button></div>";
 
   } else if(tab==="inspection"){
     var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Sync Inspection Settings to All Devices</button>";
