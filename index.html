@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.2.5";
+const APP_VERSION = "4.2.6";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -3764,7 +3764,7 @@ function renderInv(){
     }).join("");
   } else {
     sortedCats.forEach(function(cat){
-      var isOpen = S._invOpenCats[cat]!==false;
+      var isOpen = S._invOpenCats[cat]===true;
       var catProds = catMap[cat]||[];
       var lowCount = catProds.filter(function(p){return p.qty<=p.lowAt;}).length;
       catHtml += "<div style='margin-bottom:6px;'>"
