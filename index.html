@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.2.4";
+const APP_VERSION = "4.2.5";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -663,6 +663,7 @@ async function gs(fn, data){
             id: pid,
             name: p.name||"",
             unit: p.unit||"each",
+            category: p.category||"General Pest",
             qty: qty,
             lowAt: Number(p.lowAt)||0,
             reorderNote: p.reorderNote||"",
