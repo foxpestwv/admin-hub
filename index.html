@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.2.9";
+const APP_VERSION = "4.3.0";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -6416,7 +6416,7 @@ function renderRestock(){
   // Menu view
   const pending = S.restockOrders.filter(function(o){ return o.status==="Pending"||o.status==="Partial"; });
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Restock Orders</h2>"
-    +"<p style='color:#475569;font-size:13px;margin-bottom:24px;'>Manage warehouse restocking for Willamette Valley.</p>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:24px;'>Manage warehouse restocking for "+(S.branchName||"Willamette Valley")+".</p>"
     +"<div class='g2' style='margin-bottom:16px;'>"
     +"<button class='btn bp' style='padding:20px;border-radius:12px;font-size:15px;' data-a='restock-view' data-v='send'>&#x1F4E4; Send Restock Request</button>"
     +"<button class='btn bg' style='padding:20px;border-radius:12px;font-size:15px;"+(pending.length>0?"border-color:#f59e0b;color:#f59e0b;":"")+"' data-a='restock-view' data-v='receive'>&#x1F4E5; Receive Restock"+(pending.length>0?"<br><span style='font-size:12px;'>("+pending.length+" pending)</span>":"")+"</button>"
