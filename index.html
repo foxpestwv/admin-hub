@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.3";
+const APP_VERSION = "4.4.4";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -636,10 +636,13 @@ async function gs(fn, data){
       case "saveAccounts":
       case "saveAccountsServer": {
         var brKeySave = (data&&data.branch)||"willamette";
+        // Safety: never overwrite trucks with empty array if existing data has trucks
+        var existingAccts = await fbGet("config","accounts_"+brKeySave);
+        var trucksToSave = (data.trucks&&data.trucks.length>0) ? data.trucks : (existingAccts&&existingAccts.trucks&&existingAccts.trucks.length>0 ? existingAccts.trucks : []);
         await fbSet("config","accounts_"+brKeySave,{
           managers: data.managers||[],
           techAccounts: data.techAccounts||[],
-          trucks: data.trucks||[],
+          trucks: trucksToSave,
           cats: data.cats||[],
           inspFields: data.inspFields||[],
           updatedAt: new Date().toISOString()
