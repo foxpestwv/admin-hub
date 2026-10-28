@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.8";
+const APP_VERSION = "4.5.9";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -711,14 +711,16 @@ async function gs(fn, data){
       }
       case "updateQty": {
         var qtyBranch = (data&&data.branch)||"willamette";
-        if(qtyBranch==="willamette"){
-          // Legacy: also update the product doc itself for willamette
+        // Only update Firestore product doc if we have a valid prod_ ID
+        if(data.id && String(data.id).startsWith("prod_")){
           await _db.collection("products").doc(data.id).set({qty: data.qty, updatedAt: new Date().toISOString()}, {merge:true});
         }
-        // Save to branch-specific quantities doc
-        var qtyUpdate = {};
-        qtyUpdate[data.id] = data.qty;
-        await _db.collection("config").doc("quantities_"+qtyBranch).set(qtyUpdate, {merge:true});
+        // Save to branch-specific quantities doc if we have a valid ID
+        if(data.id && String(data.id).startsWith("prod_")){
+          var qtyUpdate = {};
+          qtyUpdate[data.id] = data.qty;
+          await _db.collection("config").doc("quantities_"+qtyBranch).set(qtyUpdate, {merge:true});
+        }
         return {ok:true};
       }
       case "updateProductUpc": {
