@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.3";
+const APP_VERSION = "4.5.5";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -647,15 +647,17 @@ async function gs(fn, data){
       case "saveAccounts":
       case "saveAccountsServer": {
         var brKeySave = (data&&data.branch)||"willamette";
-        // Safety: never overwrite trucks with empty array if existing data has trucks
+        // Safety: never overwrite trucks/cats/inspFields with empty arrays
         var existingAccts = await fbGet("config","accounts_"+brKeySave);
         var trucksToSave = (data.trucks&&data.trucks.length>0) ? data.trucks : (existingAccts&&existingAccts.trucks&&existingAccts.trucks.length>0 ? existingAccts.trucks : []);
+        var catsToSave = (data.cats&&data.cats.length>0) ? data.cats : (existingAccts&&existingAccts.cats&&existingAccts.cats.length>0 ? existingAccts.cats : []);
+        var inspFieldsToSave = (data.inspFields&&data.inspFields.length>0) ? data.inspFields : (existingAccts&&existingAccts.inspFields&&existingAccts.inspFields.length>0 ? existingAccts.inspFields : []);
         await fbSet("config","accounts_"+brKeySave,{
           managers: data.managers||[],
           techAccounts: data.techAccounts||[],
           trucks: trucksToSave,
-          cats: data.cats||[],
-          inspFields: data.inspFields||[],
+          cats: catsToSave,
+          inspFields: inspFieldsToSave,
           updatedAt: new Date().toISOString()
         });
         lsSet("hub:managers", data.managers||[]);
@@ -1772,12 +1774,10 @@ async function checkEmail(){
   var btn = document.querySelector("[data-a='email-continue']") || document.querySelector("button[onclick*='checkEmail']");
   if(btn){ btn.disabled=true; btn.textContent="Checking..."; }
 
-  // Make sure Firebase accounts are loaded
-  if(!S.managers||S.managers.length===0){
-    try {
-      await loadAccountsFromSheet();
-    } catch(e){ console.warn("Account load:", e); }
-  }
+  // Always reload accounts to pick up latest cats, inspFields, trucks
+  try {
+    await loadAccountsFromSheet();
+  } catch(e){ console.warn("Account load:", e); }
   // Check for updates in background
   checkForUpdates(true);
 
