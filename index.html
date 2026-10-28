@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.9";
+const APP_VERSION = "4.6.1";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -3883,8 +3883,8 @@ async function doAdj(id){
   p.qty=newQty; S._adjId=null;
   save();
   try {
-    await gs("updateQtyServer",{row:p.row,qty:newQty});
-    await gs("logAdjustmentServer",{product:p.name,unit:p.unit,oldQty:old,newQty:newQty,manager:S.managerName,reason:reason});
+    await gs("updateQtyServer",{id:p.id,qty:newQty,branch:S.branch||"willamette"});
+    await gs("logAdjustmentServer",{product:p.name,unit:p.unit,oldQty:old,newQty:newQty,manager:S.managerName,reason:reason,branch:S.branch||"willamette"});
   } catch(e){ console.warn("Adj sheet write:",e); }
   render();
 }
@@ -3914,6 +3914,19 @@ function renderCheckout(){
 
   var view = S._checkView || "browse"; // "browse" or "cart"
   if(view === "cart") { renderCart(pg); return; }
+
+  // Auto-refresh product quantities every time checkout opens if last refresh > 5 min ago
+  var now = Date.now();
+  if(!S._lastProdRefresh || (now - S._lastProdRefresh) > 5*60*1000){
+    S._lastProdRefresh = now;
+    gs("getProductsServer", {branch:S.branch||"willamette"}).then(function(pr){
+      if(pr&&pr.products&&pr.products.length>0){
+        S.products = pr.products;
+        lsSet("hub:products", S.products);
+        renderCheckout();
+      }
+    }).catch(function(){});
+  }
 
   // ── BROWSE VIEW ────────────────────────────────────────────────────────────
   var search = (S.checkSearch||"").toLowerCase().trim();
@@ -4209,7 +4222,7 @@ async function submitCheckout(){
       prod.qty=newQty;
       const rec={id:uid(),date,tech,techEmail,product:prod.name,qty:parseInt(item.qty),unit:prod.unit,notes:item.notes||""};
       S.checkouts.unshift(rec);
-      checkoutWrites.push(gs("updateQtyServer",{row:prod.row,qty:newQty}));
+      checkoutWrites.push(gs("updateQtyServer",{id:prod.id,qty:newQty,branch:S.branch||"willamette"}));
       checkoutWrites.push(gs("logCheckoutServer",rec));
       if(prod.qty<=prod.lowAt) low.push(prod);
     }
@@ -6892,7 +6905,7 @@ async function restockSubmitReceive(){
         var oldQty=prod.qty;
         prod.qty+=got;
         try {
-          await gs("updateQtyServer",{row:prod.row,qty:prod.qty});
+          await gs("updateQtyServer",{id:prod.id,qty:prod.qty,branch:S.branch||"willamette"});
           await gs("logAdjustmentServer",{product:prod.name,unit:prod.unit,oldQty,newQty:prod.qty,manager:S.managerName,reason:"Restock Received - Order "+order.id.slice(-6)});
         } catch(e){}
       }
