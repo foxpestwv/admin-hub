@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.7";
+const APP_VERSION = "4.5.8";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -713,7 +713,7 @@ async function gs(fn, data){
         var qtyBranch = (data&&data.branch)||"willamette";
         if(qtyBranch==="willamette"){
           // Legacy: also update the product doc itself for willamette
-          await fbUpdate("products", data.id, {qty: data.qty, updatedAt: new Date().toISOString()});
+          await _db.collection("products").doc(data.id).set({qty: data.qty, updatedAt: new Date().toISOString()}, {merge:true});
         }
         // Save to branch-specific quantities doc
         var qtyUpdate = {};
