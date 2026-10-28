@@ -434,7 +434,13 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.3.7";
+const APP_VERSION = "4.4.2";
+
+function getNotifEmails(key){
+  var cfg = (S.notifConfig||{})[key]||{};
+  if(cfg.enabled===false) return null; // disabled
+  return cfg.emails||null; // null = use default
+}
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -1028,6 +1034,14 @@ async function gs(fn, data){
         brDocs.sort(function(a,b){ return a.id==="willamette"?-1:b.id==="willamette"?1:a.name.localeCompare(b.name); });
         return {branches: brDocs};
       }
+      case "saveNotifConfig": {
+        await _db.collection("config").doc("notifConfig_"+(data.branch||"willamette")).set(data.config||{}, {merge:false});
+        return {ok:true};
+      }
+      case "getNotifConfig": {
+        var nc = await _db.collection("config").doc("notifConfig_"+(data&&data.branch||"willamette")).get();
+        return {config: nc.exists ? nc.data() : {}};
+      }
       case "getAccountsServer":
       case "getAccounts": {
         await initFirebase();
@@ -1525,6 +1539,9 @@ async function syncFromSheet(){
     const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",_syncBranch),gs("getTechsServer",_syncBranch),gs("getRestockOrdersServer",_syncBranch),gs("getInspectionsServer",_syncBranch),gs("getTruckInventoryServer",_syncBranch)]);
     // Also load sign requests fresh
     try {
+      var ncResult = await gs("getNotifConfig", _syncBranch);
+      S.notifConfig = ncResult.config||{};
+      lsSet("hub:notifConfig", S.notifConfig);
       var srResult = await gs("getSignRequestsServer", _syncBranch);
       var srArr = srResult && (srResult.signRequests || srResult.requests || []);
       if(srArr && srArr.length >= 0){
@@ -3029,6 +3046,19 @@ async function handleAction(a,v,el,e){
   // del-tech handled in settings section below
   if(a==="toggle-cat") { S.openCat=S.openCat===v?null:v; render(); return; }
   if(a==="toggle-truck-detail") { S._expandedTruck=S._expandedTruck===v?null:v; renderTruckInv(); return; }
+  if(a==="save-notif-config"){
+    if(!S.notifConfig) S.notifConfig={};
+    // Collect all email inputs
+    document.querySelectorAll("input[data-notif-field='emails']").forEach(function(inp){
+      var key = inp.getAttribute("data-notif-key");
+      if(!S.notifConfig[key]) S.notifConfig[key]={};
+      S.notifConfig[key].emails = inp.value.trim();
+    });
+    await gs("saveNotifConfig", {branch:S.branch||"willamette", config:S.notifConfig});
+    lsSet("hub:notifConfig", S.notifConfig);
+    showToast("Notification settings saved ✓");
+    return;
+  }
   if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
   if(a==="assign-truck") {
     var techIdx = parseInt(v);
@@ -4007,13 +4037,14 @@ async function submitCartOrder(){
 
   try {
     await gs("savePendingOrder", orderDoc);
-    // Write to order sheet
-    gs("writeToOrderSheet", {branch:S.branch||"willamette", items:selectedItems}).catch(function(){});
+    // Tech orders go to Firebase only - manager approves before writing to order sheet
     // Email manager
     var itemList = selectedItems.map(function(i){ return "- "+i.name+" x"+i.qty; }).join("\n");
-    sendEmail("john.kluttz@fox-marketingservices.com",
+    var techReqTo = getNotifEmails("tech_request");
+    if(!techReqTo){ techReqTo = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(","); }
+    if(techReqTo) sendEmail(techReqTo,
       "[Fox Pest] Product Request: "+techName,
-      techName+" has submitted a product request:\n\n"+itemList+(comments?"\n\nComments: "+comments:"")+"\n\nFox Pest Control - Willamette Valley"
+      techName+" has submitted a product request:\n\n"+itemList+(comments?"\n\nComments: "+comments:"")+"\n\nFox Pest Control - "+(S.branchName||"Willamette Valley")
     );
     // Clear cart
     S.cart={};
@@ -4486,7 +4517,9 @@ async function confirmApprove(baseId){
   var subj="[Fox Pest Control] Order Decision - "+tech
     +(approvedItems.length&&deniedItems.length?" (Mixed)"
     :approvedItems.length?" (Approved)":"(Denied)");
-  try { await gs("sendEmailServer",{to:te,subject:subj,body:body}); } catch(e){}
+  var decisionCC = getNotifEmails("order_decision");
+  var decisionTo = te + (decisionCC ? ","+decisionCC : "");
+  try { await gs("sendEmailServer",{to:decisionTo,subject:subj,body:body}); } catch(e){}
   if(low.length) sendLowEmail(low);
 }
 
@@ -4509,8 +4542,12 @@ async function confirmDeny(baseId){
 }
 
 async function sendLowEmail(low){
+  var lowTo = getNotifEmails("low_stock");
+  if(lowTo===null) return; // disabled
+  if(!lowTo) lowTo = getMGMT().join(",");
+  if(!lowTo) return;
   const list=low.map(p=>"  - "+p.name+": "+p.qty+" "+p.unit+" (min: "+p.lowAt+")").join("\n");
-  try { await gs("sendEmailServer",{to:getMGMT().join(","),subject:"[Fox Pest Control] Low Stock Alert - "+low.length+" item"+(low.length>1?"s":"")+" need restocking",body:"Low Stock Alert - Willamette Valley\n\n"+list+"\n\nPlease restock soon.\n\nAutomated notification."}); } catch(e){}
+  try { await gs("sendEmailServer",{to:lowTo,subject:"[Fox Pest Control] Low Stock Alert - "+low.length+" item"+(low.length>1?"s":"")+" need restocking",body:"Low Stock Alert - "+(S.branchName||"Willamette Valley")+"\n\n"+list+"\n\nPlease restock soon.\n\nAutomated notification."}); } catch(e){}
 }
 
 // ─── Barcode Scanner ─────────────────────────────────────────────────────────
@@ -5964,6 +6001,42 @@ function renderSettings(){
       +prodRows
       +"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products"+(S._hiddenProductCount>0?" ("+S._hiddenProductCount+")":"")+"</button></div>";
 
+  } else if(tab==="notifications"){
+    var notifConfig = S.notifConfig || {};
+    var notifTypes = [
+      {key:"restock_request",   label:"📦 Restock Request",         desc:"When a restock order is sent to the distributor"},
+      {key:"restock_received",  label:"✅ Restock Received",         desc:"When a restock is marked as received"},
+      {key:"tech_request",      label:"🛒 Tech Product Request",     desc:"When a tech submits a product checkout request"},
+      {key:"order_decision",    label:"📋 Order Approved/Denied",    desc:"Manager copy when tech order is decided"},
+      {key:"low_stock",         label:"⚠️ Low Stock Alert",          desc:"When inventory drops below threshold"},
+      {key:"sign_request",      label:"✍️ Sign Request",             desc:"When a document needs signing"},
+      {key:"ooo_form",          label:"📝 OOO/1-on-1 Form",         desc:"When a tech submits a 1-on-1 form"},
+      {key:"qa_ra_form",        label:"📄 QA/RA Form",              desc:"When a tech submits a signed QA/RA form"},
+      {key:"truck_variance",    label:"🚚 Truck Inventory Variance", desc:"When a tech's truck inventory drops more than 50%"}
+    ];
+    var notifRows = notifTypes.map(function(nt){
+      var cfg = notifConfig[nt.key]||{};
+      var enabled = cfg.enabled!==false;
+      var emails = cfg.emails||"";
+      return "<div class='card' style='margin-bottom:10px;padding:14px;'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>"
+        +"<div>"
+        +"<div style='font-weight:600;font-size:13px;'>"+nt.label+"</div>"
+        +"<div style='font-size:11px;color:#64748b;margin-top:2px;'>"+nt.desc+"</div>"
+        +"</div>"
+        +"<label style='display:flex;align-items:center;gap:6px;cursor:pointer;'>"
+        +"<input type='checkbox' data-notif-key='"+nt.key+"' data-notif-field='enabled' "+(enabled?"checked":"")+"> "
+        +"<span style='font-size:12px;color:#94a3b8;'>On</span>"
+        +"</label>"
+        +"</div>"
+        +(enabled?"<input type='email' class='inp' style='font-size:12px;' placeholder='recipient@email.com (comma separate multiple)' data-notif-key='"+nt.key+"' data-notif-field='emails' value='"+esc(emails)+"'>":"")
+        +"</div>";
+    }).join("");
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>Notifications</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:14px;'>Set who receives each type of email. Leave blank to disable. Separate multiple emails with commas.</p>"
+      +notifRows
+      +"<button class='btn bp' data-a='save-notif-config' style='width:100%;padding:12px;margin-top:8px;'>💾 Save Notification Settings</button>";
+
   } else if(tab==="inspection"){
     var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Sync Inspection Settings to All Devices</button>";
 
@@ -6028,6 +6101,23 @@ function renderSettings(){
       if(prod){ prod[field]=val; save(); gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){}); }
     });
   });
+  // Wire up notification config changes
+  if(S.settingsTab==="notifications"){
+    pg.querySelectorAll("input[data-notif-key]").forEach(function(inp){
+      inp.addEventListener("change", function(){
+        var key = inp.getAttribute("data-notif-key");
+        var field = inp.getAttribute("data-notif-field");
+        if(!S.notifConfig) S.notifConfig={};
+        if(!S.notifConfig[key]) S.notifConfig[key]={};
+        if(field==="enabled"){
+          S.notifConfig[key].enabled = inp.checked;
+          S.settingsTab="notifications"; renderSettings();
+        } else {
+          S.notifConfig[key].emails = inp.value;
+        }
+      });
+    });
+  }
   // Wire up live input changes for cats/items
   setTimeout(function(){
     pg.querySelectorAll("[data-field]").forEach(function(el){
@@ -6302,13 +6392,18 @@ async function tiSubmit(){
       +"Technician: "+techName+"\nTruck: "+truck+"\nDate: "+new Date().toLocaleDateString("en-US")+"\n\n"
       +"The following products dropped more than 50% from last week:\n"+varList
       +"\n\nPlease review with the technician.\n\nAutomated notification from Fox Admin Hub.";
-    try {
-      await gs("sendEmailServer", {
-        to: getMGMT().join(","),
-        subject: "[Fox Pest Control] Truck Inventory Variance - "+techName+" - "+variances.length+" item"+(variances.length>1?"s":""),
-        body: emailBody
-      });
-    } catch(e){ console.warn("Email:", e); }
+    var varianceTo = getNotifEmails("truck_variance");
+    if(varianceTo === null){ varianceTo = null; } // disabled
+    else if(!varianceTo){ varianceTo = getMGMT().join(","); }
+    if(varianceTo){
+      try {
+        await gs("sendEmailServer", {
+          to: varianceTo,
+          subject: "[Fox Pest Control] Truck Inventory Variance - "+techName+" - "+variances.length+" item"+(variances.length>1?"s":""),
+          body: emailBody
+        });
+      } catch(e){ console.warn("Email:", e); }
+    }
     alert("Inventory submitted! Note: "+variances.length+" variance"+(variances.length>1?"s were":"was")+" detected and reported to management.");
   } else {
     alert("Inventory submitted successfully!");
@@ -6357,7 +6452,7 @@ function renderRestockSend(pg){
     pg.innerHTML = "<div style='text-align:center;padding:40px 20px;'>"
       +"<div style='width:72px;height:72px;background:#14532d;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px;'>&#x2713;</div>"
       +"<h2 style='font-size:22px;font-weight:700;margin-bottom:8px;'>Restock Request Sent!</h2>"
-      +"<p style='color:#475569;font-size:14px;margin-bottom:28px;'>Your request has been emailed to Rockey and saved as a pending order.</p>"
+      +"<p style='color:#475569;font-size:14px;margin-bottom:28px;'>Your request has been emailed to your manager and saved as a pending order.</p>"
       +"<div style='display:flex;gap:10px;justify-content:center;'>"
       +"<button class='btn bp' data-a='restock-reset'>New Request</button>"
       +"<button class='btn bg' data-a='restock-view' data-v='menu'>Back to Menu</button>"
@@ -6406,9 +6501,9 @@ function renderRestockSend(pg){
       : "")
     +"<div style='margin-bottom:16px;'>"
     +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Additional Message (optional)</label>"
-    +"<textarea class='inp' id='rs-notes' rows='3' placeholder='Any notes for Rockey...' style='resize:vertical;'>"+esc(S._restockNotes||"")+"</textarea>"
+    +"<textarea class='inp' id='rs-notes' rows='3' placeholder='Any additional notes...' style='resize:vertical;'>"+esc(S._restockNotes||"")+"</textarea>"
     +"</div>"
-    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='restock-send-email'>Send Restock Request to Rockey</button>";
+    +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='restock-send-email'>Send Restock Request</button>";
 }
 
 function renderRestockReceive(pg){
@@ -6558,9 +6653,12 @@ async function restockSendEmail(){
     +"Please place this order at your earliest convenience.\n\nFox Pest Control Admin Hub";
 
   try {
-    var mgrEmails = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
+    var restockTo = getNotifEmails("restock_request");
+    if(restockTo===null && restockTo!==null) { showToast("Restock request saved (notifications disabled)"); return; }
+    if(!restockTo){ restockTo = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(","); }
+    if(!restockTo){ showToast("No recipient set for restock requests. Check Notification Settings."); return; }
     await gs("sendEmailServer",{
-      to:mgrEmails||"john.kluttz@fox-marketingservices.com",
+      to:restockTo,
       subject:"[Fox Pest Control] Restock Request - "+selectedItems.length+" item"+(selectedItems.length>1?"s":"")+" - "+S.managerName,
       body:body
     });
@@ -6652,9 +6750,10 @@ async function restockSubmitReceive(){
     +"Fox Pest Control Admin Hub - "+(S.branchName||"Willamette Valley")+" Branch";
 
   try {
-    var mgrEmails2 = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
-    await gs("sendEmailServer",{
-      to:mgrEmails2||"john.kluttz@fox-marketingservices.com",
+    var receivedTo = getNotifEmails("restock_received");
+    if(!receivedTo){ receivedTo = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(","); }
+    if(receivedTo) await gs("sendEmailServer",{
+      to:receivedTo,
       subject:"[Fox Pest Control] Restock Received - Order "+order.id.slice(-6)+(backordered.length>0?" (Partial)":""),
       body:body
     });
