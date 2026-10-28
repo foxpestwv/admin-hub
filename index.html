@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.2";
+const APP_VERSION = "4.5.3";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -6470,14 +6470,7 @@ async function tiSubmit(){
     });
   } catch(e){ console.warn("Firebase truck inventory log:", e); }
 
-  var rows = (inv.products||[]).map(function(p){
-    return [new Date().toLocaleDateString("en-US"), techName, truck||inv.truck||"", p.name, p.unit, p.qty, p.prevQty||0, p.qty-(p.prevQty||0)];
-  });
-  if(rows.length > 0){
-    try {
-      await gs("logTruckInventoryServer", {rows:rows, headers:["Date","Technician","Truck","Product","Unit","Qty","Prev Qty","Change"]});
-    } catch(e){ console.warn("Sheet log:", e); }
-  }
+  // Second sheet log removed - was creating UNKNOWN records in Firebase
 
   renderTruckInv();
 
