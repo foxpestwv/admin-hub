@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.6";
+const APP_VERSION = "4.4.7";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -2097,7 +2097,7 @@ async function handleAction(a,v,el,e){
     if(S.inspData.itemPhotos&&S.inspData.itemPhotos[ikey]) S.inspData.itemPhotos[ikey].splice(pidx,1);
     render(); return;
   }
-  if(a==="inv-view") { S.invView=v; render(); return; }
+  if(a==="inv-view") { S.invView=v; renderInv(); return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="toggle-drawer"){ toggleDrawer(); return; }
   if(a==="close-drawer"){ closeDrawer(); return; }
