@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.5";
+const APP_VERSION = "4.5.6";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -6151,8 +6151,32 @@ function renderSettings(){
         +"</div></div>";
     }).join("");
 
+    // Inspection form fields editor
+    var fieldRows = (S.inspFields||[]).map(function(f, fi){
+      return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;align-items:center;gap:8px;'>"
+        +"<div style='flex:1;'>"
+        +"<input class='inp' style='font-size:12px;padding:5px 8px;margin-bottom:4px;' data-insp-fi='"+fi+"' data-insp-field='label' value='"+esc(f.label)+"' placeholder='Field label'>"
+        +"<select class='inp' style='font-size:11px;padding:4px;' data-insp-fi='"+fi+"' data-insp-field='type'>"
+        +["text","number","textarea","select"].map(function(t){ return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>"; }).join("")
+        +"</select>"
+        +"</div>"
+        +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;'>"
+        +"<input type='checkbox' "+(f.required?"checked":"")+" data-insp-fi='"+fi+"' data-insp-field='required'> Required"
+        +"</label>"
+        +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;'>"
+        +"<input type='checkbox' "+(f.enabled!==false?"checked":"")+" data-insp-fi='"+fi+"' data-insp-field='enabled'> On"
+        +"</label>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-insp-field' data-v='"+fi+"'>X</button>"
+        +"</div>";
+    }).join("");
+
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Inspection Settings</h2>"
-      +syncBtn+catRows
+      +syncBtn
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Form Fields (Info Page)</div>"
+      +fieldRows
+      +"<button class='btn bg' data-a='add-insp-field' style='width:100%;padding:8px;margin-bottom:16px;font-size:12px;'>+ Add Field</button>"
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Inspection Categories</div>"
+      +catRows
       +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
   }
 
@@ -6169,6 +6193,19 @@ function renderSettings(){
       if(prod){ prod[field]=val; save(); gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){}); }
     });
   });
+  // Wire up inspection field changes
+  if(S.settingsTab==="inspection"){
+    pg.querySelectorAll("input[data-insp-fi], select[data-insp-fi]").forEach(function(inp){
+      inp.addEventListener("change", function(){
+        var fi = parseInt(inp.getAttribute("data-insp-fi"));
+        var field = inp.getAttribute("data-insp-field");
+        if(!S.inspFields[fi]) return;
+        if(field==="required"||field==="enabled") S.inspFields[fi][field] = inp.checked;
+        else S.inspFields[fi][field] = inp.value;
+        save(); saveAccountsToSheet();
+      });
+    });
+  }
   // Wire up notification config changes
   if(S.settingsTab==="notifications"){
     pg.querySelectorAll("input[data-notif-key]").forEach(function(inp){
