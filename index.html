@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.0";
+const APP_VERSION = "4.5.1";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -512,6 +512,17 @@ async function checkForUpdates(silent){
     if(!vdoc.exists){ return; }
     var latestVersion = vdoc.data().version;
     var latestNote = vdoc.data().note||"";
+    
+    // If the deployed app version is newer than Firebase config, update Firebase config so all devices know!
+    if(APP_VERSION > (latestVersion || "")){
+      await fbSet("config", "appVersion", {
+        version: APP_VERSION,
+        note: "Truck inventory & sync improvements",
+        updatedAt: new Date().toISOString()
+      });
+      latestVersion = APP_VERSION;
+    }
+    
     if(!latestVersion) return;
     window._latestVersion = latestVersion;
 
