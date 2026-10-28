@@ -434,7 +434,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.3.6";
+const APP_VERSION = "4.3.7";
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
 const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
@@ -6558,8 +6558,9 @@ async function restockSendEmail(){
     +"Please place this order at your earliest convenience.\n\nFox Pest Control Admin Hub";
 
   try {
+    var mgrEmails = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
     await gs("sendEmailServer",{
-      to:"rockey.martin@fox-marketingservices.com,john.kluttz@fox-marketingservices.com",
+      to:mgrEmails||"john.kluttz@fox-marketingservices.com",
       subject:"[Fox Pest Control] Restock Request - "+selectedItems.length+" item"+(selectedItems.length>1?"s":"")+" - "+S.managerName,
       body:body
     });
@@ -6648,11 +6649,12 @@ async function restockSubmitReceive(){
     +emailLines.join("\n\n")+"\n\n"
     +(missing.length>0?"Note: Missing items were not received and have not been added to inventory.\n\n":"")
     +(backordered.length>0?"Note: Backordered items have been saved as a new pending restock order.\n\n":"")
-    +"Fox Pest Control Admin Hub - Willamette Valley Branch";
+    +"Fox Pest Control Admin Hub - "+(S.branchName||"Willamette Valley")+" Branch";
 
   try {
+    var mgrEmails2 = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
     await gs("sendEmailServer",{
-      to:"rockey.martin@fox-marketingservices.com",
+      to:mgrEmails2||"john.kluttz@fox-marketingservices.com",
       subject:"[Fox Pest Control] Restock Received - Order "+order.id.slice(-6)+(backordered.length>0?" (Partial)":""),
       body:body
     });
