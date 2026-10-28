@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.7";
+const APP_VERSION = "4.4.8";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -1609,6 +1609,9 @@ async function syncFromSheet(){
     }
     if(ti&&ti.trucks){
       S.sheetTruckData=ti.trucks;
+      // Also populate truckInventories for the truck inventory view
+      S.truckInventories = ti.trucks;
+      lsSet("hub:truckInventories", S.truckInventories);
     }
     // Only load pending orders on sync - history loads when Orders tab opens
     try {
