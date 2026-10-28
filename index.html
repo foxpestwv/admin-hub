@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.4";
+const APP_VERSION = "4.4.5";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -6089,14 +6089,6 @@ function renderSettings(){
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
     +superAdminBar+tabBar+body;
 
-  // Wire up inventory search
-  var invSearchInp = document.getElementById("inv-search");
-  if(invSearchInp){
-    invSearchInp.addEventListener("input", function(){
-      S._invSearch = invSearchInp.value;
-      renderInv();
-    });
-  }
   // Wire up product field changes
   pg.querySelectorAll("input[data-pid]").forEach(function(inp){
     inp.addEventListener("change", function(){
