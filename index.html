@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.5";
+const APP_VERSION = "4.4.6";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -3784,7 +3784,7 @@ function renderInv(){
     ${low.length>0?`<div style="background:#431407;border:1px solid #c2410c;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;"><span style="color:#fb923c;">!</span><span style="color:#fb923c;font-size:13px;font-weight:500;">${low.length} item${low.length>1?"s":""} low on stock</span></div>`:""}
     ${addPanel}
     <div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bg" style="font-size:12px;" data-a="inv-view" data-v="checkouts">Checkout History</button></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;"><input type="text" class="inp" id="inv-search" placeholder="🔍 Search products..." value="${esc(S._invSearch||'')}" style="flex:1;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;"><input type="text" class="inp" id="inv-search" placeholder="🔍 Search products..." value="${esc(S._invSearch||'')}" style="flex:1;" oninput="S._invSearch=this.value;renderInv();"></div>
     ${catHtml}`;
 }
 
