@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.8";
+const APP_VERSION = "4.4.9";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -656,6 +656,14 @@ async function gs(fn, data){
       }
 
       // ── PRODUCTS ────────────────────────────────────────────────────────────
+      case "getCheckouts": {
+        await initFirebase();
+        var coSnap = await _db.collection("checkouts").orderBy("date","desc").limit(100).get().catch(function(){ return _db.collection("checkouts").get(); });
+        var coData = coSnap.docs.map(function(d){ return d.data(); });
+        var coBranch = data&&data.branch;
+        if(coBranch) coData = coData.filter(function(c){ return !c.branch||c.branch===coBranch; });
+        return {checkouts: coData};
+      }
       case "getProducts": {
         var prodBranch = (data&&data.branch)||"willamette";
         var prods = await fbGet("products");
@@ -2100,7 +2108,7 @@ async function handleAction(a,v,el,e){
     if(S.inspData.itemPhotos&&S.inspData.itemPhotos[ikey]) S.inspData.itemPhotos[ikey].splice(pidx,1);
     render(); return;
   }
-  if(a==="inv-view") { S.invView=v; renderInv(); return; }
+  if(a==="inv-view") { S.invView=v; if(v==="checkouts"){ checkoutHistory(); } else { renderInv(); } return; }
   if(a==="open-adj") { S._adjId=v; S._restockId=null; render(); return; }
   if(a==="toggle-drawer"){ toggleDrawer(); return; }
   if(a==="close-drawer"){ closeDrawer(); return; }
@@ -3787,14 +3795,18 @@ function renderInv(){
     ${low.length>0?`<div style="background:#431407;border:1px solid #c2410c;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;"><span style="color:#fb923c;">!</span><span style="color:#fb923c;font-size:13px;font-weight:500;">${low.length} item${low.length>1?"s":""} low on stock</span></div>`:""}
     ${addPanel}
     <div style="display:flex;gap:8px;margin-bottom:14px;"><button class="btn bg" style="font-size:12px;" data-a="inv-view" data-v="checkouts">Checkout History</button></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;"><input type="text" class="inp" id="inv-search" placeholder="🔍 Search products..." value="${esc(S._invSearch||'')}" style="flex:1;" oninput="S._invSearch=this.value;renderInv();"></div>
-    ${catHtml}`;
+    <div style="display:flex;gap:8px;margin-bottom:12px;"><input type="text" class="inp" id="inv-search" placeholder="🔍 Search products..." value="${esc(S._invSearch||'')}" style="flex:1;" oninput="S._invSearch=this.value;renderInvCats();"></div>
+    <div id="inv-prod-list">${catHtml}</div>`;
 }
 
-function checkoutHistory(){
-  const {checkouts}=S;
-  return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="inv-view" data-v="list">Back</button><h2 style="font-size:18px;font-weight:700;">Checkout History</h2></div>
-    ${checkouts.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No checkouts yet.</div>`:checkouts.slice(0,50).map(c=>`<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><div style="flex:1;"><div style="font-weight:600;font-size:13px;">${esc(c.product)}</div><div style="color:#475569;font-size:12px;">${esc(c.tech)} - ${fd(c.date)}</div></div><div style="text-align:right;"><div style="font-weight:700;color:#ef4444;font-size:14px;">-${c.qty}</div><div style="color:#475569;font-size:11px;">${esc(c.unit)}</div></div></div>`).join("")}`;
+async function checkoutHistory(){
+  const pg = document.getElementById("pg-inventory");
+  if(!pg) return;
+  pg.innerHTML = "<div style='text-align:center;padding:40px;color:#64748b;'>Loading...</div>";
+  var result = await gs("getCheckouts", {branch:S.branch||"willamette"});
+  var checkouts = (result&&result.checkouts)||S.checkouts||[];
+  pg.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="inv-view" data-v="list">Back</button><h2 style="font-size:18px;font-weight:700;">Checkout History</h2></div>
+    ${checkouts.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No checkouts yet.</div>`:checkouts.slice(0,50).map(c=>`<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><div style="flex:1;"><div style="font-weight:600;font-size:13px;">${esc(c.product||c.name||"")}</div><div style="color:#475569;font-size:12px;">${esc(c.tech||c.techName||"")} - ${fd(c.date)}</div></div><div style="text-align:right;"><div style="font-weight:700;color:#ef4444;font-size:14px;">-${c.qty}</div><div style="color:#475569;font-size:11px;">${esc(c.unit||"")}</div></div></div>`).join("")}`;
 }
 
 
@@ -6409,6 +6421,79 @@ async function tiSubmit(){
   } else {
     alert("Inventory submitted successfully!");
   }
+}
+
+function renderInvCats(){
+  // Re-render just the product list section without losing search focus
+  var invSearch = (S._invSearch||"").toLowerCase();
+  var allProds = (S.products||[]).filter(function(p){
+    if(!invSearch) return true;
+    return p.name.toLowerCase().indexOf(invSearch)>=0;
+  });
+  var starred = allProds.filter(function(p){ return S._starred&&S._starred[p.id]; });
+  var unstarred = allProds.filter(function(p){ return !S._starred||!S._starred[p.id]; });
+  if(!S._invOpenCats) S._invOpenCats = {};
+  var categoryOrder = ["General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+  var catMap = {};
+  unstarred.forEach(function(p){
+    var cat = p.category||"General Pest";
+    if(!catMap[cat]) catMap[cat] = [];
+    catMap[cat].push(p);
+  });
+  Object.keys(catMap).forEach(function(cat){
+    catMap[cat].sort(function(a,b){ return a.name.localeCompare(b.name); });
+  });
+  var sortedCats = Object.keys(catMap).sort(function(a,b){
+    var ai=categoryOrder.indexOf(a),bi=categoryOrder.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1; if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+  // Build just the product list HTML and inject it
+  var container = document.getElementById("inv-prod-list");
+  if(!container){ renderInv(); return; }
+  var html = "";
+  if(invSearch){
+    html = unstarred.sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
+      var isLow=p.qty<=p.lowAt;
+      return `<div class="card" style="margin-bottom:8px;${isLow?"border-color:#c2410c30":""}">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;"><div style="font-weight:600;font-size:14px;">${esc(p.name)}${isLow?'<span class="tag-low" style="margin-left:6px;">LOW</span>':""}</div><div style="color:#475569;font-size:12px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
+          <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
+          <div style="display:flex;gap:5px;">
+            <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
+            <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
+          </div>
+        </div></div>`;
+    }).join("");
+  } else {
+    sortedCats.forEach(function(cat){
+      var isOpen = S._invOpenCats[cat]===true;
+      var catProds = catMap[cat]||[];
+      var lowCount = catProds.filter(function(p){return p.qty<=p.lowAt;}).length;
+      html += "<div style='margin-bottom:6px;'>"
+        +"<button class='btn' style='width:100%;text-align:left;padding:10px 14px;background:#0f2040;border:1px solid #1e3a5f;border-radius:8px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;' data-a='inv-toggle-cat' data-v='"+esc(cat)+"'>"
+        +"<span style='font-weight:600;font-size:13px;color:#f59e0b;'>"+esc(cat)+"</span>"
+        +"<span style='color:#64748b;font-size:12px;'>"+(lowCount>0?"<span style='color:#fb923c;'>"+lowCount+" LOW</span> · ":"")+""+catProds.length+" items "+(isOpen?"▲":"▼")+"</span>"
+        +"</button>";
+      if(isOpen){
+        catProds.forEach(function(p){
+          var isLow=p.qty<=p.lowAt;
+          html += `<div class="card" style="margin-bottom:8px;${isLow?"border-color:#c2410c30":""}">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;"><div style="font-weight:600;font-size:14px;">${esc(p.name)}${isLow?'<span class="tag-low" style="margin-left:6px;">LOW</span>':""}</div><div style="color:#475569;font-size:12px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
+              <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
+              <div style="display:flex;gap:5px;">
+                <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
+                <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
+              </div>
+            </div></div>`;
+        });
+      }
+      html += "</div>";
+    });
+  }
+  container.innerHTML = html;
 }
 
 // ─── Restock Orders ───────────────────────────────────────────────────────────
