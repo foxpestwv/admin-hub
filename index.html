@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.5.1";
+const APP_VERSION = "4.5.2";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -1040,14 +1040,36 @@ async function gs(fn, data){
         var byTech = {};
         allDocs.forEach(function(rec){
           if(rec.branch && rec.branch !== branchKey && branchKey !== "all") return;
+          
+          // Handle legacy format where data was saved inside rec.rows
+          if((!rec.products || rec.products.length === 0) && rec.rows && Array.isArray(rec.rows)){
+            rec.products = rec.rows.map(function(r){
+              return {
+                name: r[3] || "Product",
+                unit: r[4] || "",
+                qty: parseInt(r[5]) || 0,
+                prevQty: parseInt(r[6]) || 0
+              };
+            });
+            if(rec.rows[0]){
+              rec.date = rec.date || rec.rows[0][0];
+              rec.techName = rec.techName || rec.rows[0][1];
+              rec.truck = rec.truck || rec.rows[0][2];
+            }
+          }
+
           var tName = (rec.techName || rec.tech || "").trim();
           if(!tName) return;
           if(typeof rec.products === "string"){
             try{ rec.products = JSON.parse(rec.products); }catch(e){ rec.products = []; }
           }
           rec.lastSubmit = rec.lastSubmit || rec.date || rec.createdAt || new Date().toISOString();
-          if(!byTech[tName]){
-            byTech[tName] = rec;
+          
+          // Case-insensitive tech key matching so it matches tech account names
+          var matchTech = (S.techAccounts || []).find(function(t){ return t.name.toLowerCase() === tName.toLowerCase(); });
+          var key = matchTech ? matchTech.name : tName;
+          if(!byTech[key]){
+            byTech[key] = rec;
           }
         });
         return {trucks: byTech};
@@ -1649,8 +1671,9 @@ async function syncFromSheet(){
     }
     if(ti&&ti.trucks){
       S.sheetTruckData=ti.trucks;
-      // Also populate truckInventories for the truck inventory view
-      S.truckInventories = ti.trucks;
+      if(Object.keys(ti.trucks).length > 0){
+        S.truckInventories = Object.assign({}, S.truckInventories || {}, ti.trucks);
+      }
       lsSet("hub:truckInventories", S.truckInventories);
     }
     // Only load pending orders on sync - history loads when Orders tab opens
