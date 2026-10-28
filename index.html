@@ -437,7 +437,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.4.9";
+const APP_VERSION = "4.5.0";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -1005,18 +1005,36 @@ async function gs(fn, data){
 
       // ── TRUCK INVENTORY ────────────────────────────────────────────────────────
       case "logTruckInventory": {
-        var tiId = "ti_"+data.techName.replace(/\s/g,"_")+"_"+Date.now();
-        await fbSet("truckInventory", tiId, Object.assign({}, data, {id:tiId, date:new Date().toISOString()}));
+        var cleanName = (data.techName || data.tech || "Tech").replace(/\s+/g,"_");
+        var tiId = "ti_" + cleanName + "_" + Date.now();
+        var recordData = Object.assign({}, data, {
+          id: tiId,
+          techName: data.techName || data.tech || "Unknown",
+          branch: data.branch || S.branch || "willamette",
+          date: data.date || new Date().toISOString()
+        });
+        await fbSet("truckInventory", tiId, recordData);
         return {ok:true};
       }
       case "getTruckInventory": {
         await initFirebase();
-        var tiSnap = await _db.collection("truckInventory").orderBy("date","desc").get();
+        var tiSnap = await _db.collection("truckInventory").get();
+        var branchKey = (data && data.branch) || S.branch || "willamette";
+        var allDocs = tiSnap.docs.map(function(d){ return d.data(); });
+        allDocs.sort(function(a, b){
+          return (b.date || "").localeCompare(a.date || "");
+        });
         var byTech = {};
-        tiSnap.docs.forEach(function(d){
-          var rec = d.data();
-          if(typeof rec.products === "string") try{ rec.products = JSON.parse(rec.products); }catch(e){ rec.products=[]; }
-          if(!byTech[rec.techName]) byTech[rec.techName] = rec;
+        allDocs.forEach(function(rec){
+          if(rec.branch && rec.branch !== branchKey && branchKey !== "all") return;
+          var tName = (rec.techName || rec.tech || "").trim();
+          if(!tName) return;
+          if(typeof rec.products === "string"){
+            try{ rec.products = JSON.parse(rec.products); }catch(e){ rec.products = []; }
+          }
+          if(!byTech[tName]){
+            byTech[tName] = rec;
+          }
         });
         return {trucks: byTech};
       }
@@ -6223,54 +6241,70 @@ function renderTruckInv(){
 }
 
 function renderTruckInvManager(pg){
-  var techNames = Object.keys(S.truckInventories);
-  if(techNames.length === 0){
-    pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:16px;'>Truck Inventories</h2>"
+  var currentBranch = S.branch || "willamette";
+  var branchTechs = (S.techAccounts || []).map(function(t){ return t.name; });
+  var submittedTechs = Object.keys(S.truckInventories || {});
+  var allTechNames = Array.from(new Set(branchTechs.concat(submittedTechs))).filter(Boolean);
+
+  if(allTechNames.length === 0){
+    pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+      +"<h2 style='font-size:20px;font-weight:700;'>Truck Inventories</h2>"
+      +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='sync'>↻ Sync</button></div>"
       +"<div style='text-align:center;color:#475569;padding:40px;'>"
-      +"<div style='font-size:36px;margin-bottom:12px;'>&#x1F69A;</div>"
-      +"<p>No truck inventories submitted yet.</p>"
-      +"<p style='font-size:13px;margin-top:8px;'>Techs submit their first inventory from the My Truck tab.</p></div>";
+      +"<div style='font-size:36px;margin-bottom:12px;'>🚚</div>"
+      +"<p>No technicians found for this branch.</p></div>";
     return;
   }
 
-  var cards = techNames.map(function(techName){
-    var inv = S.truckInventories[techName];
-    var lastDate = inv.lastSubmit ? fd(inv.lastSubmit) : "Never";
-    var daysSince = inv.lastSubmit ? Math.floor((Date.now()-new Date(inv.lastSubmit).getTime())/(1000*60*60*24)) : 999;
-    var stale = daysSince > 8;
-    var variances = (inv.products||[]).filter(function(p){ return p.prevQty>0 && p.qty < p.prevQty*0.5; });
+  var cards = allTechNames.map(function(techName){
+    var inv = (S.truckInventories && S.truckInventories[techName]) || null;
+    var techAcct = (S.techAccounts || []).find(function(t){ return t.name === techName; });
+    var truckLabel = (inv && inv.truck) || (techAcct && techAcct.truck) || "No Truck Assigned";
 
-    var prodRows = (inv.products||[]).map(function(p){
+    if(!inv || !inv.lastSubmit){
+      return "<div class='card' style='margin-bottom:12px;opacity:0.75;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;'>"
+        +"<div><div style='font-weight:700;font-size:16px;'>"+esc(techName)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(truckLabel)+"</div></div>"
+        +"<span style='padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#1e293b;color:#94a3b8;'>Awaiting Count</span>"
+        +"</div></div>";
+    }
+
+    var lastDate = fd(inv.lastSubmit);
+    var daysSince = Math.floor((Date.now() - new Date(inv.lastSubmit).getTime()) / (1000 * 60 * 60 * 24));
+    var stale = daysSince > 8;
+    var variances = (inv.products || []).filter(function(p){ return p.prevQty > 0 && p.qty < p.prevQty * 0.5; });
+
+    var prodRows = (inv.products || []).map(function(p){
       var change = p.prevQty !== undefined ? p.qty - p.prevQty : null;
       var isVar = p.prevQty > 0 && p.qty < p.prevQty * 0.5;
       var changeHtml = change !== null
-        ? "<span style='font-size:12px;color:"+(change<0?"#ef4444":change>0?"#22c55e":"#475569")+";'>"+(change>0?"+":"")+change+"</span>"
+        ? "<span style='font-size:12px;color:" + (change < 0 ? "#ef4444" : change > 0 ? "#22c55e" : "#475569") + ";'>" + (change > 0 ? "+" : "") + change + "</span>"
         : "";
       return "<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0a1628;'>"
-        +"<span style='font-size:13px;"+(isVar?"color:#f97316;font-weight:600;":"")+"'>"+esc(p.name)+"</span>"
-        +"<div style='display:flex;align-items:center;gap:10px;'>"+changeHtml
-        +"<span style='font-family:monospace;font-weight:700;color:"+(isVar?"#f97316":"#e2e8f0")+";'>"+p.qty+" "+esc(p.unit)+"</span>"
+        +"<span style='font-size:13px;" + (isVar ? "color:#f97316;font-weight:600;" : "") + "'>" + esc(p.name) + "</span>"
+        +"<div style='display:flex;align-items:center;gap:10px;'>" + changeHtml
+        +"<span style='font-family:monospace;font-weight:700;color:" + (isVar ? "#f97316" : "#e2e8f0") + ";'>" + p.qty + " " + esc(p.unit) + "</span>"
         +"</div></div>";
     }).join("");
 
-    var badges = (stale ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#431407;color:#fb923c;'>Overdue</span>" : "")
-      + (variances.length>0 ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#1c0a00;color:#f97316;'>"+variances.length+" variance"+(variances.length>1?"s":"")+"</span>" : "");
+    var badges = (stale ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#431407;color:#fb923c;'>Overdue</span> " : "")
+      + (variances.length > 0 ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#1c0a00;color:#f97316;'>" + variances.length + " variance" + (variances.length > 1 ? "s" : "") + "</span>" : "");
 
-    return "<div class='card' style='margin-bottom:12px;"+(variances.length>0?"border-color:#c2410c30;":"")+"'>"
+    return "<div class='card' style='margin-bottom:12px;" + (variances.length > 0 ? "border-color:#c2410c30;" : "") + "'>"
       +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;'>"
-      +"<div><div style='font-weight:700;font-size:16px;'>"+esc(techName)+"</div>"
-      +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(inv.truck||"")+" &bull; Last count: "+lastDate+"</div></div>"
-      +"<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px;'>"+badges+"</div></div>"
-      +"<div>"+(prodRows||"<div style='color:#475569;font-size:13px;'>No products recorded.</div>")+"</div></div>";
+      +"<div><div style='font-weight:700;font-size:16px;'>" + esc(techName) + "</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + esc(truckLabel) + " &bull; Last count: " + lastDate + "</div></div>"
+      +"<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px;'>" + badges + "</div></div>"
+      +"<div>" + (prodRows || "<div style='color:#475569;font-size:13px;'>No products recorded.</div>") + "</div></div>";
   }).join("");
 
   pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
     +"<h2 style='font-size:20px;font-weight:700;'>Truck Inventories</h2>"
-    +"<span style='font-size:12px;color:#475569;'>"+techNames.length+" truck"+(techNames.length!==1?"s":"")+"</span></div>"
-    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Weekly counts submitted by technicians. Variances flagged when a product drops more than 50% from the previous week.</p>"
+    +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='sync'>↻ Sync</button></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Weekly counts submitted by technicians across " + esc(S.branchName || "Willamette Valley") + ".</p>"
     +cards;
 }
-
 function renderTruckInvTech(pg){
   var techName = S.currentUser ? S.currentUser.name : S.checkTech;
   if(!techName){ pg.innerHTML="<div style='text-align:center;color:#475569;padding:40px;'>Please log in to manage your truck inventory.</div>"; return; }
@@ -6386,7 +6420,17 @@ async function tiSubmit(){
   inv.lastSubmit = new Date().toISOString();
   save();
 
-  // Log to sheet BEFORE re-rendering
+  // Log to Firebase & sheet BEFORE re-rendering
+  try {
+    await gs("logTruckInventoryServer", {
+      techName: techName,
+      truck: truck || inv.truck || "",
+      branch: S.branch || "willamette",
+      products: inv.products || [],
+      date: inv.lastSubmit
+    });
+  } catch(e){ console.warn("Firebase truck inventory log:", e); }
+
   var rows = (inv.products||[]).map(function(p){
     return [new Date().toLocaleDateString("en-US"), techName, truck||inv.truck||"", p.name, p.unit, p.qty, p.prevQty||0, p.qty-(p.prevQty||0)];
   });
