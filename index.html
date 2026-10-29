@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.1";
+const APP_VERSION = "5.0.2";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -989,7 +989,7 @@ async function gs(fn, data){
         return {ok:true, id:srId2};
       }
       case "updateSignRequest": {
-        if(data.id) await fbUpdate("signRequests", data.id, data);
+        if(data.id) await _db.collection("signRequests").doc(data.id).set(Object.assign({},data,{updatedAt:new Date().toISOString()}),{merge:true});
         return {ok:true};
       }
       case "updateRestockOrder": {
@@ -1081,7 +1081,7 @@ async function gs(fn, data){
         return {ok:true, id:srId2};
       }
       case "updateSignRequest": {
-        if(data.id) await fbUpdate("signRequests", data.id, data);
+        if(data.id) await _db.collection("signRequests").doc(data.id).set(Object.assign({},data,{updatedAt:new Date().toISOString()}),{merge:true});
         return {ok:true};
       }
       case "updateRestockOrder": {
