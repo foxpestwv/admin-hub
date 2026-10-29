@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.6";
+const APP_VERSION = "4.6.7";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -673,9 +673,30 @@ async function gs(fn, data){
       // ── PRODUCTS ────────────────────────────────────────────────────────────
       case "getCheckouts": {
         await initFirebase();
-        var coSnap = await _db.collection("checkouts").orderBy("date","desc").limit(100).get().catch(function(){ return _db.collection("checkouts").get(); });
-        var coData = coSnap.docs.map(function(d){ return d.data(); });
         var coBranch = data&&data.branch;
+        // Try checkouts collection first, fall back to orderHistory
+        var coSnap = await _db.collection("checkouts").get().catch(function(){ return {docs:[]}; });
+        var coData = coSnap.docs.map(function(d){ return d.data(); });
+        if(coData.length===0){
+          var ohSnap = await _db.collection("orderHistory").get().catch(function(){ return {docs:[]}; });
+          coData = ohSnap.docs.map(function(d){
+            var rec = d.data();
+            var items = typeof rec.items==="string" ? JSON.parse(rec.items||"[]") : (rec.items||[]);
+            // Flatten items into individual checkout records
+            return items.map(function(item){
+              return {
+                tech: rec.techName||rec.requestedBy||"Unknown",
+                techName: rec.techName||rec.requestedBy||"Unknown",
+                product: item.name||"",
+                name: item.name||"",
+                qty: item.approvedQty||item.qty||0,
+                unit: item.unit||"",
+                date: rec.date||rec.approvedAt||"",
+                branch: rec.branch||"willamette"
+              };
+            });
+          }).reduce(function(a,b){ return a.concat(b); }, []);
+        }
         if(coBranch) coData = coData.filter(function(c){ return !c.branch||c.branch===coBranch; });
         return {checkouts: coData};
       }
@@ -1699,6 +1720,14 @@ async function syncFromSheet(){
       }
       lsSet("hub:truckInventories", S.truckInventories);
     }
+    // Load order history for reporting
+    try {
+      var ohResult2 = await gs("getCheckouts", _syncBranch);
+      if(ohResult2&&ohResult2.checkouts) {
+        S.checkouts = ohResult2.checkouts;
+        lsSet("hub:checkouts", S.checkouts);
+      }
+    } catch(e){ console.warn("Checkout history:", e); }
     // Only load pending orders on sync - history loads when Orders tab opens
     try {
       var ordResult = await gs("getPendingServer", {branch:S.branch||"willamette"});
