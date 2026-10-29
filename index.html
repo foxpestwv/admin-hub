@@ -352,6 +352,7 @@ const S = {
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
   ordersFilter:"Pending", settingsTab:"access", checkSearch:"", checkStarredOnly:false, cart:{},
   detailInsp:null, editOrderId:null, editOrderType:null,
+  reportFilters:{dateRange:"this_month", techFilter:"all", categoryFilter:"all", stockLevel:"all", sortBy:"name", lastActivity:"all", adjReason:"all", countStatus:"all", discrepancyType:"all"},
   openCat:null, inspListFilter:"all",
 };
 
@@ -438,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.5";
+const APP_VERSION = "4.6.6";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -5263,7 +5264,7 @@ async function runReport(type){
   var backBtn = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
 
   if(type==="low-stock"){
-    var low = (S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
+    var low = applyProductFilters(S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
       .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
     pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
       +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
@@ -5283,12 +5284,17 @@ async function runReport(type){
 
   if(type==="truck-inventory"){
     var tiData2 = S.truckInventories||{};
-    var techNames2 = (S.techAccounts||[]).map(function(t){ return t.name; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>🚚 Truck Inventory Summary</h2>"
+    var rf2 = S.reportFilters||{};
+    var techNames2 = (S.techAccounts||[])
+      .filter(function(t){ return rf2.techFilter==="all"||t.name===rf2.techFilter; })
+      .map(function(t){ return t.name; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"
       +techNames2.map(function(name){
         var rec = tiData2[name];
         var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
-        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"✅ Submitted "+daysSince+" days ago":daysSince<=14?"⚠️ "+daysSince+" days ago":"🔴 Overdue ("+daysSince+" days)";
+        var countStat = !rec||!rec.lastSubmit?"never":daysSince<=7?"completed":daysSince<=14?"pending":"overdue";
+        if(rf2.countStatus&&rf2.countStatus!=="all"&&countStat!==rf2.countStatus) return "";
+        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"Submitted "+daysSince+" days ago":daysSince<=14?daysSince+" days ago":"Overdue ("+daysSince+" days)";
         var color = !rec||!rec.lastSubmit?"#ef4444":daysSince<=7?"#22c55e":daysSince<=14?"#f59e0b":"#ef4444";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
           +"<div style='display:flex;justify-content:space-between;margin-bottom:6px;'>"
@@ -5311,7 +5317,10 @@ async function runReport(type){
       S._cachedAdjLog = adjLog2;
     }
     var usageByTech = {};
-    (S.checkouts||[]).forEach(function(c){
+    var rf3 = S.reportFilters||{};
+    var filteredCheckouts = applyDateFilter(S.checkouts||[], "date");
+    if(rf3.techFilter&&rf3.techFilter!=="all") filteredCheckouts=filteredCheckouts.filter(function(c){ return (c.tech||c.techName)===rf3.techFilter; });
+    filteredCheckouts.forEach(function(c){
       var t = c.tech||c.techName||"Unknown";
       if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
       usageByTech[t].qty += (c.qty||1);
@@ -5337,9 +5346,21 @@ async function runReport(type){
       adjLog3 = adjRes2.log||[];
       S._cachedAdjLog = adjLog3;
     }
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📋 Adjustment History</h2>"
-      +(adjLog3.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments recorded yet.</div>"
-      :adjLog3.slice(0,50).map(function(a){
+    var rf4 = S.reportFilters||{};
+    var filteredAdj = applyDateFilter(adjLog3, "date");
+    if(rf4.techFilter&&rf4.techFilter!=="all") filteredAdj=filteredAdj.filter(function(a){ return (a.by||a.manager)===rf4.techFilter; });
+    if(rf4.discrepancyType&&rf4.discrepancyType!=="all"){
+      filteredAdj=filteredAdj.filter(function(a){
+        var ch=a.change||((a.newQty||0)-(a.oldQty||0));
+        if(rf4.discrepancyType==="shortage") return ch<0;
+        if(rf4.discrepancyType==="overage") return ch>0;
+        if(rf4.discrepancyType==="none") return ch===0;
+        return true;
+      });
+    }
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"
+      +(filteredAdj.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments found for selected filters.</div>"
+      :filteredAdj.slice(0,50).map(function(a){
         var change = a.change||((a.newQty||0)-(a.oldQty||0));
         var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
@@ -6642,7 +6663,7 @@ async function runReport(type){
   var backBtn = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
 
   if(type==="low-stock"){
-    var low = (S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
+    var low = applyProductFilters(S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
       .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
     pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
       +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
@@ -6662,12 +6683,17 @@ async function runReport(type){
 
   if(type==="truck-inventory"){
     var tiData2 = S.truckInventories||{};
-    var techNames2 = (S.techAccounts||[]).map(function(t){ return t.name; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>🚚 Truck Inventory Summary</h2>"
+    var rf2 = S.reportFilters||{};
+    var techNames2 = (S.techAccounts||[])
+      .filter(function(t){ return rf2.techFilter==="all"||t.name===rf2.techFilter; })
+      .map(function(t){ return t.name; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"
       +techNames2.map(function(name){
         var rec = tiData2[name];
         var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
-        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"✅ Submitted "+daysSince+" days ago":daysSince<=14?"⚠️ "+daysSince+" days ago":"🔴 Overdue ("+daysSince+" days)";
+        var countStat = !rec||!rec.lastSubmit?"never":daysSince<=7?"completed":daysSince<=14?"pending":"overdue";
+        if(rf2.countStatus&&rf2.countStatus!=="all"&&countStat!==rf2.countStatus) return "";
+        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"Submitted "+daysSince+" days ago":daysSince<=14?daysSince+" days ago":"Overdue ("+daysSince+" days)";
         var color = !rec||!rec.lastSubmit?"#ef4444":daysSince<=7?"#22c55e":daysSince<=14?"#f59e0b":"#ef4444";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
           +"<div style='display:flex;justify-content:space-between;margin-bottom:6px;'>"
@@ -6690,7 +6716,10 @@ async function runReport(type){
       S._cachedAdjLog = adjLog2;
     }
     var usageByTech = {};
-    (S.checkouts||[]).forEach(function(c){
+    var rf3 = S.reportFilters||{};
+    var filteredCheckouts = applyDateFilter(S.checkouts||[], "date");
+    if(rf3.techFilter&&rf3.techFilter!=="all") filteredCheckouts=filteredCheckouts.filter(function(c){ return (c.tech||c.techName)===rf3.techFilter; });
+    filteredCheckouts.forEach(function(c){
       var t = c.tech||c.techName||"Unknown";
       if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
       usageByTech[t].qty += (c.qty||1);
@@ -6716,9 +6745,21 @@ async function runReport(type){
       adjLog3 = adjRes2.log||[];
       S._cachedAdjLog = adjLog3;
     }
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📋 Adjustment History</h2>"
-      +(adjLog3.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments recorded yet.</div>"
-      :adjLog3.slice(0,50).map(function(a){
+    var rf4 = S.reportFilters||{};
+    var filteredAdj = applyDateFilter(adjLog3, "date");
+    if(rf4.techFilter&&rf4.techFilter!=="all") filteredAdj=filteredAdj.filter(function(a){ return (a.by||a.manager)===rf4.techFilter; });
+    if(rf4.discrepancyType&&rf4.discrepancyType!=="all"){
+      filteredAdj=filteredAdj.filter(function(a){
+        var ch=a.change||((a.newQty||0)-(a.oldQty||0));
+        if(rf4.discrepancyType==="shortage") return ch<0;
+        if(rf4.discrepancyType==="overage") return ch>0;
+        if(rf4.discrepancyType==="none") return ch===0;
+        return true;
+      });
+    }
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"
+      +(filteredAdj.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments found for selected filters.</div>"
+      :filteredAdj.slice(0,50).map(function(a){
         var change = a.change||((a.newQty||0)-(a.oldQty||0));
         var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
@@ -6798,12 +6839,138 @@ async function runReport(type){
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
+function getDateRange(range){
+  var now = new Date(); var start, end = new Date();
+  switch(range){
+    case "today": start=new Date(now.getFullYear(),now.getMonth(),now.getDate()); break;
+    case "yesterday": start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1); end=new Date(now.getFullYear(),now.getMonth(),now.getDate()); break;
+    case "this_week": start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay()); break;
+    case "last_week": start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay()-7); end=new Date(now.getFullYear(),now.getMonth(),now.getDate()-now.getDay()); break;
+    case "this_month": start=new Date(now.getFullYear(),now.getMonth(),1); break;
+    case "last_month": start=new Date(now.getFullYear(),now.getMonth()-1,1); end=new Date(now.getFullYear(),now.getMonth(),1); break;
+    case "this_quarter": var q=Math.floor(now.getMonth()/3); start=new Date(now.getFullYear(),q*3,1); break;
+    case "last_quarter": var q2=Math.floor(now.getMonth()/3)-1; var yr=now.getFullYear(); if(q2<0){q2=3;yr--;} start=new Date(yr,q2*3,1); end=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1); break;
+    case "this_year": start=new Date(now.getFullYear(),0,1); break;
+    case "custom":
+      var cs = document.getElementById("filter-custom-start"); var ce = document.getElementById("filter-custom-end");
+      start = cs&&cs.value ? new Date(cs.value) : new Date(now.getFullYear(),now.getMonth(),1);
+      end = ce&&ce.value ? new Date(ce.value) : new Date();
+      break;
+    default: start=new Date(now.getFullYear(),now.getMonth(),1);
+  }
+  return {start:start, end:end};
+}
+
+function applyDateFilter(items, dateField){
+  var rf = S.reportFilters||{};
+  if(!rf.dateRange||rf.dateRange==="all") return items;
+  var dr = getDateRange(rf.dateRange);
+  return items.filter(function(item){
+    var d = new Date(item[dateField]||item.date||item.createdAt||"");
+    return d>=dr.start && d<=dr.end;
+  });
+}
+
+function renderReportFilters(){
+  var rf = S.reportFilters||{};
+  var techOpts = ["all"].concat((S.techAccounts||[]).map(function(t){return t.name;}));
+  var catOpts = ["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+  var dateOpts = [
+    {v:"today",l:"Today"},{v:"yesterday",l:"Yesterday"},
+    {v:"this_week",l:"This Week"},{v:"last_week",l:"Last Week"},
+    {v:"this_month",l:"This Month"},{v:"last_month",l:"Last Month"},
+    {v:"this_quarter",l:"This Quarter"},{v:"last_quarter",l:"Last Quarter"},
+    {v:"this_year",l:"This Year"},{v:"all",l:"All Time"},{v:"custom",l:"Custom"}
+  ];
+  return "<div class='card' style='padding:12px;margin-bottom:12px;'>"
+    +"<div style='font-size:12px;font-weight:600;color:#64748b;margin-bottom:8px;text-transform:uppercase;'>Filters</div>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Date Range</div>"
+    +"<select class='inp' id='rf-date' style='font-size:12px;' onchange='S.reportFilters.dateRange=this.value;renderReports();'>"
+    +dateOpts.map(function(o){ return "<option value='"+o.v+"'"+(rf.dateRange===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+    +"<select class='inp' id='rf-tech' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;renderReports();'>"
+    +techOpts.map(function(t){ return "<option value='"+t+"'"+(rf.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Technicians":t)+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+    +"<select class='inp' id='rf-cat' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;renderReports();'>"
+    +catOpts.map(function(c){ return "<option value='"+c+"'"+(rf.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Stock Level</div>"
+    +"<select class='inp' id='rf-stock' style='font-size:12px;' onchange='S.reportFilters.stockLevel=this.value;renderReports();'>"
+    +[{v:"all",l:"All"},{v:"in_stock",l:"In Stock"},{v:"low",l:"Low Stock"},{v:"out",l:"Out of Stock"}]
+    .map(function(o){ return "<option value='"+o.v+"'"+(rf.stockLevel===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+    +"<select class='inp' id='rf-sort' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;renderReports();'>"
+    +[{v:"name",l:"Product Name"},{v:"qty",l:"Quantity"},{v:"value",l:"Dollar Value"},{v:"usage",l:"Usage"}]
+    .map(function(o){ return "<option value='"+o.v+"'"+(rf.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Last Activity</div>"
+    +"<select class='inp' id='rf-activity' style='font-size:12px;' onchange='S.reportFilters.lastActivity=this.value;renderReports();'>"
+    +[{v:"all",l:"Any Time"},{v:"30",l:"No activity 30+ days"},{v:"60",l:"No activity 60+ days"},{v:"90",l:"No activity 90+ days"},{v:"180",l:"No activity 180+ days"}]
+    .map(function(o){ return "<option value='"+o.v+"'"+(rf.lastActivity===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Count Status</div>"
+    +"<select class='inp' id='rf-count' style='font-size:12px;' onchange='S.reportFilters.countStatus=this.value;renderReports();'>"
+    +[{v:"all",l:"All"},{v:"completed",l:"Completed"},{v:"pending",l:"Pending"},{v:"overdue",l:"Overdue"}]
+    .map(function(o){ return "<option value='"+o.v+"'"+(rf.countStatus===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Discrepancy</div>"
+    +"<select class='inp' id='rf-disc' style='font-size:12px;' onchange='S.reportFilters.discrepancyType=this.value;renderReports();'>"
+    +[{v:"all",l:"All"},{v:"shortage",l:"Shortage"},{v:"overage",l:"Overage"},{v:"none",l:"No Discrepancy"}]
+    .map(function(o){ return "<option value='"+o.v+"'"+(rf.discrepancyType===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+    +"</select></div>"
+    +"</div>"
+    +(rf.dateRange==="custom"
+      ?"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>From</div>"
+      +"<input type='date' class='inp' id='filter-custom-start' style='font-size:12px;' onchange='renderReports();'></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>To</div>"
+      +"<input type='date' class='inp' id='filter-custom-end' style='font-size:12px;' onchange='renderReports();'></div>"
+      +"</div>":"")
+    +"</div>";
+}
+
+function applyProductFilters(prods){
+  var rf = S.reportFilters||{};
+  var result = prods.slice();
+  if(rf.categoryFilter&&rf.categoryFilter!=="all") result=result.filter(function(p){return (p.category||"General Pest")===rf.categoryFilter;});
+  if(rf.stockLevel&&rf.stockLevel!=="all"){
+    if(rf.stockLevel==="out") result=result.filter(function(p){return p.qty<=0;});
+    else if(rf.stockLevel==="low") result=result.filter(function(p){return p.qty>0&&p.qty<=p.lowAt;});
+    else if(rf.stockLevel==="in_stock") result=result.filter(function(p){return p.qty>p.lowAt;});
+  }
+  if(rf.lastActivity&&rf.lastActivity!=="all"){
+    var days=parseInt(rf.lastActivity); var now=Date.now();
+    var adjLog=S._cachedAdjLog||[];
+    var lastUsedMap={};
+    adjLog.forEach(function(a){ var pid=a.productId||a.productName; if(!lastUsedMap[pid]||new Date(a.date)>new Date(lastUsedMap[pid])) lastUsedMap[pid]=a.date; });
+    result=result.filter(function(p){
+      var last=lastUsedMap[p.id]||lastUsedMap[p.name];
+      if(!last) return true;
+      return (now-new Date(last).getTime())>days*24*60*60*1000;
+    });
+  }
+  // Sort
+  if(rf.sortBy==="qty") result.sort(function(a,b){return (b.qty||0)-(a.qty||0);});
+  else if(rf.sortBy==="value") result.sort(function(a,b){
+    var av=(a.qty||0)*(a.trackAs==="individual"?(a.price||0)/(a.unitsPerCase||1):(a.price||0));
+    var bv=(b.qty||0)*(b.trackAs==="individual"?(b.price||0)/(b.unitsPerCase||1):(b.price||0));
+    return bv-av;
+  });
+  else result.sort(function(a,b){return (a.name||"").localeCompare(b.name||"");});
+  return result;
+}
+
 function renderReports(){
   var pg = document.getElementById("pg-reports");
   if(!pg) return;
+  var rf = S.reportFilters||{};
 
   // Calculate stats from existing data
-  var prods = S.products||[];
+  var prods = applyProductFilters(S.products||[]);
   var totalValue = prods.reduce(function(sum,p){ 
     var unitPrice = p.trackAs==="individual" ? (p.price||0)/(p.unitsPerCase||1) : (p.price||0);
     return sum+(p.qty||0)*unitPrice; 
@@ -6881,7 +7048,8 @@ function renderReports(){
   var schedCfg = S.reportSchedule||{enabled:false, day:"Monday", time:"07:00", recipients:""};
 
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Reports</h2>"
-    +"<p style='font-size:12px;color:#64748b;margin-bottom:16px;'>"+esc(S.branchName||"Willamette Valley")+" Branch</p>"
+    +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>"+esc(S.branchName||"Willamette Valley")+" Branch</p>"
+    +renderReportFilters()
 
     // Dashboard overview cards
     +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;'>"
