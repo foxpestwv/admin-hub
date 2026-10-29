@@ -448,7 +448,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.1.7";
+const APP_VERSION = "5.1.8";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -1516,18 +1516,19 @@ async function gs(fn, data){
         } else {
           signersList.push((f.createdBy||"Manager") === f.techName ? f.createdBy+" (Manager)" : f.createdBy||"Manager");
         }
-        var sigLineY = y - 50;
-        var dateLabelY = sigLineY - 36;
+        var pageH = 792;
+        var sigHPct = 44/pageH;
+        var dateHPct = 14/pageH;
+        var signerPositions = [];
+        var dateLabelY = y;
         for(var si2=0; si2<signersList.length; si2+=2){
           var s1 = signersList[si2]||"";
           var s2 = signersList[si2+1]||"";
-          if(y < 160){ page = doc.addPage([612,792]); y=750; sigLineY=y-50; dateLabelY=sigLineY-36; }
-          // Labels
+          if(y < 160){ page = doc.addPage([612,792]); y=750; }
           drawText(s1+" Signature", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
           if(s2) drawText(s2+" Signature", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
           y -= 50;
-          sigLineY = y;
-          // Signature lines
+          var rowSigY = y;
           page.drawLine({start:{x:margin,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
           if(s2) page.drawLine({start:{x:margin+colW+44,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
           y -= 18;
@@ -1538,19 +1539,21 @@ async function gs(fn, data){
           drawText("Date:", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
           if(s2) drawText("Date:", margin+colW+44, y, 9, false, PDFLib.rgb(0.4,0.4,0.4));
           y -= 18;
+          var rowDateLineY = y;
           page.drawLine({start:{x:margin+30,y:y},end:{x:margin+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
           if(s2) page.drawLine({start:{x:margin+colW+44+30,y:y},end:{x:margin+colW+44+colW,y:y},thickness:0.5,color:PDFLib.rgb(0,0,0)});
           y -= 30;
+          // PDF y=0 is the bottom; CSS top is measured from the top. Box sits on the line.
+          var rowPage = doc.getPageCount();
+          var sigTop = (pageH - rowSigY - 44) / pageH;
+          var dateTop = (pageH - rowDateLineY - 14) / pageH;
+          signerPositions.push({signerIdx:si2, sigYPct:sigTop, dateYPct:dateTop, page:rowPage});
+          if(s2) signerPositions.push({signerIdx:si2+1, sigYPct:sigTop, dateYPct:dateTop, page:rowPage});
         }
         y = dateLabelY;
 
-        // Return exact y positions from PDF for tap boxes
-        var pageH = 792;
         var pageCount = doc.getPageCount();
-        // sigLineY = where signature line was drawn
-        // y at this point = dateLabelY (after date label text)
-        // date underline is 18pts below dateLabelY
-        var dateLineY = dateLabelY - 18;
+
 
         var pdfBytes2 = await doc.save();
         var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(pdfBytes2)));
