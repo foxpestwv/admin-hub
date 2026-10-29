@@ -350,7 +350,7 @@ const S = {
   signRequests:[], // [{id,date,techName,techEmail,docName,status,createdBy,fileData,managerSig,techSig,note}] // [{id, date, sentBy, items:[{id,name,unit,qtyOrdered}], status, receivedDate}]
   tab:"dashboard", inspView:"home", inspStep:0, inspData:{},
   invView:"list", checkDone:false, checkItems:[], checkTech:"",
-  ordersFilter:"Pending", settingsTab:"access", checkSearch:"", checkStarredOnly:false, cart:{},
+  ordersFilter:"Pending", settingsTab:"team", checkSearch:"", checkStarredOnly:false, cart:{},
   detailInsp:null, editOrderId:null, editOrderType:null,
   reportFilters:{dateRange:"this_month", techFilter:"all", categoryFilter:"all", stockLevel:"all", sortBy:"name", lastActivity:"all", adjReason:"all", countStatus:"all", discrepancyType:"all"},
   openCat:null, inspListFilter:"all",
@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.8";
+const APP_VERSION = "4.8.9";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -6442,8 +6442,7 @@ function renderSettings(){
   const tab = S.settingsTab||"access";
 
   const tabs = [
-    {id:"access",l:"Access"},
-    {id:"techs",l:"Techs"},
+    {id:"team",l:"Team/Access"},
     {id:"trucks",l:"Trucks"},
     {id:"products",l:"Products"},
     {id:"inspection",l:"Inspection"}
@@ -6468,7 +6467,7 @@ function renderSettings(){
 
   var body = "";
 
-  if(tab==="access"){
+  if(tab==="team"){
     // Manager accounts
     var mgrRows = (S.managers||[]).map(function(m,i){
       var photoHtml = m.photo
@@ -6483,15 +6482,19 @@ function renderSettings(){
         +"<div style='font-size:12px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
         +"<div style='display:flex;flex-direction:column;gap:4px;'>"
         +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-mgr' data-v='"+i+"'>Edit</button>"
-        +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='reset-mgr-pin' data-v='"+i+"'>Reset PIN</button>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='reset-mgr-pin' data-v='"+i+"'>Reset PIN</button>"
         +(S.managers.length>1?"<button class='btn bd' style='padding:5px 10px;font-size:12px;background:#7f1d1d;' data-a='del-mgr' data-v='"+i+"'>Remove</button>":"")
         +"</div></div></div>";
     }).join("");
 
-    var techRows = (S.techAccounts||[]).map(function(t,i){
+    // Tech accounts with truck dropdown
+    var techCards = (S.techAccounts||[]).map(function(t,i){
       var photoHtml = t.photo
         ? "<img src='"+t.photo+"' style='width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #3b82f6;margin-right:10px;'>"
         : "<div style='width:40px;height:40px;border-radius:50%;background:#1e3a5f;border:2px solid #3b82f6;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:10px;'>"+esc(t.name.charAt(0))+"</div>";
+      var truckOpts = ["(None)"].concat(S.trucks||[]).map(function(tr){
+        return "<option value='"+esc(tr)+"'"+(t.truck===tr?" selected":"")+">"+esc(tr)+"</option>";
+      }).join("");
       return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
         +"<div style='display:flex;align-items:center;'>"
         +photoHtml
@@ -6503,15 +6506,20 @@ function renderSettings(){
         +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-tech-acct' data-v='"+i+"'>Edit</button>"
         +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='reset-tech-pin' data-v='"+i+"'>Reset PIN</button>"
         +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
-        +"</div></div></div>";
+        +"</div></div>"
+        +"<div style='display:flex;align-items:center;gap:8px;margin-top:8px;'>"
+        +"<label style='font-size:12px;color:#64748b;white-space:nowrap;'>Truck:</label>"
+        +"<select class='inp' style='flex:1;padding:5px 8px;font-size:13px;' data-a='assign-truck' data-v='"+i+"'>"+truckOpts+"</select>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='send-invite' data-v='"+i+"'>Invite</button>"
+        +"</div></div>";
     }).join("");
 
-    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Access Control</h2>"
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Team / Access</h2>"
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Managers</div>"
       +mgrRows
       +"<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='add-mgr'>+ Add Manager</button>"
-      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;margin-top:14px;'>Technicians</div>"
-      +techRows
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;margin-top:8px;'>Technicians</div>"
+      +techCards
       +"<div class='card' style='margin-top:14px;padding:14px;'>"
       +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Technician</div>"
       +"<input type='text' class='inp' id='new-tech-name' placeholder='Full name' style='margin-bottom:8px;'>"
@@ -6521,36 +6529,6 @@ function renderSettings(){
       +"</div>"
       +"<div class='card' style='margin-top:14px;padding:12px 14px;background:#0a1628;'>"
       +"<div style='font-size:12px;color:#475569;'>App version: <strong style='color:#64748b;'>v"+APP_VERSION+"</strong></div>"
-      +"</div>";
-
-  } else if(tab==="techs"){
-    var truckOpts = ["(None)"].concat(S.trucks||[]).map(function(t){
-      return "<option value='"+esc(t)+"'>"+esc(t)+"</option>";
-    }).join("");
-
-    var techCards = (S.techAccounts||[]).map(function(t,i){
-      var opts = ["(None)"].concat(S.trucks||[]).map(function(tr){
-        return "<option value='"+esc(tr)+"'"+(t.truck===tr?" selected":"")+">"+esc(tr)+"</option>";
-      }).join("");
-      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
-        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
-        +"<div><div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
-        +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email||"")+"</div></div>"
-        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
-        +"</div>"
-        +"<div style='display:flex;align-items:center;gap:8px;'>"
-        +"<label style='font-size:12px;color:#64748b;white-space:nowrap;'>Assigned Truck:</label>"
-        +"<select class='inp' style='flex:1;padding:5px 8px;font-size:13px;' data-a='assign-truck' data-v='"+i+"'>"+opts+"</select>"
-        +"</div></div>";
-    }).join("");
-
-    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Technicians</h2>"
-      +techCards
-      +"<div class='card' style='margin-top:14px;padding:14px;'>"
-      +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Technician</div>"
-      +"<input type='text' class='inp' id='new-tech-name' placeholder='Full name' style='margin-bottom:8px;'>"
-      +"<input type='email' class='inp' id='new-tech-email' placeholder='Email address' style='margin-bottom:8px;'>"
-      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
       +"</div>";
 
   } else if(tab==="trucks"){
