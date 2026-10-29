@@ -448,7 +448,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.1.6";
+const APP_VERSION = "5.1.7";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -1557,10 +1557,9 @@ async function gs(fn, data){
         return {
           pdfBase64: b64,
           pageCount: pageCount,
-          sigYPct: 1 - (sigLineY / pageH) - (44/pageH),
-          dateYPct: 1 - (dateLineY / pageH) - (14/pageH),
-          sigHPct: 44/pageH,
-          dateHPct: 14/pageH
+          signerPositions: signerPositions,
+          sigHPct: sigHPct,
+          dateHPct: dateHPct
         };
         } catch(pdfErr){ console.error("PDF gen error:", pdfErr); return {pdfBase64:null, error:pdfErr.message}; }
       }
