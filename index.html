@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.4";
+const APP_VERSION = "4.8.5";
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -6786,9 +6786,8 @@ async function removeProd(id){
       S._restockId=null; S._adjId=null;
       save();
       // Re-render whichever view is active
-      if(S.currentTab==="reports") renderReports();
-  if(S.currentTab==="analytics") { S.currentTab="reports"; renderReports(); } // redirect analytics to reports
-  if(S.currentTab==="settings") renderSettings();
+      if(S.currentTab==="settings"){ S.settingsTab="products"; renderSettings(); }
+      else if(S.currentTab==="reports") renderReports();
       else renderInv();
     } else {
       alert("Could not remove from sheet. Please sync and try again.");
