@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.7";
+const APP_VERSION = "5.0.9";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -2934,21 +2934,20 @@ async function handleAction(a,v,el,e){
 
         // date above sig line, signature on the line
         // sigNameYPct = date position, sigYPct = signature position
-        var lastPg = pdfResult.pageCount || 1;
-        var sigYPct = pdfResult.sigYPct || 0.82;
-        var dateYPct = pdfResult.dateYPct || 0.90;
         var sigHPct = pdfResult.sigHPct || 0.055;
         var dateHPct = pdfResult.dateHPct || 0.018;
-        // Place signature fields dynamically based on number of signers
-        // 2 signers: side by side. 3+: stack in 2 columns
+        var signerPositions = pdfResult.signerPositions || [];
+        var lastPg = pdfResult.pageCount || 1;
         var allFields = [];
         signers.forEach(function(s, si){
+          var pos = signerPositions.find(function(p){ return p.signerIdx===si; });
           var col = si % 2;
-          var row = Math.floor(si / 2);
           var xBase = col===0 ? 0.05 : 0.57;
-          var yOffset = row * 0.12;
-          allFields.push({signerIdx:si, page:lastPg, type:"signature", xPct:xBase, yPct:sigYPct+yOffset, wPct:0.38, hPct:sigHPct});
-          allFields.push({signerIdx:si, page:lastPg, type:"date", xPct:xBase+0.13, yPct:dateYPct+yOffset, wPct:0.25, hPct:dateHPct});
+          var sigYPct2 = pos ? pos.sigYPct : (0.82 + Math.floor(si/2)*0.12);
+          var dateYPct2 = pos ? pos.dateYPct : (0.90 + Math.floor(si/2)*0.12);
+          var pg = pos ? pos.page : lastPg;
+          allFields.push({signerIdx:si, page:pg, type:"signature", xPct:xBase, yPct:sigYPct2, wPct:0.38, hPct:sigHPct});
+          allFields.push({signerIdx:si, page:pg, type:"date", xPct:xBase+0.13, yPct:dateYPct2, wPct:0.25, hPct:dateHPct});
         });
         var fields = allFields;
 
@@ -9995,10 +9994,12 @@ async function signSubmitTech(){
     } else {
       alert("Error: "+(result?result.error:"unknown"));
       if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+      _techSigSubmitting = false;
     }
   } catch(e){
     alert("Error: "+e.message);
     if(btn){ btn.disabled=false; btn.textContent="Submit Signed Document ✓"; }
+    _techSigSubmitting = false;
   }
 }
 
