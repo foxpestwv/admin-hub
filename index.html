@@ -448,7 +448,120 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.2.0";
+const APP_VERSION = "5.2.1";
+
+function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
+
+async function scanDuplicateProducts(){
+  await initFirebase();
+  var pSnap = await _db.collection("products").get();
+  var cSnap = await _db.collection("config").get();
+  var hiddenBy = {}, qtyBy = {};
+  cSnap.docs.forEach(function(d){
+    if(d.id.indexOf("hiddenProducts_")===0){
+      var br = d.id.slice(15), h = d.data()||{};
+      Object.keys(h).forEach(function(k){ if(h[k]){ (hiddenBy[k]=hiddenBy[k]||[]).push(br); } });
+    } else if(d.id.indexOf("quantities_")===0){
+      var br2 = d.id.slice(11), q = d.data()||{};
+      Object.keys(q).forEach(function(k){ if(Number(q[k])>0){ (qtyBy[k]=qtyBy[k]||[]).push(br2); } });
+    }
+  });
+  var all = pSnap.docs.map(function(d){ var x = d.data(); x._docId = d.id; x._pid = x.id||d.id; return x; });
+  var ghosts = all.filter(function(p){ return !p.name; }).length;
+  var prods = all.filter(function(p){ return p.name; });
+  var groups = {};
+  prods.forEach(function(p){ var k = normProdName(p.name); (groups[k]=groups[k]||[]).push(p); });
+  function hasData(p){
+    return (Number(p.qty)||0)>0 || (qtyBy[p._pid]||[]).length>0 || Number(p.lowAt)>0 || Number(p.truckWarnAbove)>0
+      || !!p.upc || !!p.sdsUrl || !!p.labelUrl || p.hideFromCheckout===true || !!(p.reorderNote && String(p.reorderNote).trim());
+  }
+  var result = {groups:[], safe:[], review:[], ghosts:ghosts, totalProducts:prods.length};
+  Object.keys(groups).forEach(function(k){
+    var g = groups[k];
+    if(g.length<2) return;
+    g.sort(function(a,b){
+      var da = hasData(a)?1:0, db = hasData(b)?1:0;
+      if(da!==db) return db-da;
+      return String(a.createdAt||"").localeCompare(String(b.createdAt||""));
+    });
+    var keeper = g[0];
+    var keeperHidden = hiddenBy[keeper._pid]||[];
+    var entry = {name:keeper.name, copies:[]};
+    g.forEach(function(p, i){
+      var hid = hiddenBy[p._pid]||[];
+      var c = {docId:p._docId, pid:p._pid, created:p.createdAt||"", hidden:hid, hasData:hasData(p), data:p};
+      if(i===0){ c.action = "keep"; }
+      else {
+        var extraHidden = hid.filter(function(b){ return keeperHidden.indexOf(b)<0; });
+        if(c.hasData){ c.action = "review"; c.reason = "has quantity or settings"; }
+        else if(extraHidden.length){ c.action = "review"; c.reason = "hidden where the kept copy is visible"; }
+        else { c.action = "remove"; }
+      }
+      entry.copies.push(c);
+      if(c.action==="remove") result.safe.push(c);
+      if(c.action==="review") result.review.push(c);
+    });
+    result.groups.push(entry);
+  });
+  return result;
+}
+
+function showDupeModal(scan){
+  var old = document.getElementById("dupe-modal"); if(old) old.remove();
+  var ov = document.createElement("div");
+  ov.id = "dupe-modal";
+  ov.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px;";
+  var rows = scan.groups.map(function(g){
+    return "<div style='padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
+      +"<div style='font-weight:600;font-size:13px;margin-bottom:4px;'>"+esc(g.name)+"</div>"
+      +g.copies.map(function(c){
+        var color = c.action==="keep"?"#22c55e":c.action==="remove"?"#ef4444":"#f59e0b";
+        var label = c.action==="keep"?"KEEP":c.action==="remove"?"REMOVE":"REVIEW";
+        var note = c.action==="review"?(" - "+c.reason):"";
+        var hid = c.hidden.length?(" · hidden in "+c.hidden.join(", ")):"";
+        return "<div style='font-size:11px;color:#94a3b8;margin-left:8px;'><span style='color:"+color+";font-weight:700;'>"+label+"</span> "
+          +esc(String(c.pid).slice(-10))+(c.created?" · "+esc(c.created.slice(0,10)):" · original")+hid+esc(note)+"</div>";
+      }).join("")
+      +"</div>";
+  }).join("");
+  ov.innerHTML = "<div style='background:#0f1f38;border:1px solid #1e3a5f;border-radius:16px;padding:20px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column;'>"
+    +"<div style='font-size:17px;font-weight:700;margin-bottom:6px;'>Duplicate Products</div>"
+    +"<div style='font-size:12px;color:#94a3b8;margin-bottom:10px;'>"+scan.totalProducts+" products scanned · "+scan.groups.length+" names appear more than once"
+    +(scan.ghosts?" · "+scan.ghosts+" nameless leftover records":"")+"</div>"
+    +"<div style='display:flex;gap:8px;margin-bottom:10px;'>"
+    +"<div class='card' style='flex:1;padding:10px;text-align:center;'><div style='font-size:20px;font-weight:700;color:#ef4444;'>"+scan.safe.length+"</div><div style='font-size:11px;color:#64748b;'>safe to remove</div></div>"
+    +"<div class='card' style='flex:1;padding:10px;text-align:center;'><div style='font-size:20px;font-weight:700;color:#f59e0b;'>"+scan.review.length+"</div><div style='font-size:11px;color:#64748b;'>need your review</div></div>"
+    +"</div>"
+    +"<div style='overflow-y:auto;flex:1;margin-bottom:12px;'>"+(rows||"<div style='color:#22c55e;text-align:center;padding:20px;'>No duplicates found</div>")+"</div>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:10px;'>Only blank copies (no quantity, no settings) are removed. Anything with data is left alone for you to review. A backup of every removed record is saved first.</div>"
+    +"<div style='display:flex;gap:8px;'>"
+    +"<button class='btn bg' style='flex:1;padding:12px;' onclick=\"document.getElementById('dupe-modal').remove();\">Close</button>"
+    +(scan.safe.length?"<button class='btn bd' style='flex:2;padding:12px;' data-a='sa-remove-dupes'>Remove "+scan.safe.length+" Duplicates</button>":"")
+    +"</div></div>";
+  document.body.appendChild(ov);
+}
+
+async function removeDuplicateProducts(){
+  var scan = S._dupeScan;
+  if(!scan || !scan.safe.length){ showToast("Nothing to remove"); return; }
+  if(!confirm("Remove "+scan.safe.length+" blank duplicate products?\n\nA backup is saved first. Products with quantities or settings are not touched.")) return;
+  await initFirebase();
+  var backup = scan.safe.map(function(c){ var d = Object.assign({}, c.data); return {docId:c.docId, data:d}; });
+  await _db.collection("config").doc("deletedProducts_"+Date.now()).set({deletedAt:new Date().toISOString(), count:backup.length, docs:JSON.stringify(backup)});
+  for(var i=0; i<scan.safe.length; i+=400){
+    var batch = _db.batch();
+    scan.safe.slice(i, i+400).forEach(function(c){ batch.delete(_db.collection("products").doc(c.docId)); });
+    await batch.commit();
+  }
+  var removed = scan.safe.length;
+  S._dupeScan = null;
+  var m = document.getElementById("dupe-modal"); if(m) m.remove();
+  try {
+    var fresh = await gs("getProducts", {branch:S.branch||"willamette"});
+    if(fresh && fresh.products){ S.products = fresh.products; lsSet("hub:products", S.products); }
+  } catch(e){}
+  showToast(removed+" duplicate products removed ✓");
+}
 
 function msMakeTransparent(dataUrl){
   return new Promise(function(resolve){
@@ -835,6 +948,7 @@ async function gs(fn, data){
         var hiddenDoc = await _db.collection("config").doc("hiddenProducts_"+prodBranch).get();
         var hiddenProds = hiddenDoc.exists ? hiddenDoc.data() : {};
         var parsedProds = (prods||[]).filter(function(p){
+          if(data && data.includeHidden) return true;
           return !hiddenProds[p.id||p._id||""];
         }).map(function(p){
           var pid = p.id||p._id||"";
@@ -901,6 +1015,7 @@ async function gs(fn, data){
           qty: 0, lowAt: data.lowAt||0,
           truckWarnAbove: data.truckWarnAbove||0,
           reorderNote: data.reorderNote||"",
+          price: Number(data.price)||0,
           createdAt: new Date().toISOString()
         };
         await fbSet("products", newProd.id, newProd);
@@ -2675,6 +2790,16 @@ async function handleAction(a,v,el,e){
     renderSuperAdmin();
     return;
   }
+  if(a==="sa-find-dupes"){
+    showToast("Scanning products...");
+    try { var scan = await scanDuplicateProducts(); S._dupeScan = scan; showDupeModal(scan); }
+    catch(e){ showToast("Scan failed: "+e.message); }
+    return;
+  }
+  if(a==="sa-remove-dupes"){
+    try { await removeDuplicateProducts(); } catch(e){ showToast("Remove failed: "+e.message); }
+    return;
+  }
   if(a==="sa-import-products"){
     // Show persistent loading overlay
     var loadingOverlay = document.createElement("div");
@@ -2695,16 +2820,23 @@ async function handleAction(a,v,el,e){
       if(!importData.ok){ showToast("Import failed: "+(importData.error||"unknown error")); return; }
       var sheetProds = importData.products||[];
       // Get existing products
-      var existingProds = await gs("getProducts", {branch:"willamette"});
+      // includeHidden: products you hid must still count as existing, or they get re-added as duplicates
+      var existingProds = await gs("getProducts", {branch:"willamette", includeHidden:true});
       var existing = existingProds.products||[];
+      var seenNames = {};
+      existing.forEach(function(p){ var k = normProdName(p.name); if(!seenNames[k]) seenNames[k] = p; });
       var added = 0; var updated = 0;
       for(var i=0;i<sheetProds.length;i++){
         var sp = sheetProds[i];
-        var match = existing.find(function(p){ return p.name.toLowerCase()===sp.name.toLowerCase(); });
+        var spKey = normProdName(sp.name);
+        var match = seenNames[spKey];
         if(!match){
           // Add new product with category
-          await gs("addProductToSheet", {name:sp.name, unit:sp.unit||"each", category:sp.category||"General Pest", lowAt:0, truckWarnAbove:0, reorderNote:""});
+          var addRes = await gs("addProductToSheet", {name:sp.name, unit:sp.unit||"each", category:sp.category||"General Pest", lowAt:0, truckWarnAbove:0, reorderNote:"", price:sp.price||0});
+          seenNames[spKey] = (addRes && addRes.product) ? addRes.product : {name:sp.name};
           added++;
+        } else if(!match.id){
+          continue;
         } else {
           var needsUpdate = false;
           if(sp.unit && match.unit !== sp.unit){ await gs("updateProductField", {id:match.id, field:"unit", value:sp.unit}); needsUpdate=true; }
@@ -6476,6 +6608,7 @@ function renderSuperAdmin(){
     +"<div style='margin-top:24px;border-top:1px solid #1e3a5f;padding-top:16px;'>"
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Shared Product Catalog</div>"
     +"<button class='btn bg' data-a='sa-import-products' style='width:100%;padding:12px;margin-bottom:8px;'>📥 Sync Products from Order Sheet</button>"
+    +"<button class='btn bg' data-a='sa-find-dupes' style='width:100%;padding:12px;margin-bottom:8px;'>🔍 Find Duplicate Products</button>"
     +"<div style='font-size:11px;color:#475569;text-align:center;'>Reads order sheet and adds/updates products in Firebase</div>"
     +"</div>"
     +"</div>";
