@@ -2893,6 +2893,10 @@ async function handleAction(a,v,el,e){
     return;
   }
   if(a==="ooo-ready-to-sign"){
+    // Confirmation popup before sending
+    if(!confirm("Ready to send for signatures?\n\nPlease make sure all participating managers have entered their comments and notes before proceeding.\n\nOnce sent, the form will be locked for signing and cannot be edited.")){
+      return;
+    }
     // Generate PDF of the form and send as multi-sign document
     (async function(){
       try {
