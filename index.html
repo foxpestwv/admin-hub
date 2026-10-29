@@ -257,6 +257,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-checkout" class="pg"></div>
     <div id="pg-truckinv" class="pg"></div>
     <div id="pg-restock" class="pg"></div>
+    <div id="pg-analytics" class="pg"></div>
     <div id="pg-sign" class="pg"></div>
     <div id="pg-reports" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
@@ -439,7 +440,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.1";
+const APP_VERSION = "4.8.3";
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -3492,7 +3493,7 @@ function renderDash(){
     {icon:"🛒", label:"Orders", tab:"orders", color:"#1a2f1a", accent:"#22c55e", badge: pend},
     {icon:"🚛", label:"Fleet", tab:"inspect", color:"#2d1f00", accent:"#f59e0b", badge:0},
     {icon:"📝", label:"Sign", tab:"sign", color:"#2d001a", accent:"#ec4899", badge: pendSign},
-
+    {icon:"📊", label:"Analytics", tab:"analytics", color:"#1a1a2d", accent:"#8b5cf6", badge:0},
     {icon:"🔄", label:"Restock", tab:"restock", color:"#001a2d", accent:"#06b6d4", badge:0},
     {icon:"🚐", label:"Truck Inv", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
@@ -3527,7 +3528,7 @@ function renderDash(){
   if(techPerms==="lead"){
     techTiles.push({icon:"📦", label:"Inventory", tab:"inventory", color:"#1a1a2f", accent:"#6366f1", badge:S.products.filter(function(p){return p.qty<=p.lowAt;}).length});
     techTiles.push({icon:"🛒", label:"Orders", tab:"orders", color:"#2f1a0a", accent:"#f59e0b", badge:S.orders.filter(function(o){return o.status==="Pending";}).length});
-
+    techTiles.push({icon:"📊", label:"Analytics", tab:"analytics", color:"#0a2f1a", accent:"#10b981", badge:0});
     techTiles.push({icon:"🚛", label:"Fleet", tab:"inspect", color:"#1a2f2f", accent:"#06b6d4", badge:0});
   }
 
@@ -3607,12 +3608,6 @@ function inspHome(){
     ${S.inspections.length>0?`<button class="btn bg" style="width:100%;" data-a="insp-view" data-v="list">View All Records</button>`:""}`;
 }
 
-function getTechByTruck(truckNum){
-  if(!truckNum) return "";
-  var t = (S.techAccounts||[]).find(function(t){ return String(t.truck||"").trim()===String(truckNum||"").trim(); });
-  return t ? t.name : "";
-}
-
 function inspList(){
   const filter=S.inspListFilter||"all";
   const trucks=[...new Set(S.inspections.map(i=>i.truck))];
@@ -3625,7 +3620,7 @@ function inspList(){
     <option value="all">All Trucks</option>${trucks.map(t=>`<option value="${esc(t)}"${filter===t?" selected":""}>${esc(t)}</option>`).join("")}
   </select>
   ${filtered.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No records found.</div>`:
-    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,52)}<div style="flex:1"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):getTechByTruck(r.truck)?" - "+esc(getTechByTruck(r.truck)):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span><button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
+    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,52)}<div style="flex:1"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span><button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
 }
 
 function inspForm(){
@@ -3720,7 +3715,7 @@ function inspDetail(){
   }).join("");
   const photos=r.photos?.length?`<div class="card" style="margin-top:8px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:10px;">Photos (${r.photos.length})</div><div class="g3">${r.photos.map(ph=>`<img src="${ph.data}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;">`).join("")}</div></div>`:"";
   return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="insp-view" data-v="list">Back</button><button class="btn bd" data-a="insp-del" data-v="${r.id}">Delete</button></div>
-    <div style="display:flex;gap:14px;align-items:center;margin-bottom:20px;">${ring(r.pct,72)}<div><h2 style="font-size:20px;font-weight:700;">${esc(r.truck)}</h2><div style="color:#475569;font-size:13px;margin-top:3px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):getTechByTruck(r.truck)?" - "+esc(getTechByTruck(r.truck)):""}</div>${r.mileage?`<div style="color:#64748b;font-size:12px;margin-top:2px;">${Number(r.mileage).toLocaleString()} miles</div>`:""}</div></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:20px;">${ring(r.pct,72)}<div><h2 style="font-size:20px;font-weight:700;">${esc(r.truck)}</h2><div style="color:#475569;font-size:13px;margin-top:3px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div>${r.mileage?`<div style="color:#64748b;font-size:12px;margin-top:2px;">${Number(r.mileage).toLocaleString()} miles</div>`:""}</div></div>
     ${r.notes?`<div class="card" style="margin-bottom:12px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:5px;">Notes</div><p style="font-size:13px;color:#cbd5e1;">${esc(r.notes)}</p></div>`:""}
     ${cats}${photos}`;
 }
@@ -5278,7 +5273,7 @@ function renderDrawerNav(){
 
   var icons = {
     dashboard:"🏠", inspect:"🚛", inventory:"📦", orders:"🛒",
-    checkout:"🛍", truckinv:"🚐", restock:"🔄", 
+    checkout:"🛍", truckinv:"🚐", restock:"🔄", analytics:"📊",
     reports:"📋", ooo:"🤝", sign:"📝", settings:"⚙️", "__scan__":"📷"
   };
 
@@ -5673,7 +5668,7 @@ async function runReport(type){
       var adjChartDiv = document.createElement("div");
       adjChartDiv.className="card";
       adjChartDiv.style.cssText="padding:14px;margin-bottom:14px;";
-      adjChartDiv.innerHTML="<div style='position:relative;height:180px;'><canvas id='adj-chart'></canvas></div>";
+      adjChartDiv.innerHTML="<canvas id='adj-chart' style='height:180px;'></canvas>";
       var pg5 = document.getElementById("pg-reports");
       if(pg5) pg5.insertBefore(adjChartDiv, pg5.children[2]);
       makeChart("adj-chart","line",wkLabels,
@@ -5922,6 +5917,1291 @@ async function runReport(type){
     return;
   }
 }
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+async function renderOOO(){
+  var pg = document.getElementById("pg-ooo");
+  if(!pg) return;
+  var isM = S.role==="manager";
+
+  // Load OOO forms fresh when tab opens (instead of background sync)
+  try {
+    var oooFresh = await gs("getOOOForms", null);
+    if(oooFresh && oooFresh.forms){
+      S._oooForms = oooFresh.forms;
+      lsSet("hub:oooForms", oooFresh.forms);
+    }
+  } catch(e){}
+
+  if(isM){
+    renderOOOManager(pg);
+  } else {
+    renderOOOTech(pg);
+  }
+}
+
+async function renderOOOManager(pg){
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>One-on-One</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Create and manage quarterly one-on-one forms for your technicians.</p>"
+    +"<button class='btn bs' style='width:100%;padding:12px;margin-bottom:20px;' data-a='ooo-new'>+ Create New 1-on-1 Form</button>"
+    +"<div id='ooo-list'><div style='color:#64748b;text-align:center;padding:20px;'>Loading forms...</div></div>";
+
+  try {
+    var result = await gs("getOOOForms", null);
+    var forms = result && result.forms ? result.forms : [];
+    // Filter by current branch
+    var myBranch2 = S.branch||"willamette";
+    forms = forms.filter(function(f){ return !f.branch||f.branch===myBranch2; });
+    var listDiv = document.getElementById("ooo-list");
+    if(!listDiv) return;
+
+    if(forms.length === 0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:20px;'>No forms yet. Create one above.</div>";
+      return;
+    }
+
+    listDiv.innerHTML = forms.map(function(f){
+      var statusColor = f.status==="Complete"||f.status==="Signed"?"#22c55e":f.status==="Signing"?"#3b82f6":f.status==="Submitted"?"#f59e0b":f.status==="Sent"?"#94a3b8":"#64748b";
+      return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='ooo-open' data-v='"+f.id+"'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:start;'>"
+        +"<div>"
+        +"<div style='font-weight:700;font-size:14px;'>"+esc(f.techName)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(f.quarter)+" &bull; Created "+new Date(f.createdAt).toLocaleDateString()+"</div>"
+        +"</div>"
+        +"<span style='font-size:11px;font-weight:700;color:"+statusColor+";background:"+statusColor+"22;padding:3px 8px;border-radius:20px;'>"+esc(f.status||"Draft")+"</span>"
+        +"</div>"
+        +(f.techSubmittedAt?"<div style='font-size:11px;color:#22c55e;margin-top:6px;'>✓ Tech submitted "+new Date(f.techSubmittedAt).toLocaleDateString()+"</div>":"")
+        +"</div>";
+    }).join("");
+  } catch(e){
+    pg.innerHTML += "<div style='color:#ef4444;'>Error loading forms: "+e.message+"</div>";
+  }
+}
+
+async function renderOOOTech(pg){
+  var myName = S.currentTech||"";
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>My 1-on-1</h2>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Your quarterly check-in form. Fill it out anytime — your manager will review it before your meeting.</p>"
+    +"<div id='ooo-tech-list'><div style='color:#64748b;text-align:center;padding:20px;'>Loading...</div></div>";
+
+  try {
+    var result = await gs("getOOOForms", null);
+    var forms = result && result.forms ? result.forms : [];
+    var myName2 = S.currentTech||S.managerName||"";
+    var myBranch = S.branch||"willamette";
+    var myForms = forms.filter(function(f){ 
+      return f.techName===myName2 && f.status!=="Archived" && (!f.branch||f.branch===myBranch); 
+    });
+    var listDiv = document.getElementById("ooo-tech-list");
+    if(!listDiv) return;
+
+    if(myForms.length===0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:30px;'>No active 1-on-1 forms yet.<br><br>Your manager will send one when it's time for your quarterly check-in.</div>";
+      return;
+    }
+
+    listDiv.innerHTML = myForms.map(function(f){
+      var pct = f.techSubmittedAt?100:calcTechPct(f);
+      var statusColor = f.techSubmittedAt?"#22c55e":"#f59e0b";
+      return "<div class='card' style='margin-bottom:10px;cursor:pointer;' data-a='ooo-open-tech' data-v='"+f.id+"'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;'>"
+        +"<div><div style='font-weight:700;font-size:14px;'>"+esc(f.quarter)+" Check-in</div>"
+        +"<div style='font-size:12px;color:#64748b;'>From: "+esc(f.createdBy)+"</div></div>"
+        +"<span style='font-size:11px;font-weight:700;color:"+statusColor+";'>"+( f.techSubmittedAt?"✓ Submitted":"In Progress")+"</span>"
+        +"</div>"
+        +"<div style='background:#0a1628;border-radius:4px;height:6px;'>"
+        +"<div style='background:#06b6d4;height:6px;border-radius:4px;width:"+pct+"%;transition:width 0.3s;'></div>"
+        +"</div>"
+        +"<div style='font-size:11px;color:#64748b;margin-top:4px;'>"+pct+"% complete</div>"
+        +"</div>";
+    }).join("");
+  } catch(e){
+    document.getElementById("ooo-tech-list").innerHTML = "<div style='color:#ef4444;'>Error: "+e.message+"</div>";
+  }
+}
+
+function calcTechPct(f){
+  var techFields = ["overallRating","goingWell","challenges","resources","training","personalGoal","professionalGoal","feedbackPos","feedbackImprove","other"];
+  var filled = techFields.filter(function(k){ return f[k]&&String(f[k]).trim(); }).length;
+  return Math.round((filled/techFields.length)*100);
+}
+
+function renderOOONewForm(pg){
+  var quarters = [];
+  var now = new Date();
+  var yr = now.getFullYear();
+  var q = Math.ceil((now.getMonth()+1)/3);
+  for(var i=0;i<4;i++){
+    var qq=q+i; var yy=yr;
+    if(qq>4){qq-=4;yy++;}
+    quarters.push("Q"+qq+" "+yy);
+  }
+  var techOpts2 = (S.techAccounts||[]).map(function(t){
+    return "<option value='"+esc(t.name)+"'>"+esc(t.name)+"</option>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<h2 style='font-size:18px;font-weight:700;margin:0;'>New 1-on-1 Form</h2>"
+    +"</div>"
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>TECHNICIAN</label>"
+    +"<select class='inp' id='ooo-tech-sel' style='margin-bottom:12px;'><option value=''>Select technician...</option>"+techOpts2+"</select>"
+    +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:4px;'>QUARTER</label>"
+    +"<select class='inp' id='ooo-quarter-sel'>"
+    +quarters.map(function(q2){ return "<option>"+q2+"</option>"; }).join("")
+    +"</select>"
+    +"</div>"
+    +"<button class='btn bs' style='width:100%;padding:13px;font-size:15px;' data-a='ooo-create'>Create & Send Form</button>";
+}
+
+async function renderOOOFormManager(pg, formId){
+  pg.innerHTML = "<div style='text-align:center;padding:20px;color:#64748b;'>Loading...</div>";
+  var form = await gs("getOOOForm", {id:formId});
+  if(!form){ pg.innerHTML="<div class='card'>Form not found.</div>"; return; }
+
+  var isEditable = form.status !== "Signed";
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<div><div style='font-weight:700;font-size:16px;'>"+esc(form.techName)+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>"+esc(form.quarter)+" One-on-One</div></div>"
+    +"</div>"
+
+    // Tech responses (read-only for manager)
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#06b6d4;margin-bottom:12px;'>📋 Tech Responses"
+    +(form.techSubmittedAt?" <span style='font-size:11px;color:#22c55e;font-weight:400;'>✓ Submitted "+new Date(form.techSubmittedAt).toLocaleDateString()+"</span>":"")
+    +"</div>"
+    +oooTechReadonly(form)
+    +"</div>"
+
+    // Manager-only section
+    +"<div class='card' style='margin-bottom:14px;border-color:#f59e0b44;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:12px;'>🔒 Manager Notes (Private)</div>"
+    +oooManagerFields(form, isEditable, formId)
+    +"</div>"
+
+    // Actions
+    // Attendees section
+    +"<div class='card' style='margin-bottom:14px;border-color:#3b82f644;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#3b82f6;margin-bottom:12px;'>👥 Meeting Attendees</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Select which managers attended the meeting — they will be required to sign along with the technician.</div>"
+    +(function(){
+      var attendees = form.attendees ? JSON.parse(form.attendees) : null;
+      // Default: tech + all managers
+      // Only managers sign - tech fills out but doesn't sign
+      var people = [];
+      (S.managers||[]).forEach(function(m){ people.push({name:m.name, role:"Manager"}); });
+      return people.map(function(p){
+        var checked = !attendees || attendees.indexOf(p.name)>=0;
+        return "<label style='display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;'>"
+          +"<input type='checkbox' class='ooo-attendee-cb' data-name='"+esc(p.name)+"' "+(checked?"checked":"")+" style='width:16px;height:16px;cursor:pointer;'>"
+          +"<span style='font-size:13px;'>"+esc(p.name)+"</span>"
+          +"<span style='font-size:11px;color:#64748b;'>("+p.role+")</span>"
+          +"</label>";
+      }).join("");
+    })()
+    +"<button type='button' class='btn bg' style='width:100%;padding:8px;font-size:12px;margin-top:8px;' data-a='ooo-save-attendees' data-v='"+formId+"'>Save Attendees</button>"
+    +"</div>"
+    +(isEditable
+      ?"<button class='btn bs' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-save-mgr' data-v='"+formId+"'>💾 Save Manager Notes</button>"
+      :"")
+    +"<button class='btn bd' style='width:100%;padding:10px;margin-top:6px;font-size:13px;' data-a='ooo-delete' data-v='"+formId+"'>🗑 Delete Form</button>"
+    +(form.status==="Signing" && (S.signRequests||[]).some(function(r){ return r.multiSignId===form.multiSignId && r.status==="Pending"; })
+      ?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:12px 14px;font-size:13px;color:#22c55e;margin-top:10px;'>✓ Signing requests already sent — check your Documents tab.</div>"
+      :form.status==="Signed"||form.status==="Complete"
+      ?"<div style='background:#3b82f622;border:1px solid #3b82f644;border-radius:10px;padding:12px 14px;font-size:13px;color:#3b82f6;margin-top:10px;'>✓ Form fully signed and complete.</div>"
+      :S.role==="manager"
+      ?"<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;' data-a='ooo-ready-to-sign' data-v='"+formId+"'>✍ Send for Signatures</button>"
+      :"");
+  // If status is Signing but no sign requests exist, reset to Submitted
+  if(form.status==="Signing" && !(S.signRequests||[]).some(function(r){ return r.multiSignId===form.multiSignId; })){
+    gs("saveOOOForm", {id:formId, status:"Submitted"}).catch(function(){});
+  }
+}
+
+function oooTechReadonly(form){
+  var fields = [
+    {k:"overallRating", l:"Overall Rating", type:"rating"},
+    {k:"goingWell", l:"What's going well?"},
+    {k:"challenges", l:"Challenges"},
+    {k:"resources", l:"Resources/support needed"},
+    {k:"training", l:"Training interests"},
+    {k:"personalGoal", l:"Personal goal this quarter"},
+    {k:"professionalGoal", l:"Professional goal this quarter"},
+    {k:"feedbackPos", l:"What I'm doing well (feedback for manager)"},
+    {k:"feedbackImprove", l:"What I could do better"},
+    {k:"other", l:"Anything else to discuss"}
+  ];
+  return fields.map(function(f){
+    var val = form[f.k]||"";
+    return "<div style='margin-bottom:10px;'>"
+      +"<div style='font-size:11px;color:#64748b;margin-bottom:3px;'>"+f.l+"</div>"
+      +(f.type==="rating"
+        ?renderStars(parseInt(val)||0, false)
+        :"<div style='font-size:13px;color:"+(val?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;min-height:32px;'>"+(esc(val)||"<em>Not filled in yet</em>")+"</div>")
+      +"</div>";
+  }).join("");
+}
+
+function oooManagerKey(name){
+  // Convert manager name to a safe field key e.g. "John Kluttz" -> "John_Kluttz"
+  return (name||"").replace(/[^a-zA-Z0-9]/g,"_");
+}
+
+function oooManagerFields(form, editable, formId){
+  var myName = S.managerName||"";
+  var myKey = oooManagerKey(myName);
+  var mgrFieldDefs = [
+    {newK:"mgrStrengths_"+myKey, oldK:"mgrStrengths", l:"Areas of strength to highlight"},
+    {newK:"mgrCoaching_"+myKey, oldK:"mgrCoaching", l:"Coaching opportunities"},
+    {newK:"mgrCorrective_"+myKey, oldK:"mgrCorrective", l:"Corrective action items (if any)"},
+    {newK:"mgrNotes_"+myKey, oldK:"mgrNotes", l:"Meeting talking points / notes"},
+  ];
+  var ratingHtml = "<div style='margin-bottom:10px;'>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:6px;'>OVERALL PERFORMANCE RATING ("+esc(myName)+")</div>"
+    +renderStars(parseInt(form["mgrRating_"+myKey]||form.mgrRating)||0, editable, "ooo-mgr-rating-"+formId)
+    +"</div>";
+
+  var mySection = ratingHtml + mgrFieldDefs.map(function(f){
+    // Check new per-manager key first, fall back to old shared key
+    var val = (form[f.newK]!==undefined && form[f.newK]!=="") ? form[f.newK] : (form[f.oldK]||"");
+    return "<div style='margin-bottom:10px;'>"
+      +"<label style='font-size:11px;color:#64748b;display:block;margin-bottom:3px;'>"+f.l.toUpperCase()+"</label>"
+      +(editable
+        ?"<textarea class='inp' id='ooo-mgr-"+f.newK+"' style='width:100%;height:70px;resize:none;font-size:13px;'>"+esc(val)+"</textarea>"
+        :"<div style='font-size:13px;color:"+(val?"#e2e8f0":"#475569")+";background:#0a1628;padding:8px 10px;border-radius:6px;'>"+esc(val||"Not filled in")+"</div>")
+      +"</div>";
+  }).join("");
+
+  // Show other managers' notes as read-only - find from actual form fields
+  var otherMgrHtml = "";
+  // Find all manager keys that exist in the form
+  var otherMgrKeys = Object.keys(form).filter(function(k){
+    return k.startsWith("mgrNotes_")||k.startsWith("mgrStrengths_")||k.startsWith("mgrCoaching_")||k.startsWith("mgrCorrective_");
+  }).map(function(k){ return k.split("_").slice(1).join("_"); })
+    .filter(function(mk,i,arr){ return arr.indexOf(mk)===i && mk!==myKey; }); // unique, not own
+
+  otherMgrKeys.forEach(function(mk){
+    var mgrDisplayName = mk.replace(/_/g," ");
+    var hasNotes = form["mgrNotes_"+mk]||form["mgrStrengths_"+mk]||form["mgrCoaching_"+mk]||form["mgrCorrective_"+mk];
+    if(!hasNotes) return;
+    // Find manager name from accounts or use key
+    var mgrAcct = (S.managers||[]).find(function(m){ return oooManagerKey(m.name)===mk; });
+    var m = {name: mgrAcct?mgrAcct.name:mgrDisplayName};
+    if(true){
+    otherMgrHtml += "<div style='margin-top:16px;padding-top:12px;border-top:1px solid #1e3a5f;'>"
+      +"<div style='font-size:11px;font-weight:700;color:#64748b;margin-bottom:10px;'>"+esc(m.name).toUpperCase()+"'S NOTES (READ ONLY)</div>"
+      +["mgrStrengths","mgrCoaching","mgrCorrective","mgrNotes"].map(function(base){
+        var val = form[base+"_"+mk];
+        if(!val) return "";
+        var labels={mgrStrengths:"Strengths",mgrCoaching:"Coaching",mgrCorrective:"Corrective action",mgrNotes:"Notes"};
+        return "<div style='margin-bottom:8px;'>"
+          +"<div style='font-size:10px;color:#64748b;margin-bottom:2px;'>"+labels[base]+"</div>"
+          +"<div style='font-size:12px;color:#94a3b8;background:#0a1628;padding:6px 8px;border-radius:6px;'>"+esc(val)+"</div>"
+          +"</div>";
+      }).join("")
+      +"</div>";
+    } // end if(true)
+  }); // end otherMgrKeys.forEach
+
+  return mySection + otherMgrHtml;
+}
+
+function renderStars(val, editable, id){
+  var stars = "";
+  for(var i=1;i<=5;i++){
+    var filled = i<=val;
+    if(editable){
+      stars += "<span data-a='ooo-set-rating' data-v='"+id+"_"+i+"' style='font-size:28px;cursor:pointer;color:"+(filled?"#f59e0b":"#1e3a5f")+";'>★</span>";
+    } else {
+      stars += "<span style='font-size:24px;color:"+(filled?"#f59e0b":"#1e3a5f")+";'>★</span>";
+    }
+  }
+  return "<div>"+stars+"</div>";
+}
+
+async function renderOOOFormTech(pg, formId){
+  pg.innerHTML = "<div style='text-align:center;padding:20px;color:#64748b;'>Loading...</div>";
+  var form = await gs("getOOOForm", {id:formId});
+  if(!form){ pg.innerHTML="<div class='card'>Form not found.</div>"; return; }
+
+  var submitted = !!form.techSubmittedAt;
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;gap:10px;margin-bottom:16px;'>"
+    +"<button data-a='ooo-back-tech' style='background:none;border:none;color:#e2e8f0;font-size:22px;cursor:pointer;padding:0;'>←</button>"
+    +"<div><div style='font-weight:700;font-size:16px;'>"+esc(form.quarter)+" Check-in</div>"
+    +"<div style='font-size:12px;color:#64748b;'>Fill out anytime before your meeting</div></div>"
+    +"</div>"
+    +(submitted?"<div style='background:#22c55e22;border:1px solid #22c55e44;border-radius:10px;padding:10px 14px;font-size:13px;color:#22c55e;margin-bottom:14px;'>✓ Submitted! You can still update your responses.</div>":"")
+
+    +"<div class='card' style='margin-bottom:14px;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#06b6d4;margin-bottom:14px;'>How's it going? ★</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:6px;'>OVERALL RATING</div>"
+    +renderStars(parseInt(form.overallRating)||0, true, "ooo-rating")
+    +"</div>"
+
+    +oooTechField("goingWell","What's going well in your role?","What are you proud of this quarter?",form)
+    +oooTechField("challenges","What challenges are you facing?","Workload, customers, equipment, anything...",form)
+    +oooTechField("resources","What resources or support would help you?","Training, tools, schedule changes...",form)
+    +oooTechField("training","Training or development interests","Any certifications, skills, or topics you'd like to learn?",form)
+
+    +"<div class='card' style='margin-bottom:14px;border-color:#f59e0b44;'>"
+    +"<div style='font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:14px;'>💬 Feedback for Your Manager</div>"
+    +oooTechField("feedbackPos","What is your manager doing well?","Be honest — this helps!",form,true)
+    +oooTechField("feedbackImprove","What could your manager do better?","How can they support you more?",form,true)
+    +"</div>"
+
+    +oooTechField("personalGoal","Personal goal this quarter","Something you're working on outside of work...",form)
+    +oooTechField("professionalGoal","Professional goal this quarter","A skill, habit, or achievement you're aiming for at work...",form)
+    +oooTechField("other","Anything else you want to discuss?","Topics, questions, concerns for the meeting...",form)
+
+    +"<div id='ooo-autosave-status' style='text-align:center;font-size:11px;color:#475569;margin-bottom:8px;'></div>"
+    +"<button class='btn bs' style='width:100%;padding:13px;font-size:15px;margin-bottom:10px;' data-a='ooo-save-tech' data-v='"+formId+"'>💾 Save My Responses</button>"
+    +(!submitted?"<button class='btn bp' style='width:100%;padding:12px;font-size:14px;' data-a='ooo-submit-tech' data-v='"+formId+"'>✓ Submit to Manager</button>":"");
+
+  // Autosave - debounce 2 seconds after typing stops
+  var _oooAutosaveTimer = null;
+  var _oooFormId = formId;
+  function oooAutosave(){
+    var statusEl = document.getElementById("ooo-autosave-status");
+    if(statusEl) statusEl.textContent = "Saving...";
+    var data = {
+      id: _oooFormId,
+      overallRating: S._oooRating||form.overallRating||"",
+      goingWell: (document.getElementById("ooo-tech-goingWell")||{}).value||"",
+      challenges: (document.getElementById("ooo-tech-challenges")||{}).value||"",
+      resources: (document.getElementById("ooo-tech-resources")||{}).value||"",
+      training: (document.getElementById("ooo-tech-training")||{}).value||"",
+      personalGoal: (document.getElementById("ooo-tech-personalGoal")||{}).value||"",
+      professionalGoal: (document.getElementById("ooo-tech-professionalGoal")||{}).value||"",
+      feedbackPos: (document.getElementById("ooo-tech-feedbackPos")||{}).value||"",
+      feedbackImprove: (document.getElementById("ooo-tech-feedbackImprove")||{}).value||"",
+      other: (document.getElementById("ooo-tech-other")||{}).value||""
+    };
+    gs("saveOOOForm", data).then(function(){
+      var s = document.getElementById("ooo-autosave-status");
+      if(s) s.textContent = "✓ Saved " + new Date().toLocaleTimeString();
+    }).catch(function(){
+      var s = document.getElementById("ooo-autosave-status");
+      if(s) s.textContent = "⚠ Save failed";
+    });
+  }
+
+  // Wire up autosave on all text fields
+  var oooTextFields = ["goingWell","challenges","resources","training","personalGoal","professionalGoal","feedbackPos","feedbackImprove","other"];
+  oooTextFields.forEach(function(key){
+    var el = document.getElementById("ooo-tech-"+key);
+    if(el){
+      el.addEventListener("input", function(){
+        clearTimeout(_oooAutosaveTimer);
+        _oooAutosaveTimer = setTimeout(oooAutosave, 2000);
+        var s = document.getElementById("ooo-autosave-status");
+        if(s) s.textContent = "Unsaved changes...";
+      });
+    }
+  });
+}
+
+function oooTechField(key, label, placeholder, form, inCard){
+  var html = inCard?"":"<div class='card' style='margin-bottom:14px;'>";
+  html += "<div style='margin-bottom:"+(inCard?"14":"0")+"px;'>"
+    +"<label style='font-size:12px;font-weight:600;color:#94a3b8;display:block;margin-bottom:6px;'>"+label+"</label>"
+    +"<textarea class='inp' id='ooo-tech-"+key+"' style='width:100%;height:80px;resize:none;font-size:13px;' placeholder='"+esc(placeholder)+"'>"+esc(form[key]||"")+"</textarea>"
+    +"</div>";
+  html += inCard?"":"</div>";
+  return html;
+}
+
+function buildOOOFormHtml(form){
+  return "<h1>"+form.quarter+" One-on-One: "+form.techName+"</h1>";
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function renderSuperAdmin(){
+  var pg = document.getElementById("pg-dashboard");
+  if(!pg) return;
+
+  // If viewing a branch's settings, show that
+  if(S._saViewBranch){
+    renderSuperAdminBranch(pg);
+    return;
+  }
+
+  pg.innerHTML = "<div style='padding:16px;max-width:600px;margin:0 auto;'>"
+    +"<div style='display:flex;align-items:center;gap:12px;margin-bottom:24px;'>"
+    +"<div style='width:48px;height:48px;background:#f59e0b22;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;'>⚙</div>"
+    +"<div><div style='font-size:22px;font-weight:700;'>Super Admin</div>"
+    +"<div style='font-size:13px;color:#64748b;'>Fox Pest Control Management Console</div></div></div>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Branches</div>"
+    +"<div id='sa-branch-list'><div style='color:#64748b;padding:20px;text-align:center;'>Loading...</div></div>"
+    +"<button class='btn bp' data-a='sa-add-branch' style='width:100%;padding:13px;margin-top:12px;'>+ Add New Branch</button>"
+    +"<div style='margin-top:24px;border-top:1px solid #1e3a5f;padding-top:16px;'>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Shared Product Catalog</div>"
+    +"<button class='btn bg' data-a='sa-import-products' style='width:100%;padding:12px;margin-bottom:8px;'>📥 Sync Products from Order Sheet</button>"
+    +"<div style='font-size:11px;color:#475569;text-align:center;'>Reads order sheet and adds/updates products in Firebase</div>"
+    +"</div>"
+    +"</div>";
+
+  gs("getBranches",null).then(function(res){
+    var branches = res&&res.branches||[];
+    var listDiv = document.getElementById("sa-branch-list");
+    if(!listDiv) return;
+    if(branches.length===0){
+      listDiv.innerHTML = "<div style='color:#64748b;text-align:center;padding:16px;'>No branches yet</div>";
+      return;
+    }
+    listDiv.innerHTML = branches.map(function(b){
+      return "<div class='card' style='margin-bottom:10px;'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:center;'>"
+        +"<div>"
+        +"<div style='font-weight:600;font-size:16px;'>"+esc(b.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>ID: "+esc(b.id)+"</div>"
+        +"</div>"
+        +"<div style='display:flex;gap:8px;'>"
+        +"<button class='btn bp' data-a='sa-enter-branch' data-v='"+b.id+"|"+b.name+"' style='padding:8px 14px;font-size:13px;'>⚙ Settings</button>"
+        +"<button class='btn' style='padding:8px 14px;font-size:13px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' data-a='sa-delete-branch' data-v='"+b.id+"|"+b.name+"'>🗑</button>"
+        +"</div></div></div>";
+    }).join("");
+  });
+}
+
+function renderSuperAdminBranch(pg){
+  var b = S._saViewBranch;
+  pg.innerHTML = "<div style='padding:16px;max-width:600px;margin:0 auto;'>"
+    +"<div style='display:flex;align-items:center;gap:10px;margin-bottom:20px;'>"
+    +"<button class='btn bg' data-a='sa-back' style='padding:8px 12px;'>← Back</button>"
+    +"<div><div style='font-size:18px;font-weight:700;'>"+esc(b.name)+"</div>"
+    +"<div style='font-size:12px;color:#64748b;'>Branch Settings</div></div></div>"
+    +"<div id='sa-branch-settings'><div style='color:#64748b;text-align:center;padding:20px;'>Loading...</div></div>"
+    +"</div>";
+
+  // Load this branch's accounts and render settings
+  gs("getAccounts",{branch:b.id}).then(function(res){
+    var mgrs = res&&res.managers||[];
+    var techs = res&&res.techAccounts||[];
+    var settingsDiv = document.getElementById("sa-branch-settings");
+    if(!settingsDiv) return;
+
+    var html = "<div class='card' style='margin-bottom:12px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>Managers ("+mgrs.length+")</div>"
+      +mgrs.map(function(m){
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
+          +"<div><div style='font-weight:600;'>"+esc(m.name)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
+          +"<div style='font-size:11px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
+          +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
+          +"data-a='sa-remove-manager' data-v='"+b.id+"|"+m.email+"'>Remove</button>"
+          +"</div>";
+      }).join("")
+      +"<button class='btn bp' data-a='sa-add-manager' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Manager</button>"
+      +"</div>"
+      +"<div class='card' style='margin-bottom:12px;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;'>Technicians ("+techs.length+")</div>"
+      +techs.map(function(t){
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
+          +"<div><div style='font-weight:600;'>"+esc(t.name)+"</div>"
+          +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email)+"</div></div>"
+          +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
+          +"data-a='sa-remove-tech' data-v='"+b.id+"|"+t.email+"'>Remove</button>"
+          +"</div>";
+      }).join("")
+      +"<button class='btn bp' data-a='sa-add-tech' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Technician</button>"
+      +"</div>";
+    settingsDiv.innerHTML = html;
+  });
+}
+
+function renderSettings(){
+  const pg = document.getElementById("pg-settings");
+  if(!pg) return;
+  const tab = S.settingsTab||"access";
+
+  const tabs = [
+    {id:"access",l:"Access"},
+    {id:"techs",l:"Techs"},
+    {id:"trucks",l:"Trucks"},
+    {id:"products",l:"Products"},
+    {id:"inspection",l:"Inspection"}
+  ];
+
+  const tabBar = "<div style='display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;'>"
+    +tabs.map(function(t){
+      return "<button class='btn "+(tab===t.id?"bp":"bg")+"' style='padding:7px 14px;font-size:13px;white-space:nowrap;' data-a='settings-tab' data-v='"+t.id+"'>"+t.l+"</button>";
+    }).join("")+"</div>";
+
+  var _saEmail2 = (S.currentUser&&S.currentUser.email)||S.loginEmail||"";
+  var isSuperAdmin = typeof SUPER_ADMINS!=="undefined" && SUPER_ADMINS.indexOf(_saEmail2)>=0;
+  const superAdminBar = isSuperAdmin
+    ?"<div class='card' style='margin-bottom:14px;border:1px solid #f59e0b44;'>"
+      +"<div style='font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;'>⚡ Super Admin</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Current branch: <strong style='color:#e2e8f0;'>"+esc(S.branchName||"Willamette Valley")+"</strong></div>"
+      +"<div style='display:flex;gap:8px;margin-top:8px;'>"
+      +"<button class='btn bg' style='flex:1;padding:8px;font-size:12px;' data-a='super-switch-branch' data-v='willamette'>🌲 Willamette</button>"
+      +"<button class='btn bg' style='flex:1;padding:8px;font-size:12px;' data-a='super-switch-branch' data-v='spokane'>🏔 Spokane</button>"
+      +"</div></div>"
+    :"";
+
+  var body = "";
+
+  if(tab==="access"){
+    // Manager accounts
+    var mgrRows = (S.managers||[]).map(function(m,i){
+      var photoHtml = m.photo
+        ? "<img src='"+m.photo+"' style='width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #f59e0b;margin-right:10px;'>"
+        : "<div style='width:40px;height:40px;border-radius:50%;background:#1e3a5f;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:10px;'>"+esc(m.name.charAt(0))+"</div>";
+      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;'>"
+        +photoHtml
+        +"<div style='flex:1;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(m.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
+        +"<div style='font-size:12px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
+        +"<div style='display:flex;flex-direction:column;gap:4px;'>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-mgr' data-v='"+i+"'>Edit</button>"
+        +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='reset-mgr-pin' data-v='"+i+"'>Reset PIN</button>"
+        +(S.managers.length>1?"<button class='btn bd' style='padding:5px 10px;font-size:12px;background:#7f1d1d;' data-a='del-mgr' data-v='"+i+"'>Remove</button>":"")
+        +"</div></div></div>";
+    }).join("");
+
+    var techRows = (S.techAccounts||[]).map(function(t,i){
+      var photoHtml = t.photo
+        ? "<img src='"+t.photo+"' style='width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #3b82f6;margin-right:10px;'>"
+        : "<div style='width:40px;height:40px;border-radius:50%;background:#1e3a5f;border:2px solid #3b82f6;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:10px;'>"+esc(t.name.charAt(0))+"</div>";
+      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;'>"
+        +photoHtml
+        +"<div style='flex:1;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email||"")+"</div>"
+        +"<div style='font-size:12px;color:#3b82f6;'>"+esc(t.title||"Technician")+"</div></div>"
+        +"<div style='display:flex;flex-direction:column;gap:4px;'>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='edit-tech-acct' data-v='"+i+"'>Edit</button>"
+        +"<button class='btn bg' style='padding:5px 10px;font-size:12px;' data-a='reset-tech-pin' data-v='"+i+"'>Reset PIN</button>"
+        +"<button class='btn bd' style='padding:5px 10px;font-size:12px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
+        +"</div></div></div>";
+    }).join("");
+
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Access Control</h2>"
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Managers</div>"
+      +mgrRows
+      +"<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='add-mgr'>+ Add Manager</button>"
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;margin-top:14px;'>Technicians</div>"
+      +techRows
+      +"<div class='card' style='margin-top:14px;padding:14px;'>"
+      +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Technician</div>"
+      +"<input type='text' class='inp' id='new-tech-name' placeholder='Full name' style='margin-bottom:8px;'>"
+      +"<input type='email' class='inp' id='new-tech-email' placeholder='Email address' style='margin-bottom:8px;'>"
+      +"<input type='text' class='inp' id='new-tech-truck' placeholder='Truck # (optional)' style='margin-bottom:10px;'>"
+      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
+      +"</div>"
+      +"<div class='card' style='margin-top:14px;padding:12px 14px;background:#0a1628;'>"
+      +"<div style='font-size:12px;color:#475569;'>App version: <strong style='color:#64748b;'>v"+APP_VERSION+"</strong></div>"
+      +"</div>";
+
+  } else if(tab==="techs"){
+    var truckOpts = ["(None)"].concat(S.trucks||[]).map(function(t){
+      return "<option value='"+esc(t)+"'>"+esc(t)+"</option>";
+    }).join("");
+
+    var techCards = (S.techAccounts||[]).map(function(t,i){
+      var opts = ["(None)"].concat(S.trucks||[]).map(function(tr){
+        return "<option value='"+esc(tr)+"'"+(t.truck===tr?" selected":"")+">"+esc(tr)+"</option>";
+      }).join("");
+      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+        +"<div><div style='font-weight:600;font-size:14px;'>"+esc(t.name)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email||"")+"</div></div>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-tech' data-v='"+i+"'>Remove</button>"
+        +"</div>"
+        +"<div style='display:flex;align-items:center;gap:8px;'>"
+        +"<label style='font-size:12px;color:#64748b;white-space:nowrap;'>Assigned Truck:</label>"
+        +"<select class='inp' style='flex:1;padding:5px 8px;font-size:13px;' data-a='assign-truck' data-v='"+i+"'>"+opts+"</select>"
+        +"</div></div>";
+    }).join("");
+
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Technicians</h2>"
+      +techCards
+      +"<div class='card' style='margin-top:14px;padding:14px;'>"
+      +"<div style='font-size:13px;font-weight:600;margin-bottom:10px;'>Add New Technician</div>"
+      +"<input type='text' class='inp' id='new-tech-name' placeholder='Full name' style='margin-bottom:8px;'>"
+      +"<input type='email' class='inp' id='new-tech-email' placeholder='Email address' style='margin-bottom:8px;'>"
+      +"<button class='btn bp' style='width:100%;padding:10px;' data-a='add-tech'>Add Technician</button>"
+      +"</div>";
+
+  } else if(tab==="trucks"){
+    var truckRows = (S.trucks||[]).map(function(t,i){
+      var upBtn = i>0 ? "<button style='background:transparent;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:2px 6px;' data-a='truck-up' data-v='"+i+"'>&#x25B2;</button>" : "<span style='width:28px;display:inline-block;'></span>";
+      var dnBtn = i<(S.trucks||[]).length-1 ? "<button style='background:transparent;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:2px 6px;' data-a='truck-down' data-v='"+i+"'>&#x25BC;</button>" : "<span style='width:28px;display:inline-block;'></span>";
+      return "<div class='card' style='display:flex;align-items:center;gap:8px;margin-bottom:7px;padding:10px 14px;'>"
+        +"<div style='display:flex;flex-direction:column;align-items:center;'>"+upBtn+dnBtn+"</div>"
+        +"<span style='flex:1;font-size:14px;font-weight:500;'>"+esc(t)+"</span>"
+        +"<button class='btn bd' style='padding:5px 9px;font-size:12px;' data-a='del-truck' data-v='"+i+"'>X</button>"
+        +"</div>";
+    }).join("");
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Trucks</h2>"
+      +"<div style='display:flex;gap:8px;margin-bottom:14px;'>"
+      +"<input type='text' class='inp' id='new-truck-inp' placeholder='e.g. Truck 10' style='flex:1;'>"
+      +"<button class='btn bp' style='padding:10px 14px;font-size:13px;' data-a='add-truck'>Add</button>"
+      +"</div>"+truckRows;
+
+  } else if(tab==="products"){
+    var prodRows = S.products.map(function(p){
+      var hideFromCheckout = p.hideFromCheckout===true;
+      var trackAs = p.trackAs||"case"; // default to case
+      var unitsPerCase = p.unitsPerCase||1;
+      return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
+        +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
+        +"<div style='display:flex;gap:6px;align-items:center;'>"
+        +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;cursor:pointer;'>"
+        +"<input type='checkbox' data-field='hideFromCheckout' data-pid='"+p.id+"' "+(hideFromCheckout?"checked":"")+"> Hide from techs"
+        +"</label>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Remove</button>"
+        +"</div>"
+        +"</div>"
+        +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;'>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Unit</div>"
+        +"<input class='inp' style='font-size:12px;padding:4px 6px;' data-field='unit' data-pid='"+p.id+"' value='"+esc(p.unit)+"'></div>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Low At</div>"
+        +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='lowAt' data-pid='"+p.id+"' value='"+p.lowAt+"'></div>"
+        +"<div><div style='color:#64748b;margin-bottom:3px;'>Truck Warn</div>"
+        +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='truckWarnAbove' data-pid='"+p.id+"' value='"+(p.truckWarnAbove||0)+"'></div>"
+        +"</div>"
+        +"<div style='display:flex;align-items:center;gap:10px;font-size:12px;'>"
+        +"<div style='color:#64748b;'>Track as:</div>"
+        +"<label style='display:flex;align-items:center;gap:4px;cursor:pointer;'>"
+        +"<input type='radio' name='trackAs-"+p.id+"' data-field='trackAs' data-pid='"+p.id+"' value='case' "+(trackAs==="case"?"checked":"")+"> Case"
+        +"</label>"
+        +"<label style='display:flex;align-items:center;gap:4px;cursor:pointer;'>"
+        +"<input type='radio' name='trackAs-"+p.id+"' data-field='trackAs' data-pid='"+p.id+"' value='individual' "+(trackAs==="individual"?"checked":"")+"> Individual"
+        +"</label>"
+        +(trackAs==="individual"
+          ?"<div style='display:flex;align-items:center;gap:4px;'>"
+          +"<div style='color:#64748b;'>Units/case:</div>"
+          +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;width:60px;' data-field='unitsPerCase' data-pid='"+p.id+"' value='"+unitsPerCase+"' min='1'>"
+          +"</div>"
+          :"")
+        +"</div>"
+        +"</div>";
+    }).join("");
+
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
+      +prodRows
+      +"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products"+(S._hiddenProductCount>0?" ("+S._hiddenProductCount+")":"")+"</button></div>";
+
+  } else if(tab==="notifications"){
+    var notifConfig = S.notifConfig || {};
+    var notifTypes = [
+      {key:"restock_request",   label:"📦 Restock Request",         desc:"When a restock order is sent to the distributor"},
+      {key:"restock_received",  label:"✅ Restock Received",         desc:"When a restock is marked as received"},
+      {key:"tech_request",      label:"🛒 Tech Product Request",     desc:"When a tech submits a product checkout request"},
+      {key:"order_decision",    label:"📋 Order Approved/Denied",    desc:"Manager copy when tech order is decided"},
+      {key:"low_stock",         label:"⚠️ Low Stock Alert",          desc:"When inventory drops below threshold"},
+      {key:"sign_request",      label:"✍️ Sign Request",             desc:"When a document needs signing"},
+      {key:"ooo_form",          label:"📝 OOO/1-on-1 Form",         desc:"When a tech submits a 1-on-1 form"},
+      {key:"qa_ra_form",        label:"📄 QA/RA Form",              desc:"When a tech submits a signed QA/RA form"},
+      {key:"truck_variance",    label:"🚚 Truck Inventory Variance", desc:"When a tech's truck inventory drops more than 50%"}
+    ];
+    var notifRows = notifTypes.map(function(nt){
+      var cfg = notifConfig[nt.key]||{};
+      var enabled = cfg.enabled!==false;
+      var emails = cfg.emails||"";
+      return "<div class='card' style='margin-bottom:10px;padding:14px;'>"
+        +"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>"
+        +"<div>"
+        +"<div style='font-weight:600;font-size:13px;'>"+nt.label+"</div>"
+        +"<div style='font-size:11px;color:#64748b;margin-top:2px;'>"+nt.desc+"</div>"
+        +"</div>"
+        +"<label style='display:flex;align-items:center;gap:6px;cursor:pointer;'>"
+        +"<input type='checkbox' data-notif-key='"+nt.key+"' data-notif-field='enabled' "+(enabled?"checked":"")+"> "
+        +"<span style='font-size:12px;color:#94a3b8;'>On</span>"
+        +"</label>"
+        +"</div>"
+        +(enabled?"<input type='email' class='inp' style='font-size:12px;' placeholder='recipient@email.com (comma separate multiple)' data-notif-key='"+nt.key+"' data-notif-field='emails' value='"+esc(emails)+"'>":"")
+        +"</div>";
+    }).join("");
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>Notifications</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:14px;'>Set who receives each type of email. Leave blank to disable. Separate multiple emails with commas.</p>"
+      +notifRows
+      +"<button class='btn bp' data-a='save-notif-config' style='width:100%;padding:12px;margin-top:8px;'>💾 Save Notification Settings</button>";
+
+  } else if(tab==="inspection"){
+    var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Sync Inspection Settings to All Devices</button>";
+
+    var catRows = (S.cats||[]).map(function(c,ci){
+      var items = (c.items||[]).map(function(it,ii){
+        var typeOpts = ["Score","Text","Textarea","Number","Select","No Entry"].map(function(t){
+          return "<option value='"+t+"'"+(it.entryType===t?" selected":"")+">"+t+"</option>";
+        }).join("");
+        return "<div style='margin-bottom:8px;padding-left:12px;border-left:2px solid #1e3a5f;'>"
+          +"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
+          +"<input class='inp' style='flex:1;padding:5px 8px;font-size:12px;' value='"+esc(it.label)+"' data-ci='"+ci+"' data-ii='"+ii+"' data-field='itemlabel'>"
+          +"<select class='inp' style='width:90px;padding:5px;font-size:11px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='entryType'>"+typeOpts+"</select>"
+          +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-item' data-v='"+ci+"_"+ii+"'>X</button>"
+          +"</div>"
+          +"<div style='display:flex;align-items:center;gap:10px;padding:4px 0;'>"
+          +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;'>"
+          +"<input type='checkbox' "+(it.requiresPhoto?"checked":"")+" data-ci='"+ci+"' data-ii='"+ii+"' data-field='requiresPhoto' style='width:14px;height:14px;accent-color:#2563eb;'>"
+          +"&#x1F4F7; Photo</label>"
+          +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;'>Max: "
+          +"<input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+(it.maxPhotos||1)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='maxPhotos'>"
+          +"</label></div>"
+          +(it.entryType==="Select"?"<div style='margin-top:4px;'><textarea class='inp' style='font-size:11px;padding:4px;width:100%;height:50px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Options, one per line'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
+          +"</div>";
+      }).join("");
+
+      return "<div class='card' style='margin-bottom:10px;'>"
+        +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>"
+        +"<input class='inp' style='flex:1;padding:6px 8px;font-size:13px;' value='"+esc(c.label)+"' data-ci='"+ci+"' data-field='label'>"
+        +"<input type='number' class='inp' style='width:60px;padding:6px 8px;font-size:13px;' value='"+(c.scale||10)+"' data-ci='"+ci+"' data-field='scale' title='Max score'>"
+        +"<button class='btn bd' style='padding:5px 9px;font-size:12px;' data-a='del-cat' data-v='"+ci+"'>X</button>"
+        +"</div>"
+        +items
+        +"<div style='display:flex;gap:6px;padding-left:12px;margin-top:6px;'>"
+        +"<input class='inp' id='new-item-"+ci+"' style='flex:1;padding:5px 8px;font-size:12px;' placeholder='New item name'>"
+        +"<button class='btn bp' style='padding:5px 10px;font-size:12px;' data-a='add-item' data-v='"+ci+"'>+ Item</button>"
+        +"</div></div>";
+    }).join("");
+
+    // Inspection form fields editor
+    var fieldRows = (S.inspFields||[]).map(function(f, fi){
+      return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;align-items:center;gap:8px;'>"
+        +"<div style='flex:1;'>"
+        +"<input class='inp' style='font-size:12px;padding:5px 8px;margin-bottom:4px;' data-insp-fi='"+fi+"' data-insp-field='label' value='"+esc(f.label)+"' placeholder='Field label'>"
+        +"<select class='inp' style='font-size:11px;padding:4px;' data-insp-fi='"+fi+"' data-insp-field='type'>"
+        +["text","number","textarea","select"].map(function(t){ return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>"; }).join("")
+        +"</select>"
+        +"</div>"
+        +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;'>"
+        +"<input type='checkbox' "+(f.required?"checked":"")+" data-insp-fi='"+fi+"' data-insp-field='required'> Required"
+        +"</label>"
+        +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;'>"
+        +"<input type='checkbox' "+(f.enabled!==false?"checked":"")+" data-insp-fi='"+fi+"' data-insp-field='enabled'> On"
+        +"</label>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-insp-field' data-v='"+fi+"'>X</button>"
+        +"</div>";
+    }).join("");
+
+    body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Inspection Settings</h2>"
+      +syncBtn
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Form Fields (Info Page)</div>"
+      +fieldRows
+      +"<button class='btn bg' data-a='add-insp-field' style='width:100%;padding:8px;margin-bottom:16px;font-size:12px;'>+ Add Field</button>"
+      +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Inspection Categories</div>"
+      +catRows
+      +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
+  }
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
+    +superAdminBar+tabBar+body;
+
+  // Wire up product field changes
+  pg.querySelectorAll("input[data-pid]").forEach(function(inp){
+    inp.addEventListener("change", function(){
+      var pid = inp.getAttribute("data-pid");
+      var field = inp.getAttribute("data-field");
+      var val;
+      if(field==="hideFromCheckout") val = inp.checked;
+      else if(field==="unit") val = inp.value;
+      else if(field==="trackAs") val = inp.value;
+      else if(field==="unitsPerCase") val = parseInt(inp.value)||1;
+      else val = parseInt(inp.value)||0;
+      var prod = S.products.find(function(p){return p.id===pid;});
+      if(prod){ 
+        prod[field]=val; 
+        save(); 
+        gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){});
+        // Re-render to show/hide unitsPerCase field
+        if(field==="trackAs") { S.settingsTab="products"; renderSettings(); }
+      }
+    });
+  });
+  // Wire up inspection field changes
+  if(S.settingsTab==="inspection"){
+    pg.querySelectorAll("input[data-insp-fi], select[data-insp-fi]").forEach(function(inp){
+      inp.addEventListener("change", function(){
+        var fi = parseInt(inp.getAttribute("data-insp-fi"));
+        var field = inp.getAttribute("data-insp-field");
+        if(!S.inspFields[fi]) return;
+        if(field==="required"||field==="enabled") S.inspFields[fi][field] = inp.checked;
+        else S.inspFields[fi][field] = inp.value;
+        save(); saveAccountsToSheet();
+      });
+    });
+  }
+  // Wire up notification config changes
+  if(S.settingsTab==="notifications"){
+    pg.querySelectorAll("input[data-notif-key]").forEach(function(inp){
+      inp.addEventListener("change", function(){
+        var key = inp.getAttribute("data-notif-key");
+        var field = inp.getAttribute("data-notif-field");
+        if(!S.notifConfig) S.notifConfig={};
+        if(!S.notifConfig[key]) S.notifConfig[key]={};
+        if(field==="enabled"){
+          S.notifConfig[key].enabled = inp.checked;
+          S.settingsTab="notifications"; renderSettings();
+        } else {
+          S.notifConfig[key].emails = inp.value;
+        }
+      });
+    });
+  }
+  // Wire up live input changes for cats/items
+  setTimeout(function(){
+    pg.querySelectorAll("[data-field]").forEach(function(el){
+      var field = el.dataset.field;
+      var ci = el.dataset.ci !== undefined ? parseInt(el.dataset.ci) : -1;
+      var ii = el.dataset.ii !== undefined ? parseInt(el.dataset.ii) : -1;
+      var evType = (el.type==="checkbox") ? "change" : "input";
+      el.addEventListener(evType, function(){
+        if(ci<0) return;
+        if(!S.cats[ci]) return;
+        if(ii>=0){
+          if(!S.cats[ci].items[ii]) return;
+          if(field==="requiresPhoto") S.cats[ci].items[ii].requiresPhoto = el.checked;
+          else if(field==="maxPhotos") S.cats[ci].items[ii].maxPhotos = parseInt(el.value)||1;
+          else if(field==="itemlabel") S.cats[ci].items[ii].label = el.value;
+          else if(field==="entryType") S.cats[ci].items[ii].entryType = el.value;
+          else if(field==="selectOptions") S.cats[ci].items[ii].selectOptions = el.value.split("\n").filter(Boolean);
+        } else {
+          if(field==="label") S.cats[ci].label = el.value;
+          else if(field==="scale") S.cats[ci].scale = parseInt(el.value)||10;
+        }
+        lsSet("hub:cats", S.cats);
+      });
+    });
+  }, 50);
+}
+
+// ─── Remove Product from Inventory ───────────────────────────────────────────
+async function removeProd(id){
+  const p = S.products.find(function(x){return x.id===id;});
+  if(!p) return;
+  if(!confirm("Hide "+p.name+" from your branch? You can restore it in Settings → Products.")) return;
+  try {
+    const result = await gs("hideProduct",{id:id, branch:S.branch||"willamette"});
+    if(result && result.ok){
+      S.products = S.products.filter(function(x){return x.id!==id;});
+      S._hiddenProductCount = (S._hiddenProductCount||0) + 1;
+      lsSet("hub:products", S.products);
+      S._restockId=null; S._adjId=null;
+      save();
+      // Re-render whichever view is active
+      if(S.currentTab==="reports") renderReports();
+  if(S.currentTab==="analytics") { S.currentTab="reports"; renderReports(); } // redirect analytics to reports
+  if(S.currentTab==="settings") renderSettings();
+      else renderInv();
+    } else {
+      alert("Could not remove from sheet. Please sync and try again.");
+    }
+  } catch(e){
+    console.warn("Remove from sheet:",e);
+    alert("Error: "+e.message);
+  }
+}
+
+// ─── Add Product to Inventory ─────────────────────────────────────────────────
+async function invAddProduct(){
+  const name = (document.getElementById("new-prod-name")||{}).value||"";
+  const unit = (document.getElementById("new-prod-unit")||{}).value||"each";
+  const qty  = parseInt((document.getElementById("new-prod-qty")||{}).value)||0;
+  const lowAt= parseInt((document.getElementById("new-prod-lowat")||{}).value)||0;
+  if(!name.trim()){alert("Please enter a product name.");return;}
+  // Add to local products
+  const newProd = {id:"sheet_new_"+Date.now(), name:name.trim(), unit:unit.trim(), qty:qty, lowAt:lowAt, reorderNote:"", truckWarnAbove:0, row:null};
+  S.products.push(newProd);
+  // Sort alphabetically
+  S.products.sort(function(a,b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+  S._showAddProd = false;
+  save();
+  renderInv();
+  // Write to sheet
+  try {
+    const result = await gs("addProductToSheetServer", {name:name.trim(), unit:unit.trim(), qty:qty, lowAt:lowAt});
+    if(result && result.row){
+      const p = S.products.find(function(p){return p.id===newProd.id;});
+      if(p){ p.id="sheet_"+result.row; p.row=result.row; save(); }
+    } else if(result && result.error){
+      alert("Could not add to sheet: "+result.error);
+    }
+  } catch(e){
+    alert("Error adding to sheet: "+e.message);
+  }
+}
+
+// ─── Truck Inventory ──────────────────────────────────────────────────────────
+function renderTruckInv(){
+  var pg = document.getElementById("pg-truckinv");
+  if(S.role === "manager") {
+    renderTruckInvManager(pg);
+  } else {
+    renderTruckInvTech(pg);
+  }
+}
+
+function renderTruckInvManager(pg){
+  var currentBranch = S.branch || "willamette";
+  var branchTechs = (S.techAccounts || []).map(function(t){ return t.name; });
+  var submittedTechs = Object.keys(S.truckInventories || {});
+  var allTechNames = Array.from(new Set(branchTechs.concat(submittedTechs))).filter(Boolean);
+
+  if(allTechNames.length === 0){
+    pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+      +"<h2 style='font-size:20px;font-weight:700;'>Truck Inventories</h2>"
+      +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='sync'>↻ Sync</button></div>"
+      +"<div style='text-align:center;color:#475569;padding:40px;'>"
+      +"<div style='font-size:36px;margin-bottom:12px;'>🚚</div>"
+      +"<p>No technicians found for this branch.</p></div>";
+    return;
+  }
+
+  var cards = allTechNames.map(function(techName){
+    var inv = (S.truckInventories && S.truckInventories[techName]) || null;
+    var techAcct = (S.techAccounts || []).find(function(t){ return t.name === techName; });
+    var truckLabel = (inv && inv.truck) || (techAcct && techAcct.truck) || "No Truck Assigned";
+    var submitDate = (inv && (inv.lastSubmit || inv.date || inv.createdAt)) || null;
+
+    if(!inv || !submitDate || !inv.products || inv.products.length === 0){
+      return "<div class='card' style='margin-bottom:12px;opacity:0.75;'>"
+        +"<div style='display:flex;align-items:center;justify-content:space-between;'>"
+        +"<div><div style='font-weight:700;font-size:16px;'>"+esc(techName)+"</div>"
+        +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>"+esc(truckLabel)+"</div></div>"
+        +"<span style='padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#1e293b;color:#94a3b8;'>Awaiting Count</span>"
+        +"</div></div>";
+    }
+
+    var lastDate = fd(submitDate);
+    var daysSince = Math.floor((Date.now() - new Date(submitDate).getTime()) / (1000 * 60 * 60 * 24));
+    var stale = daysSince > 8;
+    var variances = (inv.products || []).filter(function(p){ return p.prevQty > 0 && p.qty < p.prevQty * 0.5; });
+
+    var prodRows = (inv.products || []).map(function(p){
+      var change = p.prevQty !== undefined ? p.qty - p.prevQty : null;
+      var isVar = p.prevQty > 0 && p.qty < p.prevQty * 0.5;
+      var changeHtml = change !== null
+        ? "<span style='font-size:12px;color:" + (change < 0 ? "#ef4444" : change > 0 ? "#22c55e" : "#475569") + ";'>" + (change > 0 ? "+" : "") + change + "</span>"
+        : "";
+      return "<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0a1628;'>"
+        +"<span style='font-size:13px;" + (isVar ? "color:#f97316;font-weight:600;" : "") + "'>" + esc(p.name) + "</span>"
+        +"<div style='display:flex;align-items:center;gap:10px;'>" + changeHtml
+        +"<span style='font-family:monospace;font-weight:700;color:" + (isVar ? "#f97316" : "#e2e8f0") + ";'>" + p.qty + " " + esc(p.unit) + "</span>"
+        +"</div></div>";
+    }).join("");
+
+    var badges = (stale ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#431407;color:#fb923c;'>Overdue</span> " : "")
+      + (variances.length > 0 ? "<span style='padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#1c0a00;color:#f97316;'>" + variances.length + " variance" + (variances.length > 1 ? "s" : "") + "</span>" : "");
+
+    return "<div class='card' style='margin-bottom:12px;" + (variances.length > 0 ? "border-color:#c2410c30;" : "") + "'>"
+      +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;'>"
+      +"<div><div style='font-weight:700;font-size:16px;'>" + esc(techName) + "</div>"
+      +"<div style='font-size:12px;color:#64748b;margin-top:2px;'>" + esc(truckLabel) + " &bull; Last count: " + lastDate + "</div></div>"
+      +"<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px;'>" + badges + "</div></div>"
+      +"<div>" + (prodRows || "<div style='color:#475569;font-size:13px;'>No products recorded.</div>") + "</div></div>";
+  }).join("");
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>Truck Inventories</h2>"
+    +"<button class='btn bg' style='font-size:11px;padding:5px 10px;' data-a='sync'>↻ Sync</button></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:16px;'>Weekly counts submitted by technicians across " + esc(S.branchName || "Willamette Valley") + ".</p>"
+    +cards;
+}
+function renderTruckInvTech(pg){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!techName){ pg.innerHTML="<div style='text-align:center;color:#475569;padding:40px;'>Please log in to manage your truck inventory.</div>"; return; }
+  var inv = S.truckInventories[techName] || {truck:"", products:[], lastSubmit:null};
+  var isNew = !inv.lastSubmit;
+
+  // Always use manager-assigned truck from account settings
+  var techAcct = S.techAccounts.find(function(t){ return t.name===techName; });
+  if(techAcct && techAcct.truck){
+    inv.truck = techAcct.truck; // Always override with manager assignment
+    S.truckInventories[techName] = S.truckInventories[techName] || {truck:"", products:[], lastSubmit:null};
+    S.truckInventories[techName].truck = techAcct.truck;
+  }
+
+  var prodRows = (inv.products||[]).map(function(p, i){
+    return "<div class='card' style='display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:12px 14px;'>"
+      +"<div style='flex:1;'><div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
+      +"<div style='font-size:12px;color:#64748b;'>"+esc(p.unit)+"</div></div>"
+      +"<input type='number' class='inp' style='width:80px;text-align:center;font-size:16px;font-weight:700;padding:8px;' value='"+p.qty+"' min='0' id='ti-qty-"+i+"'>"
+      +"<button class='btn bd' style='padding:5px 9px;font-size:12px;' data-a='ti-remove-prod' data-v='"+i+"'>X</button></div>";
+  }).join("");
+
+  var existing = (inv.products||[]).map(function(p){ return p.id; });
+  var available = S.products.filter(function(p){ return !existing.includes(p.id); });
+  var addOpts = available.map(function(p){ return "<option value='"+p.id+"'>"+esc(p.name)+" ("+esc(p.unit)+")</option>"; }).join("");
+
+  // If truck assigned by manager, use it. Otherwise show selector.
+  var assignedTruck = techAcct ? techAcct.truck : "";
+  var truckSel = (inv.truck || assignedTruck) ? "" :
+    "<div style='margin-bottom:14px;'><label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>My Truck</label>"
+    +"<select class='inp' id='ti-truck-select'><option value=''>Select your truck...</option>"
+    +S.trucks.map(function(t){ return "<option value='"+esc(t)+"'"+(inv.truck===t?" selected":"")+">"+esc(t)+"</option>"; }).join("")
+    +"</select></div>";
+  if(assignedTruck && !inv.truck) inv.truck = assignedTruck;
+
+  var lastLine = inv.lastSubmit
+    ? "<p style='color:#64748b;font-size:12px;margin-bottom:16px;'>Last submitted: "+fd(inv.lastSubmit)+"</p>"
+    : "<p style='color:#f59e0b;font-size:12px;margin-bottom:16px;'>First time setup &mdash; add all products you currently carry on your truck.</p>";
+
+  var emptyMsg = prodRows ? prodRows : "<div style='text-align:center;color:#475569;padding:20px;border:1px dashed #1e3a5f;border-radius:10px;margin-bottom:14px;'>No products added yet. Add products below.</div>";
+
+  var addPanel = available.length > 0
+    ? "<div class='card' style='padding:14px;margin-bottom:16px;'>"
+      +"<label style='display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Add Product to Truck</label>"
+      +"<div style='display:flex;gap:8px;margin-bottom:8px;'>"
+      +"<select class='inp' id='ti-add-prod' style='flex:2;'><option value=''>Select product...</option>"+addOpts+"</select>"
+      +"<input type='number' class='inp' id='ti-add-qty' style='width:70px;' placeholder='Qty' min='0' value='0'>"
+      +"<button class='btn bp' style='padding:10px 14px;font-size:13px;' data-a='ti-add-prod'>Add</button>"
+      +"</div></div>"
+    : "";
+
+  pg.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;'>"
+    +"<h2 style='font-size:20px;font-weight:700;'>My Truck Inventory</h2></div>"
+    +"<p style='color:#475569;font-size:13px;margin-bottom:4px;'>"+esc(techName)+" &bull; "+esc(inv.truck||"No truck assigned")+"</p>"
+    +lastLine+truckSel
+    +"<div id='ti-prod-list' style='margin-bottom:14px;'>"+emptyMsg+"</div>"
+    +addPanel
+    +"<button class='btn bs' style='width:100%;padding:14px;font-size:15px;' data-a='ti-submit'>"
+    +(isNew?"Submit Initial Inventory":"Submit Weekly Count")+"</button>"
+    +"<p style='color:#475569;font-size:12px;text-align:center;margin-top:8px;'>Update the quantities above to match what is currently on your truck, then tap submit.</p>";
+}
+
+// Action handlers for truck inventory
+function tiAddProd(){
+  var sel = document.getElementById("ti-add-prod");
+  if(!sel||!sel.value) return;
+  var prod = S.products.find(function(p){ return p.id===sel.value; });
+  if(!prod) return;
+  var qtyInp = document.getElementById("ti-add-qty");
+  var qty = qtyInp ? (parseInt(qtyInp.value)||0) : 0;
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!S.truckInventories[techName]) S.truckInventories[techName]={truck:"",products:[],lastSubmit:null};
+  S.truckInventories[techName].products.push({id:prod.id,name:prod.name,unit:prod.unit,qty:qty,prevQty:0,warnBelow:0});
+  save(); renderTruckInv();
+}
+
+function tiRemoveProd(idx){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!S.truckInventories[techName]) return;
+  S.truckInventories[techName].products.splice(parseInt(idx),1);
+  save(); renderTruckInv();
+}
+
+async function tiSubmit(){
+  var techName = S.currentUser ? S.currentUser.name : S.checkTech;
+  if(!techName){ alert("Could not identify technician."); return; }
+
+  // Get truck selection
+  var truckSel = document.getElementById("ti-truck-select");
+  var truck = truckSel ? truckSel.value : (S.truckInventories[techName]||{}).truck||"";
+  if(!truck){ alert("Please select your truck first."); return; }
+
+  if(!S.truckInventories[techName]) S.truckInventories[techName]={truck:"",products:[],lastSubmit:null};
+  var inv = S.truckInventories[techName];
+  inv.truck = truck;
+
+  // Read current qty values from inputs
+  var variances = [];
+  (inv.products||[]).forEach(function(p, i){
+    var inp = document.getElementById("ti-qty-"+i);
+    if(inp){
+      var newQty = parseInt(inp.value)||0;
+      var prev = p.qty;
+      // Check variance - more than 50% drop
+      if(prev > 0 && newQty < prev * 0.5){
+        variances.push({name:p.name, prev:prev, current:newQty, unit:p.unit, drop:Math.round((1-(newQty/prev))*100)});
+      }
+      p.prevQty = prev;
+      p.qty = newQty;
+    }
+  });
+
+  inv.lastSubmit = new Date().toISOString();
+  save();
+
+  // Log to Firebase & sheet BEFORE re-rendering
+  try {
+    await gs("logTruckInventoryServer", {
+      techName: techName,
+      truck: truck || inv.truck || "",
+      branch: S.branch || "willamette",
+      products: inv.products || [],
+      lastSubmit: inv.lastSubmit,
+      date: inv.lastSubmit
+    });
+  } catch(e){ console.warn("Firebase truck inventory log:", e); }
+
+  // Second sheet log removed - was creating UNKNOWN records in Firebase
+
+  renderTruckInv();
+
+  // Send variance email if needed
+  if(variances.length > 0){
+    var varList = variances.map(function(v){ return "  - "+v.name+": was "+v.prev+" "+v.unit+", now "+v.current+" "+v.unit+" ("+v.drop+"% drop)"; }).join("\n");
+    var emailBody = "Truck Inventory Variance Alert - Fox Pest Control Willamette Valley\n\n"
+      +"Technician: "+techName+"\nTruck: "+truck+"\nDate: "+new Date().toLocaleDateString("en-US")+"\n\n"
+      +"The following products dropped more than 50% from last week:\n"+varList
+      +"\n\nPlease review with the technician.\n\nAutomated notification from Fox Admin Hub.";
+    var varianceTo = getNotifEmails("truck_variance");
+    if(varianceTo === null){ varianceTo = null; } // disabled
+    else if(!varianceTo){ varianceTo = getMGMT().join(","); }
+    if(varianceTo){
+      try {
+        await gs("sendEmailServer", {
+          to: varianceTo,
+          subject: "[Fox Pest Control] Truck Inventory Variance - "+techName+" - "+variances.length+" item"+(variances.length>1?"s":""),
+          body: emailBody
+        });
+      } catch(e){ console.warn("Email:", e); }
+    }
+    alert("Inventory submitted! Note: "+variances.length+" variance"+(variances.length>1?"s were":"was")+" detected and reported to management.");
+  } else {
+    alert("Inventory submitted successfully!");
+  }
+}
+
+function renderInvCats(){
+  // Re-render just the product list section without losing search focus
+  var invSearch = (S._invSearch||"").toLowerCase();
+  var allProds = (S.products||[]).filter(function(p){
+    if(!invSearch) return true;
+    return p.name.toLowerCase().indexOf(invSearch)>=0;
+  });
+  var starred = allProds.filter(function(p){ return S._starred&&S._starred[p.id]; });
+  var unstarred = allProds.filter(function(p){ return !S._starred||!S._starred[p.id]; });
+  if(!S._invOpenCats) S._invOpenCats = {};
+  var categoryOrder = ["General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+  var catMap = {};
+  unstarred.forEach(function(p){
+    var cat = p.category||"General Pest";
+    if(!catMap[cat]) catMap[cat] = [];
+    catMap[cat].push(p);
+  });
+  Object.keys(catMap).forEach(function(cat){
+    catMap[cat].sort(function(a,b){ return a.name.localeCompare(b.name); });
+  });
+  var sortedCats = Object.keys(catMap).sort(function(a,b){
+    var ai=categoryOrder.indexOf(a),bi=categoryOrder.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1; if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+  // Build just the product list HTML and inject it
+  var container = document.getElementById("inv-prod-list");
+  if(!container){ renderInv(); return; }
+  var html = "";
+  if(invSearch){
+    html = unstarred.sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
+      var isLow=p.qty<=p.lowAt;
+      return `<div class="card" style="margin-bottom:8px;${isLow?"border-color:#c2410c30":""}">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;"><div style="font-weight:600;font-size:14px;">${esc(p.name)}${isLow?'<span class="tag-low" style="margin-left:6px;">LOW</span>':""}</div><div style="color:#475569;font-size:12px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
+          <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
+          <div style="display:flex;gap:5px;">
+            <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
+            <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
+          </div>
+        </div></div>`;
+    }).join("");
+  } else {
+    sortedCats.forEach(function(cat){
+      var isOpen = S._invOpenCats[cat]===true;
+      var catProds = catMap[cat]||[];
+      var lowCount = catProds.filter(function(p){return p.qty<=p.lowAt;}).length;
+      html += "<div style='margin-bottom:6px;'>"
+        +"<button class='btn' style='width:100%;text-align:left;padding:10px 14px;background:#0f2040;border:1px solid #1e3a5f;border-radius:8px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;' data-a='inv-toggle-cat' data-v='"+esc(cat)+"'>"
+        +"<span style='font-weight:600;font-size:13px;color:#f59e0b;'>"+esc(cat)+"</span>"
+        +"<span style='color:#64748b;font-size:12px;'>"+(lowCount>0?"<span style='color:#fb923c;'>"+lowCount+" LOW</span> · ":"")+""+catProds.length+" items "+(isOpen?"▲":"▼")+"</span>"
+        +"</button>";
+      if(isOpen){
+        catProds.forEach(function(p){
+          var isLow=p.qty<=p.lowAt;
+          html += `<div class="card" style="margin-bottom:8px;${isLow?"border-color:#c2410c30":""}">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;"><div style="font-weight:600;font-size:14px;">${esc(p.name)}${isLow?'<span class="tag-low" style="margin-left:6px;">LOW</span>':""}</div><div style="color:#475569;font-size:12px;">Low at: ${p.lowAt} ${esc(p.unit)}</div></div>
+              <div style="text-align:right;"><div style="font-size:20px;font-weight:700;color:${isLow?"#fb923c":"#e2e8f0"};">${p.qty}</div><div style="font-size:11px;color:#475569;">${esc(p.unit)}</div></div>
+              <div style="display:flex;gap:5px;">
+                <button class="btn bg" style="padding:5px 9px;font-size:12px;" data-a="open-adj" data-v="${p.id}">Adjust</button>
+                <button class="btn bd" style="padding:5px 9px;font-size:12px;" data-a="remove-prod" data-v="${p.id}">X</button>
+              </div>
+            </div></div>`;
+        });
+      }
+      html += "</div>";
+    });
+  }
+  container.innerHTML = html;
+}
+
+// ─── Report Runner ───────────────────────────────────────────────────────────
+function exportReportCSV(type){
+  var rows = [];
+  var filename = type+".csv";
+  if(type==="low-stock"){
+    rows.push(["Product","Category","Current Qty","Unit","Minimum","Value"]);
+    applyProductFilters(S.products||[]).filter(function(p){return p.qty<=p.lowAt;}).forEach(function(p){
+      var up=p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      rows.push([p.name,p.category||"",p.qty,p.unit,p.lowAt,((p.qty||0)*up).toFixed(2)]);
+    });
+    filename="low_stock_report.csv";
+  } else if(type==="truck-inventory"){
+    rows.push(["Technician","Truck","Last Count","Days Since","Status","Products"]);
+    var tiData5=S.truckInventories||{};
+    (S.techAccounts||[]).forEach(function(t){
+      var rec=tiData5[t.name]||{};
+      var days=rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
+      var status=!rec.lastSubmit?"Never":days<=7?"Current":days<=14?"Pending":"Overdue";
+      rows.push([t.name,t.truck||"",rec.lastSubmit?new Date(rec.lastSubmit).toLocaleDateString():"",days<999?days:"",status,(rec.products||[]).length]);
+    });
+    filename="truck_inventory_summary.csv";
+  } else if(type==="product-usage"){
+    rows.push(["Technician","Product","Qty","Unit"]);
+    var rf7=S.reportFilters||{};
+    var co=applyDateFilter(S.checkouts||[],"date");
+    if(rf7.techFilter&&rf7.techFilter!=="all") co=co.filter(function(c){return (c.tech||c.techName)===rf7.techFilter;});
+    co.forEach(function(c){ rows.push([c.tech||c.techName||"",c.product||c.name||"",c.qty||0,c.unit||""]); });
+    filename="product_usage_by_tech.csv";
+  } else if(type==="adjustments"){
+    rows.push(["Date","Product","Old Qty","New Qty","Change","Reason","By"]);
+    var adjLog5=S._cachedAdjLog||[];
+    var rf8=S.reportFilters||{};
+    var filtAdj=applyDateFilter(adjLog5,"date");
+    if(rf8.techFilter&&rf8.techFilter!=="all") filtAdj=filtAdj.filter(function(a){return (a.by||a.manager)===rf8.techFilter;});
+    filtAdj.forEach(function(a){
+      rows.push([a.date?new Date(a.date).toLocaleDateString():"",a.productName||a.product||"",a.oldQty||0,a.newQty||0,a.change||0,a.reason||"",a.by||a.manager||""]);
+    });
+    filename="adjustment_history.csv";
+  } else if(type==="dead-stock"){
+    rows.push(["Product","Category","Qty","Unit","Value","Last Activity"]);
+    var adjLog6=S._cachedAdjLog||[];
+    var lastUsed2={};
+    adjLog6.forEach(function(a){var pid=a.productId||a.productName;if(!lastUsed2[pid]||new Date(a.date)>new Date(lastUsed2[pid]))lastUsed2[pid]=a.date;});
+    var deadDays2=parseInt(S.reportFilters.lastActivity||"30")||30;
+    applyProductFilters(S.products||[]).filter(function(p){
+      if(p.qty<=0) return false;
+      var last=lastUsed2[p.id]||lastUsed2[p.name];
+      return !last||(Date.now()-new Date(last).getTime())>deadDays2*24*60*60*1000;
+    }).forEach(function(p){
+      var up=p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      var last=lastUsed2[p.id]||lastUsed2[p.name];
+      rows.push([p.name,p.category||"",p.qty,p.unit,((p.qty||0)*up).toFixed(2),last?new Date(last).toLocaleDateString():"Never"]);
+    });
+    filename="slow_moving_products.csv";
+  } else if(type==="inventory-value"){
+    rows.push(["Product","Category","Qty","Unit","Unit Price","Total Value","Track As"]);
+    applyProductFilters(S.products||[]).filter(function(p){return p.qty>0;}).forEach(function(p){
+      var up=p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      rows.push([p.name,p.category||"",p.qty,p.unit,up.toFixed(2),((p.qty||0)*up).toFixed(2),p.trackAs||"case"]);
+    });
+    filename="inventory_valuation.csv";
+  }
+  if(rows.length>1) exportCSV(filename, rows);
+  else showToast("No data to export");
+}
+
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
 function getDateRange(range){
