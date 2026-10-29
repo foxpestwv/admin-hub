@@ -258,6 +258,7 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-restock" class="pg"></div>
     <div id="pg-analytics" class="pg"></div>
     <div id="pg-sign" class="pg"></div>
+    <div id="pg-reports" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
     <div id="pg-reports" class="pg"></div>
     <div id="pg-ooo" class="pg"></div>
@@ -437,7 +438,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.2";
+const APP_VERSION = "4.6.4";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -705,7 +706,10 @@ async function gs(fn, data){
             upc: p.upc||"",
             sdsUrl: p.sdsUrl||"",
             labelUrl: p.labelUrl||"",
-            hideFromCheckout: p.hideFromCheckout===true
+            hideFromCheckout: p.hideFromCheckout===true,
+            price: Number(p.price)||0,
+            trackAs: p.trackAs||"case",
+            unitsPerCase: Number(p.unitsPerCase)||1
           };
         });
         return {products: parsedProds, hiddenCount: Object.keys(hiddenProds).filter(function(k){return hiddenProds[k];}).length};
@@ -1108,6 +1112,14 @@ async function gs(fn, data){
         var brDocs = brSnap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
         brDocs.sort(function(a,b){ return a.id==="willamette"?-1:b.id==="willamette"?1:a.name.localeCompare(b.name); });
         return {branches: brDocs};
+      }
+      case "saveReportSchedule": {
+        await _db.collection("config").doc("reportSchedule_"+(data.branch||"willamette")).set(data.schedule||{}, {merge:false});
+        return {ok:true};
+      }
+      case "getReportSchedule": {
+        var rs = await _db.collection("config").doc("reportSchedule_"+(data&&data.branch||"willamette")).get();
+        return {schedule: rs.exists ? rs.data() : {}};
       }
       case "saveNotifConfig": {
         await _db.collection("config").doc("notifConfig_"+(data.branch||"willamette")).set(data.config||{}, {merge:false});
@@ -1614,6 +1626,9 @@ async function syncFromSheet(){
     const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",_syncBranch),gs("getTechsServer",_syncBranch),gs("getRestockOrdersServer",_syncBranch),gs("getInspectionsServer",_syncBranch),gs("getTruckInventoryServer",_syncBranch)]);
     // Also load sign requests fresh
     try {
+      var rsResult = await gs("getReportSchedule", _syncBranch);
+      S.reportSchedule = rsResult.schedule||{};
+      lsSet("hub:reportSchedule", S.reportSchedule);
       var ncResult = await gs("getNotifConfig", _syncBranch);
       S.notifConfig = ncResult.config||{};
       lsSet("hub:notifConfig", S.notifConfig);
@@ -2233,6 +2248,26 @@ async function handleAction(a,v,el,e){
   if(a==="do-restock") { doRestock(v); return; }
   if(a==="do-adj") { doAdj(v); return; }
   if(a==="sync") { syncFromSheet(); return; }
+  if(a==="save-report-schedule"){
+    S.reportSchedule = {
+      enabled: document.getElementById("sched-enabled")&&document.getElementById("sched-enabled").checked,
+      day: document.getElementById("sched-day")&&document.getElementById("sched-day").value||"Monday",
+      time: document.getElementById("sched-time")&&document.getElementById("sched-time").value||"07:00",
+      recipients: document.getElementById("sched-recipients")&&document.getElementById("sched-recipients").value||""
+    };
+    await gs("saveReportSchedule", {branch:S.branch||"willamette", schedule:S.reportSchedule});
+    lsSet("hub:reportSchedule", S.reportSchedule);
+    showToast("Report schedule saved ✓");
+    return;
+  }
+  if(a==="report-run"){
+    runReport(v);
+    return;
+  }
+  if(a==="report-back"){
+    renderReports();
+    return;
+  }
   if(a==="add-check-item") { snapshotCheckItems(); S.checkItems.push({id:uid(),productId:"",qty:"",notes:""}); render(); return; }
   if(a==="del-check-item") { snapshotCheckItems(); S.checkItems.splice(parseInt(v),1); render(); return; }
   if(a==="submit-checkout") { submitCheckout(); return; }
@@ -2486,15 +2521,11 @@ async function handleAction(a,v,el,e){
           await gs("addProductToSheet", {name:sp.name, unit:sp.unit||"each", category:sp.category||"General Pest", lowAt:0, truckWarnAbove:0, reorderNote:""});
           added++;
         } else {
-          // Always update category and unit
           var needsUpdate = false;
           if(sp.unit && match.unit !== sp.unit){ await gs("updateProductField", {id:match.id, field:"unit", value:sp.unit}); needsUpdate=true; }
           if(sp.category && match.category !== sp.category){ await gs("updateProductField", {id:match.id, field:"category", value:sp.category}); needsUpdate=true; }
-          // Force category update even if same - ensures all products get tagged
-          if(!match.category || match.category==="General Pest" && sp.category!=="General Pest"){
-            await gs("updateProductField", {id:match.id, field:"category", value:sp.category});
-            needsUpdate=true;
-          }
+          if(!match.category || (match.category==="General Pest" && sp.category!=="General Pest")){ await gs("updateProductField", {id:match.id, field:"category", value:sp.category}); needsUpdate=true; }
+          if(sp.price && match.price !== sp.price){ await gs("updateProductField", {id:match.id, field:"price", value:sp.price}); needsUpdate=true; }
           if(needsUpdate) updated++;
         }
       }
@@ -5225,6 +5256,168 @@ function updateCartBadge(){
   }
 }
 
+// ─── Report Runner ───────────────────────────────────────────────────────────
+async function runReport(type){
+  var pg = document.getElementById("pg-reports");
+  if(!pg) return;
+  var backBtn = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
+
+  if(type==="low-stock"){
+    var low = (S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
+      .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
+      +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
+      :low.map(function(p){
+        var pct = p.lowAt>0?Math.round((p.qty/p.lowAt)*100):0;
+        var color = p.qty<=0?"#ef4444":p.qty<p.lowAt?"#f59e0b":"#22c55e";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='text-align:right;'>"
+          +"<div style='font-size:18px;font-weight:700;color:"+color+";'>"+p.qty+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>Min: "+p.lowAt+" "+esc(p.unit)+"</div>"
+          +"</div></div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="truck-inventory"){
+    var tiData2 = S.truckInventories||{};
+    var techNames2 = (S.techAccounts||[]).map(function(t){ return t.name; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>🚚 Truck Inventory Summary</h2>"
+      +techNames2.map(function(name){
+        var rec = tiData2[name];
+        var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
+        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"✅ Submitted "+daysSince+" days ago":daysSince<=14?"⚠️ "+daysSince+" days ago":"🔴 Overdue ("+daysSince+" days)";
+        var color = !rec||!rec.lastSubmit?"#ef4444":daysSince<=7?"#22c55e":daysSince<=14?"#f59e0b":"#ef4444";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
+          +"<div style='display:flex;justify-content:space-between;margin-bottom:6px;'>"
+          +"<div style='font-weight:600;'>"+esc(name)+"</div>"
+          +"<div style='font-size:12px;color:"+color+";'>"+status+"</div>"
+          +"</div>"
+          +(rec&&rec.products&&rec.products.length>0
+            ?"<div style='font-size:11px;color:#64748b;'>"+rec.products.length+" products on truck</div>"
+            :"<div style='font-size:11px;color:#64748b;'>No inventory data</div>")
+          +"</div>";
+      }).join("");
+    return;
+  }
+
+  if(type==="product-usage"){
+    var adjLog2 = S._cachedAdjLog||[];
+    if(!adjLog2.length){
+      var adjRes = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog2 = adjRes.log||[];
+      S._cachedAdjLog = adjLog2;
+    }
+    var usageByTech = {};
+    (S.checkouts||[]).forEach(function(c){
+      var t = c.tech||c.techName||"Unknown";
+      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
+      usageByTech[t].qty += (c.qty||1);
+      usageByTech[t].items++;
+    });
+    var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📦 Product Usage by Tech</h2>"
+      +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
+      :usageList.map(function(u){
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div style='font-weight:600;'>"+esc(u.name)+"</div>"
+          +"<div style='text-align:right;'><div style='font-size:18px;font-weight:700;color:#f59e0b;'>"+u.qty+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>units in "+u.items+" orders</div></div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="adjustments"){
+    var adjLog3 = S._cachedAdjLog||[];
+    if(!adjLog3.length){
+      var adjRes2 = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog3 = adjRes2.log||[];
+      S._cachedAdjLog = adjLog3;
+    }
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📋 Adjustment History</h2>"
+      +(adjLog3.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments recorded yet.</div>"
+      :adjLog3.slice(0,50).map(function(a){
+        var change = a.change||((a.newQty||0)-(a.oldQty||0));
+        var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
+          +"<div style='display:flex;justify-content:space-between;margin-bottom:4px;'>"
+          +"<div style='font-weight:600;font-size:13px;'>"+esc(a.productName||a.product||"")+"</div>"
+          +"<div style='font-size:16px;font-weight:700;color:"+color+";'>"+(change>0?"+":"")+change+"</div>"
+          +"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+fd(a.date)+" · "+esc(a.by||a.manager||"")+" · "+esc(a.reason||"")+"</div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="dead-stock"){
+    var now2 = Date.now();
+    var adjLog4 = S._cachedAdjLog||[];
+    if(!adjLog4.length){
+      var adjRes3 = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog4 = adjRes3.log||[];
+      S._cachedAdjLog = adjLog4;
+    }
+    // Find last adjustment date per product
+    var lastUsed = {};
+    adjLog4.forEach(function(a){
+      var pid = a.productId||a.productName;
+      if(!lastUsed[pid]||new Date(a.date)>new Date(lastUsed[pid])) lastUsed[pid]=a.date;
+    });
+    var slow = (S.products||[]).filter(function(p){
+      if(p.qty<=0) return false;
+      var last = lastUsed[p.id]||lastUsed[p.name];
+      if(!last) return true; // never adjusted = slow
+      return (now2-new Date(last).getTime()) > 30*24*60*60*1000; // 30+ days
+    }).sort(function(a,b){ return (a.qty*(a.price||0))<(b.qty*(b.price||0))?1:-1; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>💤 Slow Moving Products</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Products with stock on hand but no activity in 30+ days.</p>"
+      +(slow.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>No slow moving products found! ✅</div>"
+      :slow.map(function(p){
+        var val = (p.qty||0)*(p.price||0);
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
+          +"<div style='font-size:11px;color:#f59e0b;'>No activity</div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="exception-email"){
+    // Build exception report and email it
+    var recipients2 = (S.reportSchedule&&S.reportSchedule.recipients)||"";
+    if(!recipients2){ alert("Please set recipients in the Weekly Exception Report section first."); return; }
+    showToast("Sending exception report...");
+    var prods3 = S.products||[];
+    var lowList = prods3.filter(function(p){ return p.qty<=p.lowAt&&p.lowAt>0; });
+    var outList = prods3.filter(function(p){ return p.qty<=0; });
+    var tiData3 = S.truckInventories||{};
+    var techNames3 = (S.techAccounts||[]).map(function(t){ return t.name; });
+    var submitted2 = Object.keys(tiData3).filter(function(n){
+      var rec=tiData3[n]; if(!rec||!rec.lastSubmit) return false;
+      return (Date.now()-new Date(rec.lastSubmit).getTime())<7*24*60*60*1000;
+    });
+    var overdue2 = techNames3.filter(function(n){ return submitted2.indexOf(n)<0; });
+    var body = "Fox Pest Control - Weekly Exception Report\n"
+      +(S.branchName||"Willamette Valley")+" Branch\n"
+      +new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+"\n\n";
+    if(lowList.length>0) body += "LOW STOCK ("+lowList.length+" items):\n"+lowList.map(function(p){ return "  - "+p.name+": "+p.qty+" "+p.unit+" (min: "+p.lowAt+")"; }).join("\n")+"\n\n";
+    if(outList.length>0) body += "OUT OF STOCK ("+outList.length+" items):\n"+outList.map(function(p){ return "  - "+p.name; }).join("\n")+"\n\n";
+    if(overdue2.length>0) body += "OVERDUE TRUCK COUNTS:\n"+overdue2.map(function(n){ return "  - "+n; }).join("\n")+"\n\n";
+    if(lowList.length===0&&outList.length===0&&overdue2.length===0) body += "No issues found this week. All systems normal.\n\n";
+    body += "Fox Pest Control Admin Hub";
+    try {
+      await gs("sendEmailServer",{to:recipients2,subject:"[Fox Pest] Weekly Exception Report - "+(S.branchName||"Willamette Valley")+" - "+new Date().toLocaleDateString("en-US"),body:body});
+      showToast("Exception report sent ✓");
+    } catch(e){ showToast("Email failed: "+e.message); }
+    return;
+  }
+}
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 async function renderReports(){
   var pg = document.getElementById("pg-reports");
@@ -6079,6 +6272,8 @@ function renderSettings(){
   } else if(tab==="products"){
     var prodRows = S.products.map(function(p){
       var hideFromCheckout = p.hideFromCheckout===true;
+      var trackAs = p.trackAs||"case"; // default to case
+      var unitsPerCase = p.unitsPerCase||1;
       return "<div class='card' style='margin-bottom:8px;padding:12px 14px;'>"
         +"<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
         +"<div style='font-weight:600;font-size:14px;'>"+esc(p.name)+"</div>"
@@ -6089,14 +6284,30 @@ function renderSettings(){
         +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Remove</button>"
         +"</div>"
         +"</div>"
-        +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;'>"
+        +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;'>"
         +"<div><div style='color:#64748b;margin-bottom:3px;'>Unit</div>"
         +"<input class='inp' style='font-size:12px;padding:4px 6px;' data-field='unit' data-pid='"+p.id+"' value='"+esc(p.unit)+"'></div>"
         +"<div><div style='color:#64748b;margin-bottom:3px;'>Low At</div>"
         +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='lowAt' data-pid='"+p.id+"' value='"+p.lowAt+"'></div>"
         +"<div><div style='color:#64748b;margin-bottom:3px;'>Truck Warn</div>"
         +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;' data-field='truckWarnAbove' data-pid='"+p.id+"' value='"+(p.truckWarnAbove||0)+"'></div>"
-        +"</div></div>";
+        +"</div>"
+        +"<div style='display:flex;align-items:center;gap:10px;font-size:12px;'>"
+        +"<div style='color:#64748b;'>Track as:</div>"
+        +"<label style='display:flex;align-items:center;gap:4px;cursor:pointer;'>"
+        +"<input type='radio' name='trackAs-"+p.id+"' data-field='trackAs' data-pid='"+p.id+"' value='case' "+(trackAs==="case"?"checked":"")+"> Case"
+        +"</label>"
+        +"<label style='display:flex;align-items:center;gap:4px;cursor:pointer;'>"
+        +"<input type='radio' name='trackAs-"+p.id+"' data-field='trackAs' data-pid='"+p.id+"' value='individual' "+(trackAs==="individual"?"checked":"")+"> Individual"
+        +"</label>"
+        +(trackAs==="individual"
+          ?"<div style='display:flex;align-items:center;gap:4px;'>"
+          +"<div style='color:#64748b;'>Units/case:</div>"
+          +"<input type='number' class='inp' style='font-size:12px;padding:4px 6px;width:60px;' data-field='unitsPerCase' data-pid='"+p.id+"' value='"+unitsPerCase+"' min='1'>"
+          +"</div>"
+          :"")
+        +"</div>"
+        +"</div>";
     }).join("");
 
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
@@ -6217,9 +6428,17 @@ function renderSettings(){
       var val;
       if(field==="hideFromCheckout") val = inp.checked;
       else if(field==="unit") val = inp.value;
+      else if(field==="trackAs") val = inp.value;
+      else if(field==="unitsPerCase") val = parseInt(inp.value)||1;
       else val = parseInt(inp.value)||0;
       var prod = S.products.find(function(p){return p.id===pid;});
-      if(prod){ prod[field]=val; save(); gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){}); }
+      if(prod){ 
+        prod[field]=val; 
+        save(); 
+        gs("updateProductField",{id:pid,field:field,value:val}).catch(function(){});
+        // Re-render to show/hide unitsPerCase field
+        if(field==="trackAs") { S.settingsTab="products"; renderSettings(); }
+      }
     });
   });
   // Wire up inspection field changes
@@ -6293,7 +6512,8 @@ async function removeProd(id){
       S._restockId=null; S._adjId=null;
       save();
       // Re-render whichever view is active
-      if(S.currentTab==="settings") renderSettings();
+      if(S.currentTab==="reports") renderReports();
+  if(S.currentTab==="settings") renderSettings();
       else renderInv();
     } else {
       alert("Could not remove from sheet. Please sync and try again.");
@@ -6636,6 +6856,309 @@ function renderInvCats(){
     });
   }
   container.innerHTML = html;
+}
+
+// ─── Report Runner ───────────────────────────────────────────────────────────
+async function runReport(type){
+  var pg = document.getElementById("pg-reports");
+  if(!pg) return;
+  var backBtn = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
+
+  if(type==="low-stock"){
+    var low = (S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
+      .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
+      +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
+      :low.map(function(p){
+        var pct = p.lowAt>0?Math.round((p.qty/p.lowAt)*100):0;
+        var color = p.qty<=0?"#ef4444":p.qty<p.lowAt?"#f59e0b":"#22c55e";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='text-align:right;'>"
+          +"<div style='font-size:18px;font-weight:700;color:"+color+";'>"+p.qty+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>Min: "+p.lowAt+" "+esc(p.unit)+"</div>"
+          +"</div></div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="truck-inventory"){
+    var tiData2 = S.truckInventories||{};
+    var techNames2 = (S.techAccounts||[]).map(function(t){ return t.name; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>🚚 Truck Inventory Summary</h2>"
+      +techNames2.map(function(name){
+        var rec = tiData2[name];
+        var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
+        var status = !rec||!rec.lastSubmit?"Never submitted":daysSince<=7?"✅ Submitted "+daysSince+" days ago":daysSince<=14?"⚠️ "+daysSince+" days ago":"🔴 Overdue ("+daysSince+" days)";
+        var color = !rec||!rec.lastSubmit?"#ef4444":daysSince<=7?"#22c55e":daysSince<=14?"#f59e0b":"#ef4444";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
+          +"<div style='display:flex;justify-content:space-between;margin-bottom:6px;'>"
+          +"<div style='font-weight:600;'>"+esc(name)+"</div>"
+          +"<div style='font-size:12px;color:"+color+";'>"+status+"</div>"
+          +"</div>"
+          +(rec&&rec.products&&rec.products.length>0
+            ?"<div style='font-size:11px;color:#64748b;'>"+rec.products.length+" products on truck</div>"
+            :"<div style='font-size:11px;color:#64748b;'>No inventory data</div>")
+          +"</div>";
+      }).join("");
+    return;
+  }
+
+  if(type==="product-usage"){
+    var adjLog2 = S._cachedAdjLog||[];
+    if(!adjLog2.length){
+      var adjRes = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog2 = adjRes.log||[];
+      S._cachedAdjLog = adjLog2;
+    }
+    var usageByTech = {};
+    (S.checkouts||[]).forEach(function(c){
+      var t = c.tech||c.techName||"Unknown";
+      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
+      usageByTech[t].qty += (c.qty||1);
+      usageByTech[t].items++;
+    });
+    var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📦 Product Usage by Tech</h2>"
+      +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
+      :usageList.map(function(u){
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div style='font-weight:600;'>"+esc(u.name)+"</div>"
+          +"<div style='text-align:right;'><div style='font-size:18px;font-weight:700;color:#f59e0b;'>"+u.qty+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>units in "+u.items+" orders</div></div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="adjustments"){
+    var adjLog3 = S._cachedAdjLog||[];
+    if(!adjLog3.length){
+      var adjRes2 = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog3 = adjRes2.log||[];
+      S._cachedAdjLog = adjLog3;
+    }
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📋 Adjustment History</h2>"
+      +(adjLog3.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments recorded yet.</div>"
+      :adjLog3.slice(0,50).map(function(a){
+        var change = a.change||((a.newQty||0)-(a.oldQty||0));
+        var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
+        return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
+          +"<div style='display:flex;justify-content:space-between;margin-bottom:4px;'>"
+          +"<div style='font-weight:600;font-size:13px;'>"+esc(a.productName||a.product||"")+"</div>"
+          +"<div style='font-size:16px;font-weight:700;color:"+color+";'>"+(change>0?"+":"")+change+"</div>"
+          +"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+fd(a.date)+" · "+esc(a.by||a.manager||"")+" · "+esc(a.reason||"")+"</div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="dead-stock"){
+    var now2 = Date.now();
+    var adjLog4 = S._cachedAdjLog||[];
+    if(!adjLog4.length){
+      var adjRes3 = await gs("getAdjustmentLog", {branch:S.branch||"willamette"});
+      adjLog4 = adjRes3.log||[];
+      S._cachedAdjLog = adjLog4;
+    }
+    // Find last adjustment date per product
+    var lastUsed = {};
+    adjLog4.forEach(function(a){
+      var pid = a.productId||a.productName;
+      if(!lastUsed[pid]||new Date(a.date)>new Date(lastUsed[pid])) lastUsed[pid]=a.date;
+    });
+    var slow = (S.products||[]).filter(function(p){
+      if(p.qty<=0) return false;
+      var last = lastUsed[p.id]||lastUsed[p.name];
+      if(!last) return true; // never adjusted = slow
+      return (now2-new Date(last).getTime()) > 30*24*60*60*1000; // 30+ days
+    }).sort(function(a,b){ return (a.qty*(a.price||0))<(b.qty*(b.price||0))?1:-1; });
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>💤 Slow Moving Products</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Products with stock on hand but no activity in 30+ days.</p>"
+      +(slow.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>No slow moving products found! ✅</div>"
+      :slow.map(function(p){
+        var val = (p.qty||0)*(p.price||0);
+        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
+          +"<div style='font-size:11px;color:#f59e0b;'>No activity</div>"
+          +"</div>";
+      }).join(""));
+    return;
+  }
+
+  if(type==="exception-email"){
+    // Build exception report and email it
+    var recipients2 = (S.reportSchedule&&S.reportSchedule.recipients)||"";
+    if(!recipients2){ alert("Please set recipients in the Weekly Exception Report section first."); return; }
+    showToast("Sending exception report...");
+    var prods3 = S.products||[];
+    var lowList = prods3.filter(function(p){ return p.qty<=p.lowAt&&p.lowAt>0; });
+    var outList = prods3.filter(function(p){ return p.qty<=0; });
+    var tiData3 = S.truckInventories||{};
+    var techNames3 = (S.techAccounts||[]).map(function(t){ return t.name; });
+    var submitted2 = Object.keys(tiData3).filter(function(n){
+      var rec=tiData3[n]; if(!rec||!rec.lastSubmit) return false;
+      return (Date.now()-new Date(rec.lastSubmit).getTime())<7*24*60*60*1000;
+    });
+    var overdue2 = techNames3.filter(function(n){ return submitted2.indexOf(n)<0; });
+    var body = "Fox Pest Control - Weekly Exception Report\n"
+      +(S.branchName||"Willamette Valley")+" Branch\n"
+      +new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+"\n\n";
+    if(lowList.length>0) body += "LOW STOCK ("+lowList.length+" items):\n"+lowList.map(function(p){ return "  - "+p.name+": "+p.qty+" "+p.unit+" (min: "+p.lowAt+")"; }).join("\n")+"\n\n";
+    if(outList.length>0) body += "OUT OF STOCK ("+outList.length+" items):\n"+outList.map(function(p){ return "  - "+p.name; }).join("\n")+"\n\n";
+    if(overdue2.length>0) body += "OVERDUE TRUCK COUNTS:\n"+overdue2.map(function(n){ return "  - "+n; }).join("\n")+"\n\n";
+    if(lowList.length===0&&outList.length===0&&overdue2.length===0) body += "No issues found this week. All systems normal.\n\n";
+    body += "Fox Pest Control Admin Hub";
+    try {
+      await gs("sendEmailServer",{to:recipients2,subject:"[Fox Pest] Weekly Exception Report - "+(S.branchName||"Willamette Valley")+" - "+new Date().toLocaleDateString("en-US"),body:body});
+      showToast("Exception report sent ✓");
+    } catch(e){ showToast("Email failed: "+e.message); }
+    return;
+  }
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+function renderReports(){
+  var pg = document.getElementById("pg-reports");
+  if(!pg) return;
+
+  // Calculate stats from existing data
+  var prods = S.products||[];
+  var totalValue = prods.reduce(function(sum,p){ 
+    var unitPrice = p.trackAs==="individual" ? (p.price||0)/(p.unitsPerCase||1) : (p.price||0);
+    return sum+(p.qty||0)*unitPrice; 
+  }, 0);
+  var lowItems = prods.filter(function(p){ return p.qty<=p.lowAt && p.lowAt>0; });
+  var outItems = prods.filter(function(p){ return p.qty<=0; });
+  var deadStock = prods.filter(function(p){ return p.qty>0 && p.price>0; }); // simplified
+
+  // Truck inventory stats
+  var tiData = S.truckInventories||{};
+  var techNames = (S.techAccounts||[]).map(function(t){ return t.name; });
+  var submitted = Object.keys(tiData).filter(function(n){ 
+    var rec = tiData[n];
+    if(!rec||!rec.lastSubmit) return false;
+    var days = (Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24);
+    return days<=7;
+  });
+  var overdue = techNames.filter(function(n){ return submitted.indexOf(n)<0; });
+
+  // Adjustment log stats
+  var adjLog = S._cachedAdjLog||[];
+  var recentAdj = adjLog.filter(function(a){
+    return (Date.now()-new Date(a.date).getTime()) < 7*24*60*60*1000;
+  });
+  var bigAdj = recentAdj.filter(function(a){ return Math.abs(a.change||0)>=10; });
+
+  // Product usage by tech from checkout log
+  var checkouts = S.checkouts||[];
+  var techUsage = {};
+  checkouts.forEach(function(c){
+    var t = c.tech||c.techName||"Unknown";
+    techUsage[t] = (techUsage[t]||0) + (c.qty||1);
+  });
+
+  // Build dashboard
+  var attentionItems = [];
+  if(lowItems.length>0) attentionItems.push({icon:"⚠️",text:lowItems.length+" products at or below reorder point",action:"View low stock"});
+  if(outItems.length>0) attentionItems.push({icon:"🚫",text:outItems.length+" products completely out of stock",action:"View out of stock"});
+  if(overdue.length>0) attentionItems.push({icon:"🚚",text:overdue.length+" tech"+( overdue.length>1?"s":"")+" overdue for truck inventory: "+overdue.join(", "),action:""});
+  if(bigAdj.length>0) attentionItems.push({icon:"📊",text:bigAdj.length+" large quantity adjustment"+(bigAdj.length>1?"s":"")+" this week",action:""});
+
+  var attentionHtml = attentionItems.length===0
+    ? "<div style='color:#22c55e;text-align:center;padding:20px;font-size:14px;'>✅ No issues requiring attention</div>"
+    : attentionItems.map(function(i){
+        return "<div style='display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #1e3a5f;'>"
+          +"<span style='font-size:18px;'>"+i.icon+"</span>"
+          +"<span style='font-size:13px;color:#e2e8f0;flex:1;'>"+i.text+"</span>"
+          +"</div>";
+      }).join("");
+
+  // Truck health scores
+  var truckScoreHtml = Object.keys(tiData).map(function(techName){
+    var rec = tiData[techName];
+    if(!rec||!rec.products||!rec.products.length) return "";
+    var prods2 = rec.products||[];
+    var variances = prods2.filter(function(p){ return (p.qty||0)<(p.prevQty||0)*0.5 && p.prevQty>0; }).length;
+    var daysSince = rec.lastSubmit ? Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)) : 999;
+    var accuracyScore = Math.max(0,100-variances*10);
+    var timeScore = daysSince<=7?100:daysSince<=14?60:0;
+    var health = Math.round((accuracyScore*0.6)+(timeScore*0.4));
+    var color = health>=90?"#22c55e":health>=70?"#f59e0b":"#ef4444";
+    return "<div style='margin-bottom:12px;'>"
+      +"<div style='display:flex;justify-content:space-between;margin-bottom:4px;'>"
+      +"<span style='font-size:13px;font-weight:600;'>"+esc(techName)+"</span>"
+      +"<span style='font-size:13px;color:"+color+";font-weight:700;'>"+health+"%</span>"
+      +"</div>"
+      +"<div style='background:#1e3a5f;border-radius:4px;height:8px;'>"
+      +"<div style='background:"+color+";width:"+health+"%;height:8px;border-radius:4px;transition:width 0.3s;'></div>"
+      +"</div>"
+      +"<div style='font-size:11px;color:#64748b;margin-top:2px;'>Last count: "+(daysSince<999?daysSince+" days ago":"Never")+(variances>0?" · "+variances+" variance"+(variances>1?"s":""):"")+"</div>"
+      +"</div>";
+  }).join("");
+
+  // Report schedule config
+  var schedCfg = S.reportSchedule||{enabled:false, day:"Monday", time:"07:00", recipients:""};
+
+  pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Reports</h2>"
+    +"<p style='font-size:12px;color:#64748b;margin-bottom:16px;'>"+esc(S.branchName||"Willamette Valley")+" Branch</p>"
+
+    // Dashboard overview cards
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;'>"
+    +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:24px;font-weight:700;color:#f59e0b;'>"+lowItems.length+"</div><div style='font-size:11px;color:#64748b;'>Low Stock Items</div></div>"
+    +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:24px;font-weight:700;color:#ef4444;'>"+outItems.length+"</div><div style='font-size:11px;color:#64748b;'>Out of Stock</div></div>"
+    +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:24px;font-weight:700;color:#22c55e;'>"+submitted.length+"/"+techNames.length+"</div><div style='font-size:11px;color:#64748b;'>Truck Counts This Week</div></div>"
+    +"<div class='card' style='padding:14px;text-align:center;'><div style='font-size:24px;font-weight:700;color:#e2e8f0;'>$"+totalValue.toFixed(0)+"</div><div style='font-size:11px;color:#64748b;'>Inventory Value</div></div>"
+    +"</div>"
+
+    // Items needing attention
+    +"<div class='card' style='margin-bottom:14px;padding:14px;'>"
+    +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>⚡ Items Requiring Attention</div>"
+    +attentionHtml
+    +"</div>"
+
+    // Truck inventory health
+    +(truckScoreHtml?"<div class='card' style='margin-bottom:14px;padding:14px;'>"
+    +"<div style='font-weight:700;font-size:14px;margin-bottom:12px;'>🚚 Truck Inventory Health</div>"
+    +truckScoreHtml
+    +"</div>":"")
+
+    // Report buttons
+    +"<div class='card' style='margin-bottom:14px;padding:14px;'>"
+    +"<div style='font-weight:700;font-size:14px;margin-bottom:12px;'>📊 Run Reports</div>"
+    +"<button class='btn bg' data-a='report-run' data-v='low-stock' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>⚠️ Low Stock Report</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='truck-inventory' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>🚚 Truck Inventory Summary</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='product-usage' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📦 Product Usage by Tech</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='adjustments' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📋 Adjustment History</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='dead-stock' style='width:100%;padding:10px;text-align:left;'>💤 Slow Moving Products</button>"
+    +"</div>"
+
+    // Scheduled report
+    +"<div class='card' style='padding:14px;'>"
+    +"<div style='font-weight:700;font-size:14px;margin-bottom:12px;'>📅 Weekly Exception Report</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:10px;'>Auto-email a summary of issues requiring attention each week.</div>"
+    +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>"
+    +"<label style='font-size:13px;'>Enable:</label>"
+    +"<input type='checkbox' id='sched-enabled' "+(schedCfg.enabled?"checked":"")+">"
+    +"</div>"
+    +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;'>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:4px;'>Day</div>"
+    +"<select class='inp' id='sched-day' style='font-size:13px;'>"
+    +["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(function(d){
+      return "<option value='"+d+"'"+(schedCfg.day===d?" selected":"")+">"+d+"</option>";
+    }).join("")
+    +"</select></div>"
+    +"<div><div style='font-size:11px;color:#64748b;margin-bottom:4px;'>Time</div>"
+    +"<input type='time' class='inp' id='sched-time' value='"+(schedCfg.time||"07:00")+"' style='font-size:13px;'></div>"
+    +"</div>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:4px;'>Recipients (comma separated)</div>"
+    +"<input type='text' class='inp' id='sched-recipients' value='"+esc(schedCfg.recipients||"")+"' placeholder='email@example.com' style='margin-bottom:10px;'>"
+    +"<button class='btn bp' data-a='save-report-schedule' style='width:100%;padding:10px;'>💾 Save Schedule</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='exception-email' style='width:100%;padding:10px;margin-top:8px;'>📤 Send Exception Report Now</button>"
+    +"</div>";
 }
 
 // ─── Restock Orders ───────────────────────────────────────────────────────────
