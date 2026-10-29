@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.9.4";
+const APP_VERSION = "4.9.7";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -1108,18 +1108,19 @@ async function gs(fn, data){
       // ── INSPECTIONS ───────────────────────────────────────────────────────────
       case "logInspection": {
         var inspId = "insp_"+Date.now();
-        await fbSet("inspections", inspId, Object.assign({}, data, {id:inspId, date:new Date().toISOString()}));
+        await fbSet("inspections", inspId, Object.assign({}, data, {id:inspId, date:new Date().toISOString(), branch:data.branch||S.branch||"willamette"}));
         return {ok:true, id:inspId};
       }
       case "getInspections": {
         await initFirebase();
         var inspSnap = await _db.collection("inspections").orderBy("date","desc").limit(200).get();
+        var inspBranch = data&&data.branch;
         var inspData = inspSnap.docs.map(function(d){
           var rec = d.data();
           if(typeof rec.scores === "string") try{ rec.scores = JSON.parse(rec.scores); }catch(e){ rec.scores={}; }
           if(typeof rec.comments === "string") try{ rec.comments = JSON.parse(rec.comments); }catch(e){ rec.comments={}; }
           return rec;
-        });
+        }).filter(function(r){ return !inspBranch || !r.branch || r.branch===inspBranch; });
         return {inspections: inspData};
       }
       case "saveInspectionPdf": {
@@ -1812,15 +1813,18 @@ async function syncFromSheet(){
       S.restockOrders=ro.orders;
       lsSet("hub:restockOrders",S.restockOrders);
     }
-    if(insp&&insp.inspections&&insp.inspections.length){
-      S.inspections=insp.inspections;
+    if(insp&&insp.inspections){
+      // Filter inspections by branch
+      var branchInsp = (insp.inspections||[]).filter(function(r){
+        return !r.branch || r.branch===(S.branch||"willamette");
+      });
+      S.inspections = branchInsp;
       lsSet("hub:inspections",S.inspections);
     }
     if(ti&&ti.trucks){
       S.sheetTruckData=ti.trucks;
-      if(Object.keys(ti.trucks).length > 0){
-        S.truckInventories = Object.assign({}, S.truckInventories || {}, ti.trucks);
-      }
+      // Replace entirely - don't merge with previous branch data
+      S.truckInventories = ti.trucks;
       lsSet("hub:truckInventories", S.truckInventories);
     }
     // Load order history for reporting
@@ -3811,6 +3815,11 @@ async function saveInsp(){
   const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
   const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
   try { await gs("logInspectionServer",{headers,row}); } catch(e){}
+
+  // Save inspection to Firebase with branch tag
+  try {
+    await gs("logInspection", Object.assign({}, rec, {branch:S.branch||"willamette"}));
+  } catch(e){ console.warn("Firebase inspection save:", e); }
 
   // Generate PDF of inspection and save to Drive
   try {
