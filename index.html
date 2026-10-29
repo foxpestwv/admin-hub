@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.8";
+const APP_VERSION = "4.6.9";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -2901,6 +2901,7 @@ async function handleAction(a,v,el,e){
   if(a==="analytics-view") { S._analyticsView=v; renderAnalytics(); return; }
   if(a==="set-analytics-target") { S.analyticsTarget=parseInt(v); renderAnalytics(); return; }
   if(a==="toggle-tech-usage") { S._expandedTech=S._expandedTech===v?null:v; renderAnalytics(); return; }
+  if(a==="toggle-usage-tech") { S._expandedUsageTech=S._expandedUsageTech===v?null:v; runReport("product-usage"); return; }
   if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="analytics-to-restock") { S.tab="restock"; S._restockView="send"; render(); return; }
   if(a==="sign-upload") { S._signView="upload"; renderSign(); return; }
@@ -5355,14 +5356,40 @@ async function runReport(type){
       usageByTech[t].qty += (c.qty||1);
       usageByTech[t].items++;
     });
+    // Build product breakdown per tech
+    filteredCheckouts.forEach(function(c){
+      var t = c.tech||c.techName||"Unknown";
+      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0,products:{}};
+      usageByTech[t].qty += (c.qty||0);
+      usageByTech[t].items++;
+      var pname = c.product||c.name||"Unknown";
+      if(!usageByTech[t].products[pname]) usageByTech[t].products[pname]={qty:0,unit:c.unit||""};
+      usageByTech[t].products[pname].qty += (c.qty||0);
+    });
     var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📦 Product Usage by Tech</h2>"
+    if(!S._expandedUsageTech) S._expandedUsageTech = null;
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"
       +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
       :usageList.map(function(u){
-        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+        var isOpen = S._expandedUsageTech===u.name;
+        var prodList = Object.entries(u.products||{})
+          .sort(function(a,b){ return b[1].qty-a[1].qty; });
+        return "<div class='card' style='margin-bottom:8px;padding:0;overflow:hidden;'>"
+          +"<div style='display:flex;justify-content:space-between;align-items:center;padding:12px;cursor:pointer;' data-a='toggle-usage-tech' data-v='"+esc(u.name)+"'>"
           +"<div style='font-weight:600;'>"+esc(u.name)+"</div>"
+          +"<div style='display:flex;align-items:center;gap:12px;'>"
           +"<div style='text-align:right;'><div style='font-size:18px;font-weight:700;color:#f59e0b;'>"+u.qty+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>units in "+u.items+" orders</div></div>"
+          +"<div style='font-size:11px;color:#64748b;'>units · "+u.items+" orders</div></div>"
+          +"<span style='color:#64748b;font-size:12px;'>"+(isOpen?"▲":"▼")+"</span>"
+          +"</div></div>"
+          +(isOpen?"<div style='border-top:1px solid #1e3a5f;padding:10px 12px;'>"
+            +prodList.map(function(e){
+              return "<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #0f1f38;font-size:12px;'>"
+                +"<span style='color:#e2e8f0;'>"+esc(e[0])+"</span>"
+                +"<span style='color:#f59e0b;font-weight:600;'>"+e[1].qty+" "+esc(e[1].unit)+"</span>"
+                +"</div>";
+            }).join("")
+            +"</div>":"")
           +"</div>";
       }).join(""));
     return;
@@ -6754,14 +6781,40 @@ async function runReport(type){
       usageByTech[t].qty += (c.qty||1);
       usageByTech[t].items++;
     });
+    // Build product breakdown per tech
+    filteredCheckouts.forEach(function(c){
+      var t = c.tech||c.techName||"Unknown";
+      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0,products:{}};
+      usageByTech[t].qty += (c.qty||0);
+      usageByTech[t].items++;
+      var pname = c.product||c.name||"Unknown";
+      if(!usageByTech[t].products[pname]) usageByTech[t].products[pname]={qty:0,unit:c.unit||""};
+      usageByTech[t].products[pname].qty += (c.qty||0);
+    });
     var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>📦 Product Usage by Tech</h2>"
+    if(!S._expandedUsageTech) S._expandedUsageTech = null;
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"
       +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
       :usageList.map(function(u){
-        return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
+        var isOpen = S._expandedUsageTech===u.name;
+        var prodList = Object.entries(u.products||{})
+          .sort(function(a,b){ return b[1].qty-a[1].qty; });
+        return "<div class='card' style='margin-bottom:8px;padding:0;overflow:hidden;'>"
+          +"<div style='display:flex;justify-content:space-between;align-items:center;padding:12px;cursor:pointer;' data-a='toggle-usage-tech' data-v='"+esc(u.name)+"'>"
           +"<div style='font-weight:600;'>"+esc(u.name)+"</div>"
+          +"<div style='display:flex;align-items:center;gap:12px;'>"
           +"<div style='text-align:right;'><div style='font-size:18px;font-weight:700;color:#f59e0b;'>"+u.qty+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>units in "+u.items+" orders</div></div>"
+          +"<div style='font-size:11px;color:#64748b;'>units · "+u.items+" orders</div></div>"
+          +"<span style='color:#64748b;font-size:12px;'>"+(isOpen?"▲":"▼")+"</span>"
+          +"</div></div>"
+          +(isOpen?"<div style='border-top:1px solid #1e3a5f;padding:10px 12px;'>"
+            +prodList.map(function(e){
+              return "<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #0f1f38;font-size:12px;'>"
+                +"<span style='color:#e2e8f0;'>"+esc(e[0])+"</span>"
+                +"<span style='color:#f59e0b;font-weight:600;'>"+e[1].qty+" "+esc(e[1].unit)+"</span>"
+                +"</div>";
+            }).join("")
+            +"</div>":"")
           +"</div>";
       }).join(""));
     return;
