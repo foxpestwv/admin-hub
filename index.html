@@ -2977,8 +2977,9 @@ async function handleAction(a,v,el,e){
           var srData = {
             id:srId, multiSignId:multiId, isMultiSign:true,
             docName:docName+" ("+signerRole+")",
-            techName:signer.name, techEmail:signer.email,
+            techName:signer.displayName||signer.name, techEmail:signer.email,
             signerRole:signerRole,
+            signerLabel:signer.name,
             createdBy:S.managerName, date:new Date().toISOString(),
             status:"Pending", formType:"ooo",
             pdfBase64:pdfResult.pdfBase64,
@@ -9249,7 +9250,7 @@ async function pdfSendDocument(){
         S.signRequests.unshift({
           id: srId2,
           date: new Date().toISOString(),
-          techName: signer2.name, techEmail: signer2.email,
+          techName: signer2.displayName||signer2.name, techEmail: signer2.email,
           docName: docName, status: "Pending",
           createdBy: S.managerName, note: note,
           fileId: result.fileId,
