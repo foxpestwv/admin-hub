@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.6";
+const APP_VERSION = "5.0.7";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -2826,7 +2826,7 @@ async function handleAction(a,v,el,e){
       other: (document.getElementById("ooo-tech-other")||{}).value||"",
       techSubmittedAt: new Date().toISOString(), status:"Submitted"
     };
-    gs("saveOOOForm", Object.assign({id:v}, tData)).then(function(){
+    gs("saveOOOForm", Object.assign({id:v}, tData)).then(async function(){
       // Update cached forms so badge clears immediately
       if(S._oooForms){
         S._oooForms = S._oooForms.map(function(f){
@@ -2834,29 +2834,29 @@ async function handleAction(a,v,el,e){
         });
         lsSet("hub:oooForms", S._oooForms);
       }
-      // Email manager
-      // Find the manager who sent this form
-      var oooForm = (S._oooForms||[]).find(function(f){ return f.id===v; });
-      var formCreator = oooForm&&oooForm.createdBy;
-      var creatorMgr = formCreator && (S.managers||[]).find(function(m){ return m.name===formCreator; });
-      var creatorEmail = creatorMgr&&creatorMgr.email;
-      var oooTo = getNotifEmails("ooo_form");
-      if(oooTo===null) oooTo = null;
-      else if(!oooTo) oooTo = creatorEmail || (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
-      else if(creatorEmail) oooTo = creatorEmail; // Always notify the form creator specifically
-      if(oooTo){
-        var techName2 = S.currentTech||S.managerName||"A technician";
-        var body2 = techName2+" has submitted their 1-on-1 review responses.\n\n"
-          +"Overall Rating: "+(tData.overallRating||"Not rated")+"\n"
-          +"Going Well: "+(tData.goingWell||"—")+"\n"
-          +"Challenges: "+(tData.challenges||"—")+"\n\n"
-          +"Log in to the Admin Hub to review and respond.\n\nFox Pest Control Admin Hub";
-        gs("sendEmailServer",{
-          to:oooTo,
-          subject:"[Fox Pest] 1-on-1 Submitted: "+techName2,
-          body:body2
-        }).catch(function(e){ console.warn("OOO email:", e); });
-      }
+      // Email manager - fetch form fresh from Firebase to get createdBy
+      try {
+        var oooFormFresh = await gs("getOOOForm", {id:v});
+        var formCreator = oooFormFresh&&oooFormFresh.createdBy;
+        var creatorMgr = formCreator && (S.managers||[]).find(function(m){ return m.name===formCreator; });
+        var creatorEmail = creatorMgr&&creatorMgr.email;
+        // Build recipient - use creator email, fall back to all managers
+        var oooTo = creatorEmail || (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
+        // Check notification settings - if explicitly disabled, don't send
+        var notifCfg = (S.notifConfig&&S.notifConfig["ooo_form"])||{};
+        if(notifCfg.enabled===false) oooTo = null;
+        else if(notifCfg.emails) oooTo = notifCfg.emails;
+        console.log("OOO submit email to:", oooTo, "creator:", formCreator);
+        if(oooTo){
+          var techName2 = S.currentTech||S.managerName||"A technician";
+          var body2 = techName2+" has submitted their 1-on-1 review responses.\n\n"
+            +"Overall Rating: "+(tData.overallRating||"Not rated")+"\n"
+            +"Going Well: "+(tData.goingWell||"—")+"\n"
+            +"Challenges: "+(tData.challenges||"—")+"\n\n"
+            +"Log in to the Admin Hub to review and respond.\n\nFox Pest Control Admin Hub";
+          await gs("sendEmailServer",{to:oooTo,subject:"[Fox Pest] 1-on-1 Submitted: "+techName2,body:body2});
+        }
+      } catch(e){ console.error("OOO email error:", e); }
       showToast("Submitted to manager ✓");
       renderOOO();
     }).catch(function(e){ alert("Error: "+e.message); });
