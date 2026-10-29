@@ -257,7 +257,6 @@ input,textarea,select,button{font-family:inherit;}
     <div id="pg-checkout" class="pg"></div>
     <div id="pg-truckinv" class="pg"></div>
     <div id="pg-restock" class="pg"></div>
-    <div id="pg-analytics" class="pg"></div>
     <div id="pg-sign" class="pg"></div>
     <div id="pg-reports" class="pg"></div>
     <div id="pg-settings" class="pg"></div>
@@ -440,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.3";
+const APP_VERSION = "4.8.4";
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -3493,7 +3492,6 @@ function renderDash(){
     {icon:"🛒", label:"Orders", tab:"orders", color:"#1a2f1a", accent:"#22c55e", badge: pend},
     {icon:"🚛", label:"Fleet", tab:"inspect", color:"#2d1f00", accent:"#f59e0b", badge:0},
     {icon:"📝", label:"Sign", tab:"sign", color:"#2d001a", accent:"#ec4899", badge: pendSign},
-    {icon:"📊", label:"Analytics", tab:"analytics", color:"#1a1a2d", accent:"#8b5cf6", badge:0},
     {icon:"🔄", label:"Restock", tab:"restock", color:"#001a2d", accent:"#06b6d4", badge:0},
     {icon:"🚐", label:"Truck Inv", tab:"truckinv", color:"#1a2d2d", accent:"#14b8a6", badge:0},
     {icon:"🛍", label:"Checkout", tab:"checkout", color:"#2d1a00", accent:"#f97316", badge:0},
@@ -3528,7 +3526,6 @@ function renderDash(){
   if(techPerms==="lead"){
     techTiles.push({icon:"📦", label:"Inventory", tab:"inventory", color:"#1a1a2f", accent:"#6366f1", badge:S.products.filter(function(p){return p.qty<=p.lowAt;}).length});
     techTiles.push({icon:"🛒", label:"Orders", tab:"orders", color:"#2f1a0a", accent:"#f59e0b", badge:S.orders.filter(function(o){return o.status==="Pending";}).length});
-    techTiles.push({icon:"📊", label:"Analytics", tab:"analytics", color:"#0a2f1a", accent:"#10b981", badge:0});
     techTiles.push({icon:"🚛", label:"Fleet", tab:"inspect", color:"#1a2f2f", accent:"#06b6d4", badge:0});
   }
 
