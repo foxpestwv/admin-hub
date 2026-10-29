@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.2";
+const APP_VERSION = "5.0.3";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -737,7 +737,7 @@ async function gs(fn, data){
         var catsToSave = (data.cats&&data.cats.length>0) ? data.cats : (existingAccts.cats&&existingAccts.cats.length>0 ? existingAccts.cats : []);
         var inspFieldsToSave = (data.inspFields&&data.inspFields.length>0) ? data.inspFields : (existingAccts.inspFields&&existingAccts.inspFields.length>0 ? existingAccts.inspFields : []);
         // Safety: never save if branch doesn't match current session
-        Logger.log("saveAccounts: branch="+brKeySave+" managers="+managersToSave.length+" techs="+techsToSave.length);
+        console.log("saveAccounts: branch="+brKeySave+" managers="+managersToSave.length+" techs="+techsToSave.length);
         await fbSet("config","accounts_"+brKeySave,{
           managers: managersToSave,
           techAccounts: techsToSave,
@@ -1235,7 +1235,7 @@ async function gs(fn, data){
       case "saveProducts": {
         // Safety: never overwrite products with empty array
         if(!data.products || data.products.length===0){
-          Logger.log("saveProducts: skipping - empty products array");
+          console.log("saveProducts: skipping - empty products array");
           return {ok:false, error:"Empty products array rejected"};
         }
         var branch2 = data.branch||"willamette";
