@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.7";
+const APP_VERSION = "4.8.8";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -6613,7 +6613,10 @@ function renderSettings(){
 
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
       +prodRows
-      +"<div style='margin-top:12px;'><button class='btn bg' data-a='show-hidden-products' style='width:100%;padding:12px;'>👁 Restore Hidden Products"+(S._hiddenProductCount>0?" ("+S._hiddenProductCount+")":"")+"</button></div>";
+      +"<div style='display:flex;gap:8px;margin-top:12px;'>"
+      +"<button class='btn bd' id='hide-selected-btn' data-a='hide-selected-products' style='flex:1;padding:12px;'>☑ Hide Selected</button>"
+      +(S._hiddenProductCount>0?"<button class='btn bg' data-a='show-hidden-products' style='flex:1;padding:12px;'>👁 Restore Hidden ("+S._hiddenProductCount+")</button>":"")
+      +"</div>";
 
   } else if(tab==="notifications"){
     var notifConfig = S.notifConfig || {};
