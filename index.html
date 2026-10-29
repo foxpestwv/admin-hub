@@ -439,7 +439,13 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.6";
+const APP_VERSION = "4.8.7";
+
+function updateHideBtn(){
+  var cbs = document.querySelectorAll(".prod-hide-cb:checked");
+  var btn = document.getElementById("hide-selected-btn");
+  if(btn) btn.textContent = "☑ Hide Selected"+(cbs.length>0?" ("+cbs.length+")":"");
+}
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -6576,7 +6582,7 @@ function renderSettings(){
         +"<input type='checkbox' data-field='hideFromCheckout' data-pid='"+p.id+"' "+(hideFromCheckout?"checked":"")+"> Hide from techs"
         +"</label>"
         +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Hide</button>"
-        +"<input type='checkbox' class='prod-hide-cb' data-pid='"+p.id+"' style='width:18px;height:18px;cursor:pointer;'>"
+        +"<input type='checkbox' class='prod-hide-cb' data-pid='"+p.id+"' style='width:18px;height:18px;cursor:pointer;' oninput='updateHideBtn();'>"
         +"</div>"
         +"</div>"
         +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;'>"
@@ -6715,16 +6721,7 @@ function renderSettings(){
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
     +superAdminBar+tabBar+body;
 
-  // Wire up product hide checkboxes
-  pg.querySelectorAll(".prod-hide-cb").forEach(function(cb){
-    cb.addEventListener("change", function(){
-      var anyChecked = pg.querySelectorAll(".prod-hide-cb:checked").length > 0;
-      var btn = document.getElementById("hide-selected-btn");
-      if(btn) btn.style.display = anyChecked ? "block" : "none";
-      var count = pg.querySelectorAll(".prod-hide-cb:checked").length;
-      if(btn && count > 0) btn.textContent = "Hide Selected ("+count+")";
-    });
-  });
+  // Checkboxes handled via oninput on each checkbox
   // Wire up product field changes
   pg.querySelectorAll("input[data-pid]").forEach(function(inp){
     inp.addEventListener("change", function(){
