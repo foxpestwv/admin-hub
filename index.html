@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.0";
+const APP_VERSION = "5.0.1";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -10422,14 +10422,18 @@ function assignTruck(idx, truck){
   saveAccountsToSheet();
 }
 
-function addManager(){
+async function addManager(){
   var name = prompt("Manager name:");
   if(!name||!name.trim()) return;
   var email = prompt("Manager email:");
+  if(!email||!email.trim()){ alert("Email is required for manager login."); return; }
   var tempPin = prompt("Temporary PIN (4-8 digits):");
   if(!tempPin||tempPin.length<4){ alert("PIN must be at least 4 digits."); return; }
-  S.managers.push({id:"mgr_"+Date.now(),name:name.trim(),email:email||"",pin:"",tempPin:tempPin,isTemp:true});
-  save(); saveAccountsToSheet(); render();
+  S.managers.push({id:"mgr_"+Date.now(),name:name.trim(),email:email.trim().toLowerCase(),pin:"",tempPin:tempPin,isTemp:true,title:"Manager"});
+  save();
+  await saveAccountsToSheet();
+  showToast(name.trim()+" added ✓");
+  render();
 }
 
 function delManager(i){
