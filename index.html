@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.9.3";
+const APP_VERSION = "4.9.4";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -1005,8 +1005,10 @@ async function gs(fn, data){
         await initFirebase();
         var ohSnap = await _db.collection("orderHistory").get();
         var ohDocs = ohSnap.docs.map(function(d){ return d.data(); });
+        // Filter by branch
+        var ohBranch = data&&data.branch;
+        if(ohBranch) ohDocs = ohDocs.filter(function(o){ return !o.branch||o.branch===ohBranch; });
         ohDocs.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
-        // Return as objects for the Orders tab
         ohDocs.forEach(function(doc){
           if(typeof doc.items==="string") try{ doc.items=JSON.parse(doc.items); }catch(e){ doc.items=[]; }
         });
@@ -1016,6 +1018,8 @@ async function gs(fn, data){
         await initFirebase();
         var ohSnap2 = await _db.collection("orderHistory").get();
         var ohDocs2 = ohSnap2.docs.map(function(d){ return d.data(); });
+        var ohBranch2 = data&&data.branch;
+        if(ohBranch2) ohDocs2 = ohDocs2.filter(function(o){ return !o.branch||o.branch===ohBranch2; });
         // Convert to array format analytics expects: [date, orderId, tech, product, qty, unit]
         var ohRows = [];
         ohDocs2.forEach(function(doc){
@@ -4459,7 +4463,7 @@ async function submitCheckout(){
 async function refreshOrders(){
   try {
     var pendResult = await gs("getPendingServer", {branch:S.branch||"willamette"});
-    var histResult = await gs("getOrderHistoryServer", null);
+    var histResult = await gs("getOrderHistoryServer", {branch:S.branch||"willamette"});
     var pending = (pendResult && pendResult.orders) ? pendResult.orders : [];
     var history = (histResult && histResult.orders) ? histResult.orders : [];
     S.orders = pending.concat(history.filter(function(h){
@@ -8109,7 +8113,7 @@ async function renderAnalytics(){
       S._cachedAdjLog = adjustments;
     }
     if(orders.length === 0){
-      var orderData = await gs("getOrderHistoryAnalyticsServer", null);
+      var orderData = await gs("getOrderHistoryAnalyticsServer", {branch:S.branch||"willamette"});
       orders = orderData && orderData.orders ? orderData.orders : [];
       S._cachedOrderHistory = orders;
     }
