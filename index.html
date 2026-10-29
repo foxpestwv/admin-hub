@@ -448,11 +448,12 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.1.9";
+const APP_VERSION = "5.2.0";
 
 function msMakeTransparent(dataUrl){
   return new Promise(function(resolve){
     try {
+      if(typeof dataUrl === "string" && dataUrl.indexOf("data:") !== 0) dataUrl = "data:image/png;base64," + dataUrl;
       var img = new Image();
       img.onload = function(){
         try {
@@ -463,7 +464,7 @@ function msMakeTransparent(dataUrl){
           var id = cx.getImageData(0, 0, cv.width, cv.height);
           var d = id.data;
           // Only convert if the image has an opaque near-white background (check corner pixel)
-          var hasWhiteBg = d[3] === 255 && d[0] > 235 && d[1] > 235 && d[2] > 235;
+          var hasWhiteBg = d[3] > 200 && d[0] > 215 && d[1] > 215 && d[2] > 215;
           if(!hasWhiteBg){ resolve(dataUrl); return; }
           for(var i = 0; i < d.length; i += 4){
             if(d[i+3] < 255) continue;
@@ -9688,6 +9689,7 @@ async function submitMultiSign(){
       var fillUrl = _msFilled[idx3];
       if(!fillUrl) continue;
       fillUrl = await msMakeTransparent(fillUrl);
+      _msFilled[idx3] = fillUrl;
 
       var b64img = fillUrl.split(",")[1];
       var imgBin = atob(b64img);
@@ -9973,7 +9975,8 @@ async function signSubmitTech(){
                       var w3=f3.wPct*pw3,h3=f3.hPct*ph3;
                       if(f3.type==="signature"){
                         try {
-                          var sb=Uint8Array.from(atob(v3.replace(/^data:image\/\w+;base64,/,"")),function(c){return c.charCodeAt(0);});
+                          var v3t = await msMakeTransparent(v3);
+                          var sb=Uint8Array.from(atob(v3t.replace(/^data:image\/\w+;base64,/,"")),function(c){return c.charCodeAt(0);});
                           var si=await doc3.embedPng(sb);
                           pg3.drawImage(si,{x:x3,y:y3,width:w3,height:h3});
                         } catch(e){}
