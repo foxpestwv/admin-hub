@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.9.7";
+const APP_VERSION = "4.9.8";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -2833,6 +2833,23 @@ async function handleAction(a,v,el,e){
           return f.id===v ? Object.assign({},f,{status:"Submitted",techSubmittedAt:tData.techSubmittedAt}) : f;
         });
         lsSet("hub:oooForms", S._oooForms);
+      }
+      // Email manager
+      var oooTo = getNotifEmails("ooo_form");
+      if(oooTo===null) oooTo = null;
+      else if(!oooTo) oooTo = (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",");
+      if(oooTo){
+        var techName2 = S.currentTech||S.managerName||"A technician";
+        var body2 = techName2+" has submitted their 1-on-1 review responses.\n\n"
+          +"Overall Rating: "+(tData.overallRating||"Not rated")+"\n"
+          +"Going Well: "+(tData.goingWell||"—")+"\n"
+          +"Challenges: "+(tData.challenges||"—")+"\n\n"
+          +"Log in to the Admin Hub to review and respond.\n\nFox Pest Control Admin Hub";
+        gs("sendEmailServer",{
+          to:oooTo,
+          subject:"[Fox Pest] 1-on-1 Submitted: "+techName2,
+          body:body2
+        }).catch(function(e){ console.warn("OOO email:", e); });
       }
       showToast("Submitted to manager ✓");
       renderOOO();
