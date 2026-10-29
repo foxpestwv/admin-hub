@@ -440,7 +440,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.7.5";
+const APP_VERSION = "4.7.7";
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -5824,17 +5824,32 @@ async function runReport(type){
       +"</select></div>":"")
       +"</div>";
 
+// inventory html now rendered above
+
+    // Category donut chart data
+    var catValues = {};
+    branchProds.forEach(function(p){
+      var cat = p.category||"General Pest";
+      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      catValues[cat] = (catValues[cat]||0)+(p.qty||0)*up;
+    });
+    var catKeys = Object.keys(catValues).filter(function(k){return catValues[k]>0;});
+    var catChartHtml = catKeys.length>0
+      ? "<div class='card' style='padding:14px;margin-bottom:14px;'>"
+        +"<div style='font-weight:700;font-size:13px;margin-bottom:10px;'>Value by Category</div>"
+        +"<canvas id='val-chart' style='height:220px;'></canvas></div>"
+      : "";
+
     pg.innerHTML = backBtn
       +"<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>💰 Inventory Valuation</h2>"
       +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Current stock value at branch"+(includeTrucks?" and trucks":"")+".</p>"
       +invFilterBar
-      // Summary cards
       +"<div style='display:grid;grid-template-columns:"+(includeTrucks?"1fr 1fr 1fr":"1fr 1fr")+";gap:10px;margin-bottom:14px;'>"
       +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#22c55e;'>$"+branchTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Branch Value</div></div>"
       +(includeTrucks?"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Truck Value</div></div>":"")
       +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Total Value</div></div>"
       +"</div>"
-      // Branch products by category
+      +catChartHtml
       +"<div class='card' style='padding:14px;margin-bottom:14px;'>"
       +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🏢 Branch Inventory</div>"
       +(branchProds.length===0?"<div style='color:#64748b;text-align:center;padding:20px;'>No products with stock on hand.</div>"
@@ -5849,31 +5864,21 @@ async function runReport(type){
           +(val>0?"<div style='color:#22c55e;font-size:11px;'>$"+val.toFixed(2)+"</div>":"")
           +"</div></div>";
       }).join(""))
+      +"<div style='display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #1e3a5f;margin-top:4px;font-size:13px;font-weight:700;'>"
+      +"<span>Branch Total</span><span style='color:#22c55e;'>$"+branchTotal.toFixed(2)+"</span></div>"
       +"</div>"
-      // Truck inventories
       +(includeTrucks&&truckRows?"<div class='card' style='padding:14px;'>"
       +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🚚 Truck Inventories</div>"
       +truckRows
+      +"<div style='display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #1e3a5f;margin-top:4px;font-size:13px;font-weight:700;'>"
+      +"<span>Truck Total</span><span style='color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</span></div>"
+      +"</div>":"")
+      +(includeTrucks?"<div class='card' style='padding:14px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;'>"
+      +"<span style='font-size:15px;font-weight:700;'>Grand Total</span>"
+      +"<span style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</span>"
       +"</div>":"");
 
-    // Category donut chart
-    var catValues = {};
-    branchProds.forEach(function(p){
-      var cat = p.category||"General Pest";
-      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
-      catValues[cat] = (catValues[cat]||0)+(p.qty||0)*up;
-    });
-    var catKeys = Object.keys(catValues).filter(function(k){return catValues[k]>0;});
     if(catKeys.length>0) setTimeout(function(){
-      var chartDiv = document.createElement("div");
-      chartDiv.className="card";
-      chartDiv.style.cssText="padding:14px;margin-bottom:14px;";
-      chartDiv.innerHTML="<div style='font-weight:700;font-size:13px;margin-bottom:10px;'>Value by Category</div><canvas id='val-chart' style='height:220px;'></canvas>";
-      var pg6 = document.getElementById("pg-reports");
-      if(pg6){
-        var firstCard = pg6.querySelector(".card");
-        if(firstCard) pg6.insertBefore(chartDiv, firstCard.nextSibling.nextSibling);
-      }
       var colors = ["#6366f1","#f59e0b","#22c55e","#ef4444","#06b6d4","#a855f7","#f97316","#ec4899","#14b8a6"];
       makeChart("val-chart","doughnut",catKeys,
         [{data:catKeys.map(function(k){return Math.round(catValues[k]*100)/100;}),backgroundColor:colors.slice(0,catKeys.length),borderWidth:2,borderColor:"#0f1f38"}],
@@ -7595,17 +7600,32 @@ async function runReport(type){
       +"</select></div>":"")
       +"</div>";
 
+// inventory html now rendered above
+
+    // Category donut chart data
+    var catValues = {};
+    branchProds.forEach(function(p){
+      var cat = p.category||"General Pest";
+      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      catValues[cat] = (catValues[cat]||0)+(p.qty||0)*up;
+    });
+    var catKeys = Object.keys(catValues).filter(function(k){return catValues[k]>0;});
+    var catChartHtml = catKeys.length>0
+      ? "<div class='card' style='padding:14px;margin-bottom:14px;'>"
+        +"<div style='font-weight:700;font-size:13px;margin-bottom:10px;'>Value by Category</div>"
+        +"<canvas id='val-chart' style='height:220px;'></canvas></div>"
+      : "";
+
     pg.innerHTML = backBtn
       +"<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>💰 Inventory Valuation</h2>"
       +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Current stock value at branch"+(includeTrucks?" and trucks":"")+".</p>"
       +invFilterBar
-      // Summary cards
       +"<div style='display:grid;grid-template-columns:"+(includeTrucks?"1fr 1fr 1fr":"1fr 1fr")+";gap:10px;margin-bottom:14px;'>"
       +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#22c55e;'>$"+branchTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Branch Value</div></div>"
       +(includeTrucks?"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Truck Value</div></div>":"")
       +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Total Value</div></div>"
       +"</div>"
-      // Branch products by category
+      +catChartHtml
       +"<div class='card' style='padding:14px;margin-bottom:14px;'>"
       +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🏢 Branch Inventory</div>"
       +(branchProds.length===0?"<div style='color:#64748b;text-align:center;padding:20px;'>No products with stock on hand.</div>"
@@ -7620,31 +7640,21 @@ async function runReport(type){
           +(val>0?"<div style='color:#22c55e;font-size:11px;'>$"+val.toFixed(2)+"</div>":"")
           +"</div></div>";
       }).join(""))
+      +"<div style='display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #1e3a5f;margin-top:4px;font-size:13px;font-weight:700;'>"
+      +"<span>Branch Total</span><span style='color:#22c55e;'>$"+branchTotal.toFixed(2)+"</span></div>"
       +"</div>"
-      // Truck inventories
       +(includeTrucks&&truckRows?"<div class='card' style='padding:14px;'>"
       +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🚚 Truck Inventories</div>"
       +truckRows
+      +"<div style='display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #1e3a5f;margin-top:4px;font-size:13px;font-weight:700;'>"
+      +"<span>Truck Total</span><span style='color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</span></div>"
+      +"</div>":"")
+      +(includeTrucks?"<div class='card' style='padding:14px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;'>"
+      +"<span style='font-size:15px;font-weight:700;'>Grand Total</span>"
+      +"<span style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</span>"
       +"</div>":"");
 
-    // Category donut chart
-    var catValues = {};
-    branchProds.forEach(function(p){
-      var cat = p.category||"General Pest";
-      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
-      catValues[cat] = (catValues[cat]||0)+(p.qty||0)*up;
-    });
-    var catKeys = Object.keys(catValues).filter(function(k){return catValues[k]>0;});
     if(catKeys.length>0) setTimeout(function(){
-      var chartDiv = document.createElement("div");
-      chartDiv.className="card";
-      chartDiv.style.cssText="padding:14px;margin-bottom:14px;";
-      chartDiv.innerHTML="<div style='font-weight:700;font-size:13px;margin-bottom:10px;'>Value by Category</div><canvas id='val-chart' style='height:220px;'></canvas>";
-      var pg6 = document.getElementById("pg-reports");
-      if(pg6){
-        var firstCard = pg6.querySelector(".card");
-        if(firstCard) pg6.insertBefore(chartDiv, firstCard.nextSibling.nextSibling);
-      }
       var colors = ["#6366f1","#f59e0b","#22c55e","#ef4444","#06b6d4","#a855f7","#f97316","#ec4899","#14b8a6"];
       makeChart("val-chart","doughnut",catKeys,
         [{data:catKeys.map(function(k){return Math.round(catValues[k]*100)/100;}),backgroundColor:colors.slice(0,catKeys.length),borderWidth:2,borderColor:"#0f1f38"}],
