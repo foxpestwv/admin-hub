@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.7.0";
+const APP_VERSION = "4.7.2";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -3355,7 +3355,7 @@ function render(){
   }
   // Branch display handled by logout() and selectBranch() directly
   // Nav
-  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
+  const mgrTabs=[{id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},{id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},{id:"restock",l:"Restock"},{id:"reports",l:"Reports"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"},{id:"settings",l:"Settings"}];
   var techTabs=[{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"ooo",l:"1-on-1"},{id:"sign",l:"Sign"}];
   const tabs=S.role==="manager"?mgrTabs:techTabs;
   const pending=S.orders.filter(o=>o.status==="Pending").length;
@@ -5190,7 +5190,7 @@ function renderDrawerNav(){
   var mTabs=[
     {id:"dashboard",l:"Home"},{id:"inspect",l:"Fleet"},{id:"inventory",l:"Inventory"},
     {id:"orders",l:"Orders"},{id:"checkout",l:"Checkout"},{id:"truckinv",l:"Truck Inv"},
-    {id:"restock",l:"Restock"},{id:"analytics",l:"Analytics"},{id:"reports",l:"Reports"},
+    {id:"restock",l:"Restock"},{id:"reports",l:"Reports"},
     {id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"},{id:"settings",l:"Settings"}
   ];
   var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"}];
@@ -5296,14 +5296,38 @@ async function runReport(type){
   if(type==="low-stock"){
     var low = applyProductFilters(S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
       .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
+    var catOpts2 = ["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+    var lowFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('low-stock');'>"
+      +catOpts2.map(function(c){ return "<option value='"+c+"'"+(S.reportFilters.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Stock Level</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.stockLevel=this.value;runReport('low-stock');'>"
+      +[{v:"all",l:"All"},{v:"out",l:"Out of Stock"},{v:"low",l:"Low Stock"},{v:"in_stock",l:"In Stock"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.stockLevel===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('low-stock');'>"
+      +[{v:"name",l:"Name"},{v:"qty",l:"Quantity"},{v:"value",l:"Value"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Last Activity</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.lastActivity=this.value;runReport('low-stock');'>"
+      +[{v:"all",l:"Any Time"},{v:"30",l:"30+ days idle"},{v:"60",l:"60+ days idle"},{v:"90",l:"90+ days idle"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.lastActivity===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"+lowFilterBar
       +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
       :low.map(function(p){
         var pct = p.lowAt>0?Math.round((p.qty/p.lowAt)*100):0;
         var color = p.qty<=0?"#ef4444":p.qty<p.lowAt?"#f59e0b":"#22c55e";
+        var unitPrice2 = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+        var itemVal = (p.qty||0)*unitPrice2;
         return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
-          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='flex:1;'><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+(itemVal>0?" · $"+itemVal.toFixed(2)+" value":"")+"</div></div>"
           +"<div style='text-align:right;'>"
           +"<div style='font-size:18px;font-weight:700;color:"+color+";'>"+p.qty+"</div>"
           +"<div style='font-size:11px;color:#64748b;'>Min: "+p.lowAt+" "+esc(p.unit)+"</div>"
@@ -5318,7 +5342,19 @@ async function runReport(type){
     var techNames2 = (S.techAccounts||[])
       .filter(function(t){ return rf2.techFilter==="all"||t.name===rf2.techFilter; })
       .map(function(t){ return t.name; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"
+    var techOpts2 = ["all"].concat((S.techAccounts||[]).map(function(t){return t.name;}));
+    var truckFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('truck-inventory');'>"
+      +techOpts2.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Technicians":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Count Status</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.countStatus=this.value;runReport('truck-inventory');'>"
+      +[{v:"all",l:"All"},{v:"completed",l:"Completed"},{v:"pending",l:"Pending"},{v:"overdue",l:"Overdue"},{v:"never",l:"Never Submitted"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.countStatus===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"+truckFilterBar
       +techNames2.map(function(name){
         var rec = tiData2[name];
         var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
@@ -5362,7 +5398,19 @@ async function runReport(type){
     });
     var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
     if(!S._expandedUsageTech) S._expandedUsageTech = null;
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"
+    var techOpts3 = ["all"].concat((S.techAccounts||[]).map(function(t){return t.name;}));
+    var dateOpts2 = [{v:"this_week",l:"This Week"},{v:"last_week",l:"Last Week"},{v:"this_month",l:"This Month"},{v:"last_month",l:"Last Month"},{v:"this_quarter",l:"This Quarter"},{v:"this_year",l:"This Year"},{v:"all",l:"All Time"}];
+    var usageFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Date Range</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.dateRange=this.value;runReport('product-usage');'>"
+      +dateOpts2.map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.dateRange===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('product-usage');'>"
+      +techOpts3.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Technicians":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"+usageFilterBar
       +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
       :usageList.map(function(u){
         var isOpen = S._expandedUsageTech===u.name;
@@ -5408,9 +5456,36 @@ async function runReport(type){
         return true;
       });
     }
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"
+    var techOpts4 = ["all"].concat((S.techAccounts||[]).concat(S.managers||[]).map(function(t){return t.name;}));
+    var adjFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Date Range</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.dateRange=this.value;runReport('adjustments');'>"
+      +[{v:"today",l:"Today"},{v:"this_week",l:"This Week"},{v:"this_month",l:"This Month"},{v:"last_month",l:"Last Month"},{v:"this_year",l:"This Year"},{v:"all",l:"All Time"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.dateRange===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Made By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('adjustments');'>"
+      +techOpts4.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"Anyone":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Type</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.discrepancyType=this.value;runReport('adjustments');'>"
+      +[{v:"all",l:"All"},{v:"overage",l:"Additions"},{v:"shortage",l:"Reductions"},{v:"none",l:"No Change"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.discrepancyType===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('adjustments');'>"
+      +[{v:"date",l:"Date"},{v:"name",l:"Product Name"},{v:"qty",l:"Quantity Change"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"+adjFilterBar
       +(filteredAdj.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments found for selected filters.</div>"
-      :filteredAdj.slice(0,50).map(function(a){
+      :filteredAdj.sort(function(a,b){
+        var rf5=S.reportFilters||{};
+        if(rf5.sortBy==="name") return (a.productName||a.product||"").localeCompare(b.productName||b.product||"");
+        if(rf5.sortBy==="qty") return Math.abs((b.change||0)-(b.oldQty||0))-Math.abs((a.change||0)-(a.oldQty||0));
+        return new Date(b.date||0)-new Date(a.date||0);
+      }).slice(0,50).map(function(a){
         var change = a.change||((a.newQty||0)-(a.oldQty||0));
         var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
@@ -5438,26 +5513,170 @@ async function runReport(type){
       var pid = a.productId||a.productName;
       if(!lastUsed[pid]||new Date(a.date)>new Date(lastUsed[pid])) lastUsed[pid]=a.date;
     });
-    var slow = (S.products||[]).filter(function(p){
+    var deadDays = parseInt(S.reportFilters.lastActivity||"30")||30;
+    var slow = applyProductFilters(S.products||[]).filter(function(p){
       if(p.qty<=0) return false;
       var last = lastUsed[p.id]||lastUsed[p.name];
-      if(!last) return true; // never adjusted = slow
-      return (now2-new Date(last).getTime()) > 30*24*60*60*1000; // 30+ days
-    }).sort(function(a,b){ return (a.qty*(a.price||0))<(b.qty*(b.price||0))?1:-1; });
+      if(!last) return true;
+      return (now2-new Date(last).getTime()) > deadDays*24*60*60*1000;
+    }).sort(function(a,b){ 
+      var av=(a.qty||0)*(a.trackAs==="individual"?(a.price||0)/(a.unitsPerCase||1):(a.price||0));
+      var bv=(b.qty||0)*(b.trackAs==="individual"?(b.price||0)/(b.unitsPerCase||1):(b.price||0));
+      return bv-av; 
+    });
+    var deadFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('dead-stock');'>"
+      +["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"]
+      .map(function(c){ return "<option value='"+c+"'"+(S.reportFilters.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>No activity for</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.lastActivity=this.value;runReport('dead-stock');'>"
+      +[{v:"30",l:"30+ days"},{v:"60",l:"60+ days"},{v:"90",l:"90+ days"},{v:"180",l:"180+ days"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.lastActivity===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
     pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>💤 Slow Moving Products</h2>"
-      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Products with stock on hand but no activity in 30+ days.</p>"
+      +deadFilterBar
       +(slow.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>No slow moving products found! ✅</div>"
       :slow.map(function(p){
         var val = (p.qty||0)*(p.price||0);
         return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
-          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
-          +"<div style='font-size:11px;color:#f59e0b;'>No activity</div>"
+          +"<div style='flex:1;'><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+" · "+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
+          +"<div style='text-align:right;font-size:11px;color:#f59e0b;'>"+deadDays+"+ days<br>no activity</div>"
           +"</div>";
       }).join(""));
     return;
   }
 
+  if(type==="analytics-planner"||type==="analytics-timeline"||type==="analytics-techs"){
+    var viewMap = {"analytics-planner":"planner","analytics-timeline":"timeline","analytics-techs":"techs"};
+    S._analyticsView = viewMap[type];
+    // Show analytics in the reports page
+    var pg2 = document.getElementById("pg-reports");
+    if(!pg2) return;
+    var backBtn2 = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
+    pg2.innerHTML = backBtn2+"<div style='text-align:center;padding:40px;color:#475569;'>⏳ Loading Analytics...</div>";
+    // Temporarily switch to analytics page to render, then steal the HTML
+    var analyticsPg = document.getElementById("pg-analytics");
+    if(analyticsPg){
+      S.currentTab = "analytics";
+      await renderAnalytics();
+      var analyticsHtml = analyticsPg.innerHTML;
+      S.currentTab = "reports";
+      pg2.innerHTML = backBtn2 + analyticsHtml;
+    }
+    return;
+  }
+  if(type==="inventory-value"){
+    var rf6 = S.reportFilters||{};
+    var catOpts3 = ["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+    var includeTrucks = S._invValIncludeTrucks||false;
+
+    // Branch inventory
+    var branchProds = applyProductFilters(S.products||[]);
+    if(rf6.categoryFilter&&rf6.categoryFilter!=="all") branchProds=branchProds.filter(function(p){return (p.category||"General Pest")===rf6.categoryFilter;});
+    branchProds = branchProds.filter(function(p){ return p.qty>0; });
+    branchProds.sort(function(a,b){
+      if(rf6.sortBy==="qty") return (b.qty||0)-(a.qty||0);
+      if(rf6.sortBy==="value"){
+        var av=(a.qty||0)*(a.trackAs==="individual"?(a.price||0)/(a.unitsPerCase||1):(a.price||0));
+        var bv=(b.qty||0)*(b.trackAs==="individual"?(b.price||0)/(b.unitsPerCase||1):(b.price||0));
+        return bv-av;
+      }
+      return (a.name||"").localeCompare(b.name||"");
+    });
+
+    var branchTotal = branchProds.reduce(function(sum,p){
+      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      return sum+(p.qty||0)*up;
+    },0);
+
+    // Truck inventory
+    var truckTotal = 0;
+    var truckRows = "";
+    if(includeTrucks){
+      var tiData4 = S.truckInventories||{};
+      var techFilter5 = rf6.techFilter||"all";
+      Object.keys(tiData4).forEach(function(techName){
+        if(techFilter5!=="all"&&techName!==techFilter5) return;
+        var rec = tiData4[techName];
+        if(!rec||!rec.products) return;
+        var techVal = 0;
+        var techProds = rec.products.map(function(tp){
+          var match = (S.products||[]).find(function(p){ return p.id===tp.id||p.name===tp.name; });
+          var up = match?(match.trackAs==="individual"?(match.price||0)/(match.unitsPerCase||1):(match.price||0)):0;
+          var val = (tp.qty||0)*up;
+          techVal += val;
+          return {name:tp.name,qty:tp.qty,unit:tp.unit,val:val};
+        });
+        truckTotal += techVal;
+        truckRows += "<div style='margin-bottom:10px;'>"
+          +"<div style='font-weight:600;font-size:13px;color:#f59e0b;margin-bottom:4px;'>🚚 "+esc(techName)+(techVal>0?" — $"+techVal.toFixed(2):"")+"</div>"
+          +techProds.filter(function(p){return p.qty>0;}).map(function(p){
+            return "<div style='display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid #0f1f38;'>"
+              +"<span>"+esc(p.name)+"</span>"
+              +"<span style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit||"")+(p.val>0?" · $"+p.val.toFixed(2):"")+"</span>"
+              +"</div>";
+          }).join("")
+          +"</div>";
+      });
+    }
+
+    var invFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('inventory-value');'>"
+      +catOpts3.map(function(c){ return "<option value='"+c+"'"+(rf6.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('inventory-value');'>"
+      +[{v:"name",l:"Name"},{v:"qty",l:"Quantity"},{v:"value",l:"Dollar Value"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(rf6.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div style='grid-column:span 2;'>"
+      +"<label style='display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;'>"
+      +"<input type='checkbox' "+(includeTrucks?"checked":"")+" onchange='S._invValIncludeTrucks=this.checked;runReport('inventory-value');'> Include truck inventories"
+      +"</label></div>"
+      +(includeTrucks?"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('inventory-value');'>"
+      +["all"].concat((S.techAccounts||[]).map(function(t){return t.name;})).map(function(t){ return "<option value='"+t+"'"+(rf6.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Techs":t)+"</option>"; }).join("")
+      +"</select></div>":"")
+      +"</div>";
+
+    pg.innerHTML = backBtn
+      +"<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>💰 Inventory Valuation</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Current stock value at branch"+(includeTrucks?" and trucks":"")+".</p>"
+      +invFilterBar
+      // Summary cards
+      +"<div style='display:grid;grid-template-columns:"+(includeTrucks?"1fr 1fr 1fr":"1fr 1fr")+";gap:10px;margin-bottom:14px;'>"
+      +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#22c55e;'>$"+branchTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Branch Value</div></div>"
+      +(includeTrucks?"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Truck Value</div></div>":"")
+      +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Total Value</div></div>"
+      +"</div>"
+      // Branch products by category
+      +"<div class='card' style='padding:14px;margin-bottom:14px;'>"
+      +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🏢 Branch Inventory</div>"
+      +(branchProds.length===0?"<div style='color:#64748b;text-align:center;padding:20px;'>No products with stock on hand.</div>"
+      :branchProds.map(function(p){
+        var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+        var val = (p.qty||0)*up;
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1e3a5f;font-size:12px;'>"
+          +"<div><div style='font-weight:600;'>"+esc(p.name)+"</div>"
+          +"<div style='color:#64748b;font-size:11px;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='text-align:right;'>"
+          +"<div style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit)+"</div>"
+          +(val>0?"<div style='color:#22c55e;font-size:11px;'>$"+val.toFixed(2)+"</div>":"")
+          +"</div></div>";
+      }).join(""))
+      +"</div>"
+      // Truck inventories
+      +(includeTrucks&&truckRows?"<div class='card' style='padding:14px;'>"
+      +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🚚 Truck Inventories</div>"
+      +truckRows
+      +"</div>":"");
+    return;
+  }
   if(type==="exception-email"){
     // Build exception report and email it
     var recipients2 = (S.reportSchedule&&S.reportSchedule.recipients)||"";
@@ -6361,6 +6580,7 @@ async function removeProd(id){
       save();
       // Re-render whichever view is active
       if(S.currentTab==="reports") renderReports();
+  if(S.currentTab==="analytics") { S.currentTab="reports"; renderReports(); } // redirect analytics to reports
   if(S.currentTab==="settings") renderSettings();
       else renderInv();
     } else {
@@ -6715,14 +6935,38 @@ async function runReport(type){
   if(type==="low-stock"){
     var low = applyProductFilters(S.products||[]).filter(function(p){ return p.qty<=p.lowAt; })
       .sort(function(a,b){ return (a.qty/Math.max(a.lowAt,1))-(b.qty/Math.max(b.lowAt,1)); });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"
+    var catOpts2 = ["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+    var lowFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('low-stock');'>"
+      +catOpts2.map(function(c){ return "<option value='"+c+"'"+(S.reportFilters.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Stock Level</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.stockLevel=this.value;runReport('low-stock');'>"
+      +[{v:"all",l:"All"},{v:"out",l:"Out of Stock"},{v:"low",l:"Low Stock"},{v:"in_stock",l:"In Stock"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.stockLevel===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('low-stock');'>"
+      +[{v:"name",l:"Name"},{v:"qty",l:"Quantity"},{v:"value",l:"Value"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Last Activity</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.lastActivity=this.value;runReport('low-stock');'>"
+      +[{v:"all",l:"Any Time"},{v:"30",l:"30+ days idle"},{v:"60",l:"60+ days idle"},{v:"90",l:"90+ days idle"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.lastActivity===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>⚠️ Low Stock Report</h2>"+lowFilterBar
       +(low.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>All products are adequately stocked! ✅</div>"
       :low.map(function(p){
         var pct = p.lowAt>0?Math.round((p.qty/p.lowAt)*100):0;
         var color = p.qty<=0?"#ef4444":p.qty<p.lowAt?"#f59e0b":"#22c55e";
+        var unitPrice2 = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+        var itemVal = (p.qty||0)*unitPrice2;
         return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
-          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='flex:1;'><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+(itemVal>0?" · $"+itemVal.toFixed(2)+" value":"")+"</div></div>"
           +"<div style='text-align:right;'>"
           +"<div style='font-size:18px;font-weight:700;color:"+color+";'>"+p.qty+"</div>"
           +"<div style='font-size:11px;color:#64748b;'>Min: "+p.lowAt+" "+esc(p.unit)+"</div>"
@@ -6737,7 +6981,19 @@ async function runReport(type){
     var techNames2 = (S.techAccounts||[])
       .filter(function(t){ return rf2.techFilter==="all"||t.name===rf2.techFilter; })
       .map(function(t){ return t.name; });
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"
+    var techOpts2 = ["all"].concat((S.techAccounts||[]).map(function(t){return t.name;}));
+    var truckFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('truck-inventory');'>"
+      +techOpts2.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Technicians":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Count Status</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.countStatus=this.value;runReport('truck-inventory');'>"
+      +[{v:"all",l:"All"},{v:"completed",l:"Completed"},{v:"pending",l:"Pending"},{v:"overdue",l:"Overdue"},{v:"never",l:"Never Submitted"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.countStatus===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Truck Inventory Summary</h2>"+truckFilterBar
       +techNames2.map(function(name){
         var rec = tiData2[name];
         var daysSince = rec&&rec.lastSubmit?Math.floor((Date.now()-new Date(rec.lastSubmit).getTime())/(1000*60*60*24)):999;
@@ -6781,7 +7037,19 @@ async function runReport(type){
     });
     var usageList = Object.values(usageByTech).sort(function(a,b){ return b.qty-a.qty; });
     if(!S._expandedUsageTech) S._expandedUsageTech = null;
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"
+    var techOpts3 = ["all"].concat((S.techAccounts||[]).map(function(t){return t.name;}));
+    var dateOpts2 = [{v:"this_week",l:"This Week"},{v:"last_week",l:"Last Week"},{v:"this_month",l:"This Month"},{v:"last_month",l:"Last Month"},{v:"this_quarter",l:"This Quarter"},{v:"this_year",l:"This Year"},{v:"all",l:"All Time"}];
+    var usageFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Date Range</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.dateRange=this.value;runReport('product-usage');'>"
+      +dateOpts2.map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.dateRange===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('product-usage');'>"
+      +techOpts3.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Technicians":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Product Usage by Tech</h2>"+usageFilterBar
       +(usageList.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No checkout data available yet.</div>"
       :usageList.map(function(u){
         var isOpen = S._expandedUsageTech===u.name;
@@ -6827,9 +7095,36 @@ async function runReport(type){
         return true;
       });
     }
-    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"
+    var techOpts4 = ["all"].concat((S.techAccounts||[]).concat(S.managers||[]).map(function(t){return t.name;}));
+    var adjFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Date Range</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.dateRange=this.value;runReport('adjustments');'>"
+      +[{v:"today",l:"Today"},{v:"this_week",l:"This Week"},{v:"this_month",l:"This Month"},{v:"last_month",l:"Last Month"},{v:"this_year",l:"This Year"},{v:"all",l:"All Time"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.dateRange===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Made By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('adjustments');'>"
+      +techOpts4.map(function(t){ return "<option value='"+t+"'"+(S.reportFilters.techFilter===t?" selected":"")+">"+esc(t==="all"?"Anyone":t)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Type</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.discrepancyType=this.value;runReport('adjustments');'>"
+      +[{v:"all",l:"All"},{v:"overage",l:"Additions"},{v:"shortage",l:"Reductions"},{v:"none",l:"No Change"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.discrepancyType===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('adjustments');'>"
+      +[{v:"date",l:"Date"},{v:"name",l:"Product Name"},{v:"qty",l:"Quantity Change"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
+    pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Adjustment History</h2>"+adjFilterBar
       +(filteredAdj.length===0?"<div style='text-align:center;color:#64748b;padding:30px;'>No adjustments found for selected filters.</div>"
-      :filteredAdj.slice(0,50).map(function(a){
+      :filteredAdj.sort(function(a,b){
+        var rf5=S.reportFilters||{};
+        if(rf5.sortBy==="name") return (a.productName||a.product||"").localeCompare(b.productName||b.product||"");
+        if(rf5.sortBy==="qty") return Math.abs((b.change||0)-(b.oldQty||0))-Math.abs((a.change||0)-(a.oldQty||0));
+        return new Date(b.date||0)-new Date(a.date||0);
+      }).slice(0,50).map(function(a){
         var change = a.change||((a.newQty||0)-(a.oldQty||0));
         var color = change>0?"#22c55e":change<0?"#ef4444":"#64748b";
         return "<div class='card' style='margin-bottom:8px;padding:12px;'>"
@@ -6857,26 +7152,170 @@ async function runReport(type){
       var pid = a.productId||a.productName;
       if(!lastUsed[pid]||new Date(a.date)>new Date(lastUsed[pid])) lastUsed[pid]=a.date;
     });
-    var slow = (S.products||[]).filter(function(p){
+    var deadDays = parseInt(S.reportFilters.lastActivity||"30")||30;
+    var slow = applyProductFilters(S.products||[]).filter(function(p){
       if(p.qty<=0) return false;
       var last = lastUsed[p.id]||lastUsed[p.name];
-      if(!last) return true; // never adjusted = slow
-      return (now2-new Date(last).getTime()) > 30*24*60*60*1000; // 30+ days
-    }).sort(function(a,b){ return (a.qty*(a.price||0))<(b.qty*(b.price||0))?1:-1; });
+      if(!last) return true;
+      return (now2-new Date(last).getTime()) > deadDays*24*60*60*1000;
+    }).sort(function(a,b){ 
+      var av=(a.qty||0)*(a.trackAs==="individual"?(a.price||0)/(a.unitsPerCase||1):(a.price||0));
+      var bv=(b.qty||0)*(b.trackAs==="individual"?(b.price||0)/(b.unitsPerCase||1):(b.price||0));
+      return bv-av; 
+    });
+    var deadFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('dead-stock');'>"
+      +["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"]
+      .map(function(c){ return "<option value='"+c+"'"+(S.reportFilters.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>No activity for</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.lastActivity=this.value;runReport('dead-stock');'>"
+      +[{v:"30",l:"30+ days"},{v:"60",l:"60+ days"},{v:"90",l:"90+ days"},{v:"180",l:"180+ days"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(S.reportFilters.lastActivity===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"</div>";
     pg.innerHTML = backBtn+"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>💤 Slow Moving Products</h2>"
-      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Products with stock on hand but no activity in 30+ days.</p>"
+      +deadFilterBar
       +(slow.length===0?"<div style='text-align:center;color:#22c55e;padding:30px;'>No slow moving products found! ✅</div>"
       :slow.map(function(p){
         var val = (p.qty||0)*(p.price||0);
         return "<div class='card' style='margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;'>"
-          +"<div><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
-          +"<div style='font-size:11px;color:#64748b;'>"+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
-          +"<div style='font-size:11px;color:#f59e0b;'>No activity</div>"
+          +"<div style='flex:1;'><div style='font-weight:600;font-size:13px;'>"+esc(p.name)+"</div>"
+          +"<div style='font-size:11px;color:#64748b;'>"+esc(p.category||"")+" · "+p.qty+" "+esc(p.unit)+(val>0?" · $"+val.toFixed(2)+" value":"")+"</div></div>"
+          +"<div style='text-align:right;font-size:11px;color:#f59e0b;'>"+deadDays+"+ days<br>no activity</div>"
           +"</div>";
       }).join(""));
     return;
   }
 
+  if(type==="analytics-planner"||type==="analytics-timeline"||type==="analytics-techs"){
+    var viewMap = {"analytics-planner":"planner","analytics-timeline":"timeline","analytics-techs":"techs"};
+    S._analyticsView = viewMap[type];
+    // Show analytics in the reports page
+    var pg2 = document.getElementById("pg-reports");
+    if(!pg2) return;
+    var backBtn2 = "<button class='btn bg' data-a='report-back' style='margin-bottom:14px;'>← Back to Reports</button>";
+    pg2.innerHTML = backBtn2+"<div style='text-align:center;padding:40px;color:#475569;'>⏳ Loading Analytics...</div>";
+    // Temporarily switch to analytics page to render, then steal the HTML
+    var analyticsPg = document.getElementById("pg-analytics");
+    if(analyticsPg){
+      S.currentTab = "analytics";
+      await renderAnalytics();
+      var analyticsHtml = analyticsPg.innerHTML;
+      S.currentTab = "reports";
+      pg2.innerHTML = backBtn2 + analyticsHtml;
+    }
+    return;
+  }
+  if(type==="inventory-value"){
+    var rf6 = S.reportFilters||{};
+    var catOpts3 = ["all","General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+    var includeTrucks = S._invValIncludeTrucks||false;
+
+    // Branch inventory
+    var branchProds = applyProductFilters(S.products||[]);
+    if(rf6.categoryFilter&&rf6.categoryFilter!=="all") branchProds=branchProds.filter(function(p){return (p.category||"General Pest")===rf6.categoryFilter;});
+    branchProds = branchProds.filter(function(p){ return p.qty>0; });
+    branchProds.sort(function(a,b){
+      if(rf6.sortBy==="qty") return (b.qty||0)-(a.qty||0);
+      if(rf6.sortBy==="value"){
+        var av=(a.qty||0)*(a.trackAs==="individual"?(a.price||0)/(a.unitsPerCase||1):(a.price||0));
+        var bv=(b.qty||0)*(b.trackAs==="individual"?(b.price||0)/(b.unitsPerCase||1):(b.price||0));
+        return bv-av;
+      }
+      return (a.name||"").localeCompare(b.name||"");
+    });
+
+    var branchTotal = branchProds.reduce(function(sum,p){
+      var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+      return sum+(p.qty||0)*up;
+    },0);
+
+    // Truck inventory
+    var truckTotal = 0;
+    var truckRows = "";
+    if(includeTrucks){
+      var tiData4 = S.truckInventories||{};
+      var techFilter5 = rf6.techFilter||"all";
+      Object.keys(tiData4).forEach(function(techName){
+        if(techFilter5!=="all"&&techName!==techFilter5) return;
+        var rec = tiData4[techName];
+        if(!rec||!rec.products) return;
+        var techVal = 0;
+        var techProds = rec.products.map(function(tp){
+          var match = (S.products||[]).find(function(p){ return p.id===tp.id||p.name===tp.name; });
+          var up = match?(match.trackAs==="individual"?(match.price||0)/(match.unitsPerCase||1):(match.price||0)):0;
+          var val = (tp.qty||0)*up;
+          techVal += val;
+          return {name:tp.name,qty:tp.qty,unit:tp.unit,val:val};
+        });
+        truckTotal += techVal;
+        truckRows += "<div style='margin-bottom:10px;'>"
+          +"<div style='font-weight:600;font-size:13px;color:#f59e0b;margin-bottom:4px;'>🚚 "+esc(techName)+(techVal>0?" — $"+techVal.toFixed(2):"")+"</div>"
+          +techProds.filter(function(p){return p.qty>0;}).map(function(p){
+            return "<div style='display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid #0f1f38;'>"
+              +"<span>"+esc(p.name)+"</span>"
+              +"<span style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit||"")+(p.val>0?" · $"+p.val.toFixed(2):"")+"</span>"
+              +"</div>";
+          }).join("")
+          +"</div>";
+      });
+    }
+
+    var invFilterBar = "<div class='card' style='padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Category</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.categoryFilter=this.value;runReport('inventory-value');'>"
+      +catOpts3.map(function(c){ return "<option value='"+c+"'"+(rf6.categoryFilter===c?" selected":"")+">"+esc(c==="all"?"All Categories":c)+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Sort By</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.sortBy=this.value;runReport('inventory-value');'>"
+      +[{v:"name",l:"Name"},{v:"qty",l:"Quantity"},{v:"value",l:"Dollar Value"}]
+      .map(function(o){ return "<option value='"+o.v+"'"+(rf6.sortBy===o.v?" selected":"")+">"+o.l+"</option>"; }).join("")
+      +"</select></div>"
+      +"<div style='grid-column:span 2;'>"
+      +"<label style='display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;'>"
+      +"<input type='checkbox' "+(includeTrucks?"checked":"")+" onchange='S._invValIncludeTrucks=this.checked;runReport('inventory-value');'> Include truck inventories"
+      +"</label></div>"
+      +(includeTrucks?"<div><div style='font-size:11px;color:#64748b;margin-bottom:3px;'>Technician</div>"
+      +"<select class='inp' style='font-size:12px;' onchange='S.reportFilters.techFilter=this.value;runReport('inventory-value');'>"
+      +["all"].concat((S.techAccounts||[]).map(function(t){return t.name;})).map(function(t){ return "<option value='"+t+"'"+(rf6.techFilter===t?" selected":"")+">"+esc(t==="all"?"All Techs":t)+"</option>"; }).join("")
+      +"</select></div>":"")
+      +"</div>";
+
+    pg.innerHTML = backBtn
+      +"<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>💰 Inventory Valuation</h2>"
+      +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Current stock value at branch"+(includeTrucks?" and trucks":"")+".</p>"
+      +invFilterBar
+      // Summary cards
+      +"<div style='display:grid;grid-template-columns:"+(includeTrucks?"1fr 1fr 1fr":"1fr 1fr")+";gap:10px;margin-bottom:14px;'>"
+      +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#22c55e;'>$"+branchTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Branch Value</div></div>"
+      +(includeTrucks?"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#f59e0b;'>$"+truckTotal.toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Truck Value</div></div>":"")
+      +"<div class='card' style='padding:12px;text-align:center;'><div style='font-size:22px;font-weight:700;color:#e2e8f0;'>$"+(branchTotal+truckTotal).toFixed(2)+"</div><div style='font-size:11px;color:#64748b;'>Total Value</div></div>"
+      +"</div>"
+      // Branch products by category
+      +"<div class='card' style='padding:14px;margin-bottom:14px;'>"
+      +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🏢 Branch Inventory</div>"
+      +(branchProds.length===0?"<div style='color:#64748b;text-align:center;padding:20px;'>No products with stock on hand.</div>"
+      :branchProds.map(function(p){
+        var up = p.trackAs==="individual"?(p.price||0)/(p.unitsPerCase||1):(p.price||0);
+        var val = (p.qty||0)*up;
+        return "<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1e3a5f;font-size:12px;'>"
+          +"<div><div style='font-weight:600;'>"+esc(p.name)+"</div>"
+          +"<div style='color:#64748b;font-size:11px;'>"+esc(p.category||"")+"</div></div>"
+          +"<div style='text-align:right;'>"
+          +"<div style='color:#e2e8f0;'>"+p.qty+" "+esc(p.unit)+"</div>"
+          +(val>0?"<div style='color:#22c55e;font-size:11px;'>$"+val.toFixed(2)+"</div>":"")
+          +"</div></div>";
+      }).join(""))
+      +"</div>"
+      // Truck inventories
+      +(includeTrucks&&truckRows?"<div class='card' style='padding:14px;'>"
+      +"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>🚚 Truck Inventories</div>"
+      +truckRows
+      +"</div>":"");
+    return;
+  }
   if(type==="exception-email"){
     // Build exception report and email it
     var recipients2 = (S.reportSchedule&&S.reportSchedule.recipients)||"";
@@ -7119,7 +7558,7 @@ function renderReports(){
 
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Reports</h2>"
     +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>"+esc(S.branchName||"Willamette Valley")+" Branch</p>"
-    +renderReportFilters()
+
 
     // Dashboard overview cards
     +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;'>"
@@ -7148,7 +7587,8 @@ function renderReports(){
     +"<button class='btn bg' data-a='report-run' data-v='truck-inventory' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>🚚 Truck Inventory Summary</button>"
     +"<button class='btn bg' data-a='report-run' data-v='product-usage' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📦 Product Usage by Tech</button>"
     +"<button class='btn bg' data-a='report-run' data-v='adjustments' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📋 Adjustment History</button>"
-    +"<button class='btn bg' data-a='report-run' data-v='dead-stock' style='width:100%;padding:10px;text-align:left;'>💤 Slow Moving Products</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='dead-stock' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>💤 Slow Moving Products</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='inventory-value' style='width:100%;padding:10px;text-align:left;'>💰 Inventory Valuation</button>"
     +"</div>"
 
     // Scheduled report
@@ -7173,6 +7613,14 @@ function renderReports(){
     +"<input type='text' class='inp' id='sched-recipients' value='"+esc(schedCfg.recipients||"")+"' placeholder='email@example.com' style='margin-bottom:10px;'>"
     +"<button class='btn bp' data-a='save-report-schedule' style='width:100%;padding:10px;'>💾 Save Schedule</button>"
     +"<button class='btn bg' data-a='report-run' data-v='exception-email' style='width:100%;padding:10px;margin-top:8px;'>📤 Send Exception Report Now</button>"
+    +"</div>"
+
+    // Analytics section
+    +"<div class='card' style='padding:14px;margin-bottom:14px;'>"
+    +"<div style='font-weight:700;font-size:14px;margin-bottom:12px;'>📈 Analytics</div>"
+    +"<button class='btn bg' data-a='report-run' data-v='analytics-planner' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📋 Order Planner</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='analytics-timeline' style='width:100%;padding:10px;margin-bottom:8px;text-align:left;'>📅 Usage Timeline</button>"
+    +"<button class='btn bg' data-a='report-run' data-v='analytics-techs' style='width:100%;padding:10px;text-align:left;'>👤 Tech Usage Analytics</button>"
     +"</div>";
 }
 
