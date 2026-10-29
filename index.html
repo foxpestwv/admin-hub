@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.9";
+const APP_VERSION = "4.7.0";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -5350,12 +5350,6 @@ async function runReport(type){
     var rf3 = S.reportFilters||{};
     var filteredCheckouts = applyDateFilter(S.checkouts||[], "date");
     if(rf3.techFilter&&rf3.techFilter!=="all") filteredCheckouts=filteredCheckouts.filter(function(c){ return (c.tech||c.techName)===rf3.techFilter; });
-    filteredCheckouts.forEach(function(c){
-      var t = c.tech||c.techName||"Unknown";
-      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
-      usageByTech[t].qty += (c.qty||1);
-      usageByTech[t].items++;
-    });
     // Build product breakdown per tech
     filteredCheckouts.forEach(function(c){
       var t = c.tech||c.techName||"Unknown";
@@ -6775,12 +6769,6 @@ async function runReport(type){
     var rf3 = S.reportFilters||{};
     var filteredCheckouts = applyDateFilter(S.checkouts||[], "date");
     if(rf3.techFilter&&rf3.techFilter!=="all") filteredCheckouts=filteredCheckouts.filter(function(c){ return (c.tech||c.techName)===rf3.techFilter; });
-    filteredCheckouts.forEach(function(c){
-      var t = c.tech||c.techName||"Unknown";
-      if(!usageByTech[t]) usageByTech[t]={name:t,items:0,qty:0};
-      usageByTech[t].qty += (c.qty||1);
-      usageByTech[t].items++;
-    });
     // Build product breakdown per tech
     filteredCheckouts.forEach(function(c){
       var t = c.tech||c.techName||"Unknown";
