@@ -448,7 +448,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.1.2";
+const APP_VERSION = "5.0.9-dev";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -1498,9 +1498,8 @@ async function gs(fn, data){
           });
         });
 
-        // Signature section - always on a fresh area with enough space
-        // If less than 160pts remaining, add a new page
-        if(y < 160){ page = doc.addPage([612,792]); y=750; }
+        // Signature section - always on a dedicated new page
+        page = doc.addPage([612,792]); y = 750;
         y -= 30; drawLine(y); y -= 20;
         drawText("By signing below, both parties acknowledge this review.", margin, y, 9, false, PDFLib.rgb(0.4,0.4,0.4)); y -= 30;
         // Draw signature section for each signer (2 per row)
