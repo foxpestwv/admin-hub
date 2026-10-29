@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#0a1628">
   <script>
     // Hide login immediately if guest signing token present
-    if(new URLSearchParams(window.location.search).get("sign")){
-      document.documentElement.style.background="#070f1e";
-    }
+    (function(){ var q = new URLSearchParams(window.location.search);
+      if(q.get("estimate")) document.documentElement.style.background="#f3f4f6";
+      else if(q.get("sign")) document.documentElement.style.background="#070f1e"; })();
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
@@ -205,7 +205,7 @@ input,textarea,select,button{font-family:inherit;}
   </div>
 
   <script>
-    if(new URLSearchParams(window.location.search).get("sign")){
+    if(new URLSearchParams(window.location.search).get("sign") || new URLSearchParams(window.location.search).get("estimate")){
       document.getElementById("login") && (document.getElementById("login").style.display="none");
     }
   </script>
@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.3.0";
+const APP_VERSION = "5.4.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -586,7 +586,7 @@ function estFill(txt, st){
 function estDefaults(){
   var b = S.branch||"willamette";
   var d = ESTIMATE_COMPANY_DEFAULTS[b] || {companyName:"Fox Pest Control", addr1:"", addr2:"", website:"fox-pest.com"};
-  return Object.assign({warrantyDays:90, validDays:30, paymentTerms:"upon completion of the work", taxRate:0,
+  return Object.assign({warrantyDays:90, validDays:30, paymentTerms:"upon completion of the work", taxRate:0, notifyExtra:"",
     warrantyText:EST_DEFAULT_WARRANTY, termsText:EST_DEFAULT_TERMS}, d);
 }
 function estSettings(){ return Object.assign({}, estDefaults(), S._estSettings||{}); }
@@ -647,17 +647,20 @@ function renderEstimates(){
   var view = S._estView||"list";
   if(view==="form") return renderEstimateForm(pg);
   if(view==="preview") return renderEstimatePreview(pg);
+  if(view==="detail") return renderEstimateDetail(pg);
   renderEstimateList(pg);
 }
 
 function renderEstimateList(pg){
+  estRefresh(false);
   var u = estUser(), isM = S.role==="manager";
   var list = (S.estimates||[]).filter(function(e){ return isM || e.createdByEmail===u.email || e.createdBy===u.name; });
   list.sort(function(a,b){ return String(b.createdAt||"").localeCompare(String(a.createdAt||"")); });
   var colors = {Draft:"#64748b", Sent:"#3b82f6", Signed:"#22c55e", Declined:"#ef4444"};
   var h = "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;'>"
     +"<h2 style='font-size:20px;font-weight:700;'>Estimates</h2>"
-    +"<button class='btn bp' style='padding:8px 14px;' data-a='est-new'>+ New Estimate</button></div>";
+    +"<div style='display:flex;gap:8px;'><button class='btn bg' style='padding:8px 12px;' data-a='est-refresh'>↻</button>"
+    +"<button class='btn bp' style='padding:8px 14px;' data-a='est-new'>+ New Estimate</button></div></div>";
   if(!list.length){
     h += "<div style='text-align:center;color:#64748b;padding:40px 10px;'><div style='font-size:36px;margin-bottom:8px;'>🧾</div>No estimates yet. Tap New Estimate to create one.</div>";
   } else {
@@ -738,11 +741,16 @@ function renderEstimatePreview(pg){
   var e = S._est;
   if(!e || !S._estPdfUrl){ S._estView="list"; return renderEstimateList(pg); }
   var fname = "Estimate-"+(e.number||"draft")+"-"+String((e.customer&&e.customer.name)||"customer").replace(/[^A-Za-z0-9]+/g,"_")+".pdf";
-  pg.innerHTML = "<div style='display:flex;gap:8px;margin-bottom:12px;'>"
-    +"<button class='btn bg' style='flex:1;padding:10px;' data-a='est-edit'>← Edit</button>"
-    +"<a class='btn bp' style='flex:2;padding:10px;text-align:center;text-decoration:none;display:block;' href='"+S._estPdfUrl+"' download='"+esc(fname)+"'>Download PDF</a></div>"
-    +"<iframe src='"+S._estPdfUrl+"' style='width:100%;height:72vh;border:1px solid #1e3a5f;border-radius:8px;background:#fff;'></iframe>"
+  var fromDetail = S._estPreviewFrom==="detail";
+  var h = "<div style='display:flex;gap:8px;margin-bottom:10px;'>"
+    +"<button class='btn bg' style='flex:1;padding:10px;' data-a='"+(fromDetail?"est-detail":"est-edit")+"'>← "+(fromDetail?"Back":"Edit")+"</button>"
+    +"<a class='btn bg' style='flex:1;padding:10px;text-align:center;text-decoration:none;display:block;' href='"+S._estPdfUrl+"' download='"+esc(fname)+"'>Download PDF</a></div>";
+  if(!fromDetail){
+    h += "<button class='btn bp' style='width:100%;padding:13px;margin-bottom:10px;font-size:15px;' data-a='est-send'>✉ Send to Customer for Signature</button>";
+  }
+  h += "<iframe src='"+S._estPdfUrl+"' style='width:100%;height:68vh;border:1px solid #1e3a5f;border-radius:8px;background:#fff;'></iframe>"
     +"<div style='font-size:11px;color:#64748b;margin-top:8px;text-align:center;'>If the preview is blank on your phone, tap Download PDF to open it.</div>";
+  pg.innerHTML = h;
 }
 
 function estSetPath(path, val){
@@ -829,6 +837,7 @@ async function estPreview(){
   var blob = new Blob([out.bytes], {type:"application/pdf"});
   if(S._estPdfUrl){ try { URL.revokeObjectURL(S._estPdfUrl); } catch(x){} }
   S._estPdfUrl = URL.createObjectURL(blob);
+  S._estPreviewFrom = "form";
   S._estView = "preview";
   renderEstimates();
 }
@@ -975,7 +984,7 @@ function estSettingsBody(){
   }).join("");
   return "<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>Estimate Settings</h2>"
     +"<p style='font-size:12px;color:#64748b;margin-bottom:12px;'>Company details and wording printed on every estimate for this branch.</p>"
-    +f("es-company","Company name",st.companyName)+f("es-addr1","Address line 1",st.addr1)+f("es-addr2","City, State ZIP",st.addr2)+f("es-web","Website",st.website)
+    +f("es-company","Company name",st.companyName)+f("es-addr1","Address line 1",st.addr1)+f("es-addr2","City, State ZIP",st.addr2)+f("es-web","Website",st.website)+f("es-notify","Also email these addresses when an estimate is signed (optional, comma-separated)",st.notifyExtra)
     +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;'>"+f("es-wdays","Warranty (days)",st.warrantyDays,"number")+f("es-vdays","Valid for (days)",st.validDays,"number")+f("es-tax","Default tax %",st.taxRate,"number")+"</div>"
     +f("es-pay","Payment terms (finishes the sentence 'Payment is due ...')",st.paymentTerms)
     +"<div style='"+lab+"'>Warranty wording</div><textarea class='inp' id='es-warranty' rows='9' style='margin-bottom:8px;'>"+esc(st.warrantyText)+"</textarea>"
@@ -1006,7 +1015,7 @@ async function estHandleAction(a, v){
     case "est-open": {
       var found = (S.estimates||[]).find(function(x){ return x.id===v; });
       if(!found) return true;
-      S._est = JSON.parse(JSON.stringify(found)); S._estView = "form"; renderEstimates(); return true;
+      S._est = JSON.parse(JSON.stringify(found)); S._estView = (found.status && found.status!=="Draft") ? "detail" : "form"; renderEstimates(); return true;
     }
     case "est-back": S._estView = "list"; S._est = null; renderEstimates(); return true;
     case "est-edit": S._estView = "form"; renderEstimates(); return true;
@@ -1026,11 +1035,37 @@ async function estHandleAction(a, v){
       S.estimates = (S.estimates||[]).filter(function(x){ return x.id!==e.id; });
       S._est = null; S._estView = "list"; showToast("Draft deleted"); renderEstimates(); return true;
     }
+    case "est-send": await estSend(); return true;
+    case "est-resend": await estResend(); return true;
+    case "est-revise": await estWithdraw(); return true;
+    case "est-detail": S._estView = "detail"; renderEstimates(); return true;
+    case "est-refresh": await estRefresh(true); showToast("Estimates refreshed"); return true;
+    case "est-refresh-detail": await estRefresh(true); showToast("Refreshed"); return true;
+    case "est-sign-here": if(S._est && S._est.token) window.open(estLink(S._est.token), "_blank"); return true;
+    case "est-copy-link": {
+      var lk = (S._est && S._est.token) ? estLink(S._est.token) : "";
+      if(!lk) return true;
+      try { await navigator.clipboard.writeText(lk); showToast("Link copied ✓"); } catch(x){ prompt("Copy this link:", lk); }
+      return true;
+    }
+    case "est-share-link": {
+      var sl = (S._est && S._est.token) ? estLink(S._est.token) : "";
+      if(sl && navigator.share){ try { await navigator.share({title:"Your estimate from Fox Pest Control", text:"Review and sign your estimate:", url:sl}); } catch(x){} }
+      return true;
+    }
+    case "est-view-pdf": {
+      var ee = S._est; if(!ee) return true;
+      showToast("Building PDF...");
+      var po = await estBuildPdf(ee);
+      if(S._estPdfUrl){ try { URL.revokeObjectURL(S._estPdfUrl); } catch(x){} }
+      S._estPdfUrl = URL.createObjectURL(new Blob([po.bytes], {type:"application/pdf"}));
+      S._estPreviewFrom = "detail"; S._estView = "preview"; renderEstimates(); return true;
+    }
     case "est-settings-save": {
       function val(id){ var el = document.getElementById(id); return el ? el.value : ""; }
       var ns = {companyName:val("es-company"), addr1:val("es-addr1"), addr2:val("es-addr2"), website:val("es-web"),
         warrantyDays:Number(val("es-wdays"))||0, validDays:Number(val("es-vdays"))||0, taxRate:Number(val("es-tax"))||0,
-        paymentTerms:val("es-pay"), warrantyText:val("es-warranty"), termsText:val("es-terms")};
+        paymentTerms:val("es-pay"), notifyExtra:val("es-notify"), warrantyText:val("es-warranty"), termsText:val("es-terms")};
       await gs("saveEstimateSettings",{branch:S.branch||"willamette", settings:ns});
       S._estSettings = ns; showToast("Estimate settings saved ✓"); return true;
     }
@@ -1054,6 +1089,348 @@ async function estHandleAction(a, v){
     }
   }
   return false;
+}
+
+// ─── Estimates: sending, customer signing, filing ────────────────────────────
+function estBase(){ return window.location.origin + window.location.pathname.replace(/index\.html$/,""); }
+function estLink(token){ return estBase() + "?estimate=" + encodeURIComponent(token); }
+function estNewToken(){
+  var a = new Uint8Array(18);
+  (window.crypto||window.msCrypto).getRandomValues(a);
+  return Array.prototype.map.call(a,function(b){ return ("0"+b.toString(16)).slice(-2); }).join("");
+}
+async function estBridge(action, data){
+  var r = await fetch(EMAIL_BRIDGE, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({action:action, data:data})});
+  return r.json();
+}
+function estBytesToB64(bytes){
+  var bin = "", ch = 0x8000;
+  for(var i=0;i<bytes.length;i+=ch) bin += String.fromCharCode.apply(null, bytes.subarray(i,i+ch));
+  return btoa(bin);
+}
+function estEmailShell(inner, company){
+  return "<div style='font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1f2937;line-height:1.5;'>"+inner
+    +"<div style='border-top:1px solid #e5e7eb;margin-top:24px;padding-top:12px;font-size:12px;color:#6b7280;'>"+esc(company||"Fox Pest Control")+"</div></div>";
+}
+function estBtn(href, label){
+  return "<a href='"+esc(href)+"' style='display:inline-block;background:#1e3a8a;color:#ffffff;text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;font-size:16px;'>"+esc(label)+"</a>";
+}
+function estCustomerEmail(e, link, st){
+  var t = estTotals(e), co = st.companyName||"Fox Pest Control";
+  var first = String((e.customer&&e.customer.name)||"").trim().split(" ")[0] || "there";
+  var valid = Number(st.validDays)||0;
+  var contact = e.createdBy + (e.employeePhone ? " at "+e.employeePhone : "");
+  var text = "Hi "+first+",\n\nThank you for the opportunity to earn your business. Your estimate (#"+e.number+", total "+estMoney(t.total)+") is ready to review and sign:\n\n"+link+"\n\n"
+    +(valid ? "This estimate is valid for "+valid+" days.\n\n" : "")
+    +"Questions? Contact "+contact+(e.createdByEmail ? " or reply to this email." : ".")+"\n\n"+co;
+  var html = estEmailShell(
+    "<h2 style='margin:0 0 12px;color:#111827;'>Your estimate is ready</h2>"
+    +"<p>Hi "+esc(first)+",</p>"
+    +"<p>Thank you for the opportunity to earn your business. Your estimate <b>#"+esc(e.number)+"</b> is ready to review and sign.</p>"
+    +"<p style='font-size:20px;margin:16px 0;'><b>Total: "+estMoney(t.total)+"</b></p>"
+    +"<p style='margin:22px 0;'>"+estBtn(link,"Review & Sign Estimate")+"</p>"
+    +(valid ? "<p style='font-size:13px;color:#6b7280;'>This estimate is valid for "+valid+" days.</p>" : "")
+    +"<p style='font-size:14px;color:#374151;'>Questions? Contact "+esc(contact)+(e.createdByEmail ? " or just reply to this email." : ".")+"</p>"
+    +"<p style='font-size:12px;color:#9ca3af;'>If the button doesn't work, copy this link into your browser:<br>"+esc(link)+"</p>", co);
+  return {subject:"Your estimate from "+co+" (#"+e.number+")", text:text, html:html};
+}
+function estMailTo(e, st, subject, text, html){
+  return {to:String((e.customer&&e.customer.email)||"").trim(), subject:subject, body:text, htmlBody:html,
+    replyTo:e.createdByEmail||"", senderName:st.companyName||"Fox Pest Control"};
+}
+
+// ── Employee side: send / resend / withdraw ──
+async function estSend(){
+  var e = S._est; if(!e) return;
+  var email = String((e.customer&&e.customer.email)||"").trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert("Add the customer's email address on the estimate first."); return; }
+  if(!(e.items||[]).length){ alert("Add at least one line item first."); return; }
+  if(!confirm("Send this estimate to "+email+" for signature?\n\nAfter it's sent you can't edit it unless you withdraw it first.")) return;
+  var st = estSettings();
+  showToast("Preparing estimate...");
+  // Preflight: also creates this employee's Drive folder and confirms the latest bridge is deployed
+  var pf;
+  try { pf = await estBridge("getEstimateFolder", {employeeName:e.createdBy, employeeEmail:e.createdByEmail}); } catch(x){ pf = {ok:false, error:x.message}; }
+  if(!pf || !pf.ok){
+    alert("Can't send yet: the Drive filing step isn't ready ("+((pf&&pf.error)||"no response")+").\n\nMake sure the newest FoxAdminBridge.gs is saved and redeployed, then try again.");
+    return;
+  }
+  if(!(await estSave())) return;
+  var out = await estBuildPdf(e);
+  if(e.token){ try { await gs("revokeEstimateToken", {token:e.token}); } catch(x){} }
+  var token = estNewToken();
+  await gs("saveEstimateDoc", {id:e.id, pdfBase64:estBytesToB64(out.bytes), fields:out.fields,
+    snapshot:{company:{name:st.companyName, addr1:st.addr1, addr2:st.addr2, website:st.website}, warranty:estFill(st.warrantyText,st), terms:estFill(st.termsText,st), validDays:Number(st.validDays)||0}});
+  await gs("saveEstimateToken", {token:token, estimateId:e.id, branch:e.branch});
+  var notify = [e.createdByEmail].concat(String(st.notifyExtra||"").split(",")).map(function(x){ return String(x||"").trim(); }).filter(Boolean);
+  e.notifyEmails = notify.filter(function(x,i){ return notify.indexOf(x)===i; });
+  e.status = "Sent"; e.sentAt = new Date().toISOString(); e.sentTo = email; e.token = token;
+  await gs("saveEstimate", {estimate:e});
+  var ix = (S.estimates||[]).findIndex(function(x){ return x.id===e.id; });
+  var copy = JSON.parse(JSON.stringify(e));
+  if(ix>=0) S.estimates[ix] = copy; else S.estimates.unshift(copy);
+  var m = estCustomerEmail(e, estLink(token), st);
+  var res = await estBridge("sendEmail", estMailTo(e, st, m.subject, m.text, m.html));
+  showToast(res && res.ok ? "Sent to "+email+" ✓" : "Saved, but the email didn't send - use Copy Link below");
+  S._estView = "detail"; renderEstimates();
+}
+async function estResend(){
+  var e = S._est; if(!e || !e.token) return;
+  var st = estSettings(), m = estCustomerEmail(e, estLink(e.token), st);
+  var res = await estBridge("sendEmail", estMailTo(e, st, m.subject, m.text, m.html));
+  showToast(res && res.ok ? "Email re-sent ✓" : "Email didn't send - use Copy Link");
+}
+async function estWithdraw(){
+  var e = S._est; if(!e) return;
+  if(!confirm("Withdraw this estimate so you can edit it?\n\nThe customer's current link will stop working. You can send a new one afterward.")) return;
+  try { await gs("revokeEstimateToken", {token:e.token}); } catch(x){}
+  e.status = "Draft"; e.token = null; e.sentAt = null;
+  await gs("saveEstimate", {estimate:e});
+  var ix = (S.estimates||[]).findIndex(function(x){ return x.id===e.id; });
+  if(ix>=0) S.estimates[ix] = JSON.parse(JSON.stringify(e));
+  S._estView = "form"; showToast("Estimate withdrawn - you can edit it again"); renderEstimates();
+}
+async function estRefresh(force){
+  var b = S.branch||"willamette";
+  if(!force && S._estRefreshedAt && Date.now()-S._estRefreshedAt < 45000) return;
+  S._estRefreshedAt = Date.now();
+  try {
+    var r = await gs("getEstimates", {branch:b});
+    if(r && r.estimates){
+      S.estimates = r.estimates;
+      if(S._est){ var fresh = r.estimates.find(function(x){ return x.id===S._est.id; }); if(fresh && S._estView==="detail") S._est = JSON.parse(JSON.stringify(fresh)); }
+      var pg = document.getElementById("pg-estimates");
+      if(S.tab==="estimates" && pg){
+        if((S._estView||"list")==="list") renderEstimateList(pg); else if(S._estView==="detail") renderEstimateDetail(pg);
+      }
+    }
+  } catch(x){ console.warn("Estimate refresh:", x); }
+}
+function renderEstimateDetail(pg){
+  var e = S._est;
+  if(!e){ S._estView = "list"; return renderEstimateList(pg); }
+  var t = estTotals(e), cu = e.customer||{};
+  var col = {Sent:"#3b82f6", Signed:"#22c55e", Declined:"#ef4444"}[e.status] || "#64748b";
+  var link = e.token ? estLink(e.token) : "";
+  var h = "<div style='display:flex;gap:8px;margin-bottom:12px;'><button class='btn bg' style='flex:1;padding:10px;' data-a='est-back'>← Estimates</button>"
+    +"<button class='btn bg' style='padding:10px 14px;' data-a='est-refresh-detail'>↻ Refresh</button></div>";
+  h += "<div class='card' style='padding:14px;margin-bottom:12px;'>"
+    +"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'><div style='font-weight:700;font-size:16px;'>Estimate #"+esc(e.number)+"</div>"
+    +"<span style='font-weight:700;color:"+col+";'>"+esc(e.status)+"</span></div>"
+    +"<div style='font-size:14px;'>"+esc(cu.name||"")+"</div>"
+    +"<div style='font-size:12px;color:#94a3b8;margin-bottom:8px;'>"+esc([cu.street,cu.city].filter(Boolean).join(", "))+"</div>"
+    +"<div style='display:flex;justify-content:space-between;'><span style='color:#94a3b8;font-size:13px;'>Total</span><span style='font-weight:700;color:#22c55e;'>"+estMoney(t.total)+"</span></div>"
+    +(e.sentAt ? "<div style='font-size:12px;color:#64748b;margin-top:8px;'>Sent "+esc(new Date(e.sentAt).toLocaleString("en-US"))+" to "+esc(e.sentTo||cu.email||"")+"</div>" : "")
+    +(e.status==="Signed" ? "<div style='font-size:12px;color:#22c55e;margin-top:6px;'>Signed by "+esc(e.signedName||"")+" on "+esc(new Date(e.signedAt).toLocaleString("en-US"))+"</div>" : "")
+    +"</div>";
+  if(e.status==="Sent"){
+    h += "<button class='btn bp' style='width:100%;padding:12px;margin-bottom:8px;' data-a='est-sign-here'>✍ Customer is here - sign on this device</button>"
+      +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;'>"
+      +"<button class='btn bg' style='padding:11px;' data-a='est-resend'>✉ Resend email</button>"
+      +"<button class='btn bg' style='padding:11px;' data-a='est-copy-link'>🔗 Copy link</button>"
+      +(navigator.share ? "<button class='btn bg' style='padding:11px;' data-a='est-share-link'>↗ Share link</button>" : "")
+      +"<button class='btn bg' style='padding:11px;' data-a='est-view-pdf'>📄 View PDF</button></div>"
+      +"<button class='btn bd' style='width:100%;padding:11px;' data-a='est-revise'>Withdraw &amp; edit</button>"
+      +"<div style='font-size:11px;color:#64748b;margin-top:10px;text-align:center;'>You'll get an email when the customer signs. Tap Refresh to check.</div>";
+  } else if(e.status==="Signed"){
+    h += (e.signedUrl ? "<a class='btn bp' style='display:block;text-align:center;text-decoration:none;padding:12px;margin-bottom:8px;' href='"+esc(e.signedUrl)+"' target='_blank' rel='noopener'>📄 Open signed estimate (PDF)</a>" : "")
+      +(e.signedDownloadUrl ? "<a class='btn bg' style='display:block;text-align:center;text-decoration:none;padding:11px;margin-bottom:8px;' href='"+esc(e.signedDownloadUrl)+"' target='_blank' rel='noopener'>⬇ Download</a>" : "")
+      +(e.folderUrl ? "<a class='btn bg' style='display:block;text-align:center;text-decoration:none;padding:11px;' href='"+esc(e.folderUrl)+"' target='_blank' rel='noopener'>📁 Open my estimates folder</a>" : "");
+  }
+  pg.innerHTML = h;
+}
+
+// ── Customer side (opens from the emailed link, no login) ──
+function estCErr(msg){
+  return "<div style='text-align:center;padding:60px 20px;'><div style='font-size:40px;margin-bottom:12px;'>⚠️</div><div style='font-size:16px;color:#374151;'>"+esc(msg)+"</div></div>";
+}
+function estCHeader(d){
+  var e = d.estimate, co = (d.snapshot&&d.snapshot.company)||{};
+  return "<div style='background:#fff;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
+    +"<img src='"+ESTIMATE_LOGO+"' alt='"+esc(co.name||"Fox Pest Control")+"' style='width:150px;display:block;margin-bottom:12px;'>"
+    +"<div style='font-size:22px;font-weight:700;color:#111827;'>Estimate #"+esc(e.number)+"</div>"
+    +"<div style='font-size:13px;color:#6b7280;margin-bottom:12px;'>"+esc(new Date(e.date||e.createdAt||Date.now()).toLocaleDateString("en-US"))+"</div>"
+    +"<div style='display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#374151;'>"
+    +"<div><div style='color:#9ca3af;font-size:11px;text-transform:uppercase;'>Prepared for</div>"+esc((e.customer&&e.customer.name)||"")+"<br>"+esc((e.customer&&e.customer.street)||"")+"</div>"
+    +"<div><div style='color:#9ca3af;font-size:11px;text-transform:uppercase;'>Prepared by</div>"+esc(e.createdBy||"")+(e.employeePhone?"<br>"+esc(e.employeePhone):"")+"</div></div></div>";
+}
+function estCHtml(d){
+  var e = d.estimate, snap = d.snapshot||{}, t = estTotals(e), showPrices = e.showPrices!==false;
+  var items = (e.items||[]).map(function(it){
+    var q = Number(it.qty)||0;
+    return "<div style='padding:14px 0;border-bottom:1px solid #e5e7eb;'>"
+      +"<div style='display:flex;justify-content:space-between;gap:12px;'><div style='font-weight:700;color:#111827;'>"+esc(it.title)+"</div>"
+      +(showPrices ? "<div style='font-weight:700;white-space:nowrap;color:#111827;'>"+estMoney(estLineTotal(it))+"</div>" : "")+"</div>"
+      +(showPrices && (q!==1 || it.unit) ? "<div style='font-size:12px;color:#6b7280;margin-top:2px;'>"+esc(q)+(it.unit?" "+esc(it.unit):"")+" x "+estMoney(it.price)+"</div>" : "")
+      +(it.description ? "<div style='font-size:14px;color:#4b5563;margin-top:6px;white-space:pre-wrap;'>"+esc(it.description)+"</div>" : "")
+      +"</div>";
+  }).join("");
+  var row = function(l,v,b){ return "<div style='display:flex;justify-content:space-between;padding:4px 0;"+(b?"font-size:18px;font-weight:700;color:#111827;border-top:2px solid #111827;margin-top:6px;padding-top:10px;":"font-size:14px;color:#4b5563;")+"'><span>"+l+"</span><span>"+v+"</span></div>"; };
+  var section = function(title, body){ return body ? "<details style='background:#fff;border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'><summary style='font-weight:700;cursor:pointer;color:#111827;'>"+title+"</summary><div style='font-size:13px;color:#4b5563;white-space:pre-wrap;margin-top:10px;'>"+esc(body)+"</div></details>" : ""; };
+  return estCHeader(d)
+    +"<div style='background:#fff;border-radius:14px;padding:6px 18px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
+    +"<div style='font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;padding-top:12px;'>Work to be done</div>"+items
+    +"<div style='padding-top:10px;'>"+row("Subtotal",estMoney(t.subtotal))+(t.tax>0?row("Tax ("+(Number(e.taxRate)||0)+"%)",estMoney(t.tax)):"")+row("Total",estMoney(t.total),true)+"</div></div>"
+    +(String(e.notes||"").trim() ? "<div style='background:#fff;border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:13px;color:#4b5563;white-space:pre-wrap;'><b style='color:#111827;'>Notes</b><br>"+esc(e.notes)+"</div>" : "")
+    +section("Warranty", snap.warranty)+section("Terms and Conditions", snap.terms)
+    +"<div style='background:#fff;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
+    +"<div style='font-weight:700;color:#111827;margin-bottom:10px;'>Accept this estimate</div>"
+    +"<label style='font-size:12px;color:#6b7280;'>Your full name</label>"
+    +"<input id='est-c-name' type='text' value='"+esc((e.customer&&e.customer.name)||"")+"' style='width:100%;box-sizing:border-box;padding:12px;font-size:16px;border:1px solid #d1d5db;border-radius:8px;margin:4px 0 12px;'>"
+    +"<label style='font-size:12px;color:#6b7280;'>Sign below with your finger or mouse</label>"
+    +"<canvas id='est-pad' style='width:100%;height:170px;display:block;border:1px solid #d1d5db;border-radius:8px;background:#fafafa;margin:4px 0 6px;'></canvas>"
+    +"<div style='text-align:right;margin-bottom:12px;'><button id='est-c-clear' type='button' style='background:none;border:none;color:#2563eb;font-size:13px;cursor:pointer;'>Clear signature</button></div>"
+    +"<label style='display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#374151;margin-bottom:14px;'><input id='est-c-agree' type='checkbox' style='margin-top:3px;width:18px;height:18px;'> I have read and agree to this estimate, the warranty, and the terms and conditions.</label>"
+    +"<button id='est-c-sign' type='button' style='width:100%;background:#1e3a8a;color:#fff;border:none;padding:15px;border-radius:10px;font-size:17px;font-weight:700;cursor:pointer;touch-action:manipulation;'>Sign &amp; Accept Estimate</button>"
+    +"<div id='est-c-pdf' style='text-align:center;margin-top:14px;font-size:13px;'></div></div>";
+}
+function estMakePad(canvas){
+  var ctx = canvas.getContext("2d"), drawing = false, any = false, lx = 0, ly = 0;
+  function fit(){
+    var r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio||1;
+    canvas.width = Math.max(1, Math.round(r.width*dpr)); canvas.height = Math.max(1, Math.round(r.height*dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111827"; ctx.fillStyle = "#111827";
+  }
+  fit(); canvas.style.touchAction = "none";
+  function pos(e){ var r = canvas.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+  canvas.addEventListener("pointerdown", function(e){
+    e.preventDefault(); drawing = true; var p = pos(e); lx = p.x; ly = p.y; any = true;
+    ctx.beginPath(); ctx.arc(p.x,p.y,1.2,0,6.3); ctx.fill();
+    try { canvas.setPointerCapture(e.pointerId); } catch(x){}
+  });
+  canvas.addEventListener("pointermove", function(e){
+    if(!drawing) return; e.preventDefault(); var p = pos(e);
+    ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y); ctx.stroke(); lx = p.x; ly = p.y;
+  });
+  function end(){ drawing = false; }
+  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+  return {
+    clear:function(){ ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.restore(); any = false; },
+    isEmpty:function(){ return !any; },
+    data:function(){ return canvas.toDataURL("image/png"); }
+  };
+}
+// Trim a signature image to the ink so it fits the signature line nicely
+function estCropSignature(dataUrl){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    img.onload = function(){
+      try {
+        var c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+        var x = c.getContext("2d"); x.drawImage(img,0,0);
+        var d = x.getImageData(0,0,c.width,c.height).data, minX = c.width, minY = c.height, maxX = 0, maxY = 0;
+        for(var yy=0; yy<c.height; yy++) for(var xx=0; xx<c.width; xx++){
+          if(d[(yy*c.width+xx)*4+3] > 10){ if(xx<minX) minX=xx; if(xx>maxX) maxX=xx; if(yy<minY) minY=yy; if(yy>maxY) maxY=yy; }
+        }
+        if(maxX<minX){ reject(new Error("Signature is empty")); return; }
+        var pad = 4; minX = Math.max(0,minX-pad); minY = Math.max(0,minY-pad); maxX = Math.min(c.width-1,maxX+pad); maxY = Math.min(c.height-1,maxY+pad);
+        var w = maxX-minX+1, h = maxY-minY+1, c2 = document.createElement("canvas"); c2.width = w; c2.height = h;
+        c2.getContext("2d").drawImage(c, minX, minY, w, h, 0, 0, w, h);
+        var b64 = c2.toDataURL("image/png").split(",")[1];
+        resolve({bytes:Uint8Array.from(atob(b64), function(ch){ return ch.charCodeAt(0); }), w:w, h:h});
+      } catch(err){ reject(err); }
+    };
+    img.onerror = function(){ reject(new Error("Could not read signature")); };
+    img.src = dataUrl;
+  });
+}
+async function estStampSigned(unsignedB64, fields, sigDataUrl, name, dateText){
+  var bytes = Uint8Array.from(atob(unsignedB64), function(ch){ return ch.charCodeAt(0); });
+  var doc = await PDFLib.PDFDocument.load(bytes);
+  var font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+  var pages = doc.getPages();
+  var sigF = (fields||[]).find(function(f){ return f.type==="signature"; });
+  var dateF = (fields||[]).find(function(f){ return f.type==="date"; });
+  var crop = await estCropSignature(sigDataUrl);
+  var img = await doc.embedPng(crop.bytes);
+  var gray = PDFLib.rgb(0.4,0.4,0.4), dark = PDFLib.rgb(0.1,0.1,0.1);
+  if(sigF){
+    var pg = pages[sigF.page-1], pw = pg.getWidth(), ph = pg.getHeight();
+    var bw = sigF.wPct*pw, bh = sigF.hPct*ph, bx = sigF.xPct*pw, by = ph - sigF.yPct*ph - bh;
+    var sc = Math.min((bw-8)/crop.w, (bh+6)/crop.h);
+    pg.drawImage(img, {x:bx+4, y:by+2, width:crop.w*sc, height:crop.h*sc});
+    pg.drawText(estPdfSafe("Signed electronically by "+name+" on "+new Date().toLocaleString("en-US")), {x:bx, y:by-28, size:7.5, font:font, color:gray});
+  }
+  if(dateF){
+    var pg2 = pages[dateF.page-1], pw2 = pg2.getWidth(), ph2 = pg2.getHeight();
+    var dx = dateF.xPct*pw2, dy = ph2 - dateF.yPct*ph2 - dateF.hPct*ph2;
+    pg2.drawText(estPdfSafe(dateText), {x:dx+4, y:dy+4, size:11, font:font, color:dark});
+  }
+  return await doc.save();
+}
+function estCSignedEmails(d, name, up, st){
+  var e = d.estimate, t = estTotals(e), co = (d.snapshot&&d.snapshot.company&&d.snapshot.company.name) || "Fox Pest Control";
+  var custText = "Hi "+name.split(" ")[0]+",\n\nThank you! Your signed copy of estimate #"+e.number+" ("+estMoney(t.total)+") is saved here:\n\n"+up.url+"\n\nWe'll be in touch to schedule the work. Questions? Contact "+e.createdBy+(e.employeePhone?" at "+e.employeePhone:"")+".\n\n"+co;
+  var custHtml = estEmailShell("<h2 style='margin:0 0 12px;color:#111827;'>Thank you - your estimate is signed</h2><p>Hi "+esc(name.split(" ")[0])+",</p>"
+    +"<p>Your signed copy of estimate <b>#"+esc(e.number)+"</b> ("+estMoney(t.total)+") is ready.</p><p style='margin:22px 0;'>"+estBtn(up.url,"View Signed Estimate")+"</p>"
+    +"<p style='font-size:14px;color:#374151;'>We'll be in touch to schedule the work. Questions? Contact "+esc(e.createdBy)+(e.employeePhone?" at "+esc(e.employeePhone):"")+".</p>", co);
+  var staffText = name+" signed estimate #"+e.number+" ("+estMoney(t.total)+").\n\nSigned PDF: "+up.url+"\nYour folder: "+(up.folderUrl||"")+"\n\nOpen the Admin Hub > Estimates to see it.";
+  var staffHtml = estEmailShell("<h2 style='margin:0 0 12px;color:#111827;'>Estimate #"+esc(e.number)+" signed</h2><p><b>"+esc(name)+"</b> signed estimate #"+esc(e.number)+" for <b>"+estMoney(t.total)+"</b>.</p>"
+    +"<p style='margin:22px 0;'>"+estBtn(up.url,"Open Signed PDF")+"</p>"+(up.folderUrl?"<p style='font-size:13px;'>Folder: <a href='"+esc(up.folderUrl)+"'>"+esc(up.folderUrl)+"</a></p>":""), co);
+  return {custText:custText, custHtml:custHtml, staffText:staffText, staffHtml:staffHtml, co:co};
+}
+async function estCustomerBoot(token){
+  var l = document.getElementById("login"), a = document.getElementById("app");
+  if(l) l.style.display = "none"; if(a) a.style.display = "none";
+  var wrap = document.createElement("div");
+  wrap.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:#f3f4f6;overflow-y:auto;-webkit-overflow-scrolling:touch;z-index:99999;font-family:Arial,Helvetica,sans-serif;color:#1f2937;";
+  wrap.innerHTML = "<div id='est-c' style='max-width:640px;margin:0 auto;padding:16px 16px 60px;'><div style='text-align:center;padding:60px 20px;color:#6b7280;'>Loading your estimate...</div></div>";
+  document.body.appendChild(wrap);
+  var root = document.getElementById("est-c"), d;
+  try { await initFirebase(); d = await gs("getEstimateForSigning", {token:token}); }
+  catch(err){ root.innerHTML = estCErr("We couldn't load this estimate. Please check your connection and try again."); return; }
+  if(!d || !d.ok){ root.innerHTML = estCErr((d&&d.error)||"This link is not valid."); return; }
+  var e = d.estimate, contact = e.createdBy + (e.employeePhone ? " at "+e.employeePhone : "");
+  if(d.used && d.signedUrl){
+    root.innerHTML = estCHeader(d)+"<div style='background:#fff;border-radius:14px;padding:22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);'><div style='font-size:40px;'>✅</div><div style='font-weight:700;font-size:18px;margin:8px 0;'>This estimate has been signed</div><a href='"+esc(d.signedUrl)+"' style='color:#2563eb;'>View signed copy</a></div>";
+    return;
+  }
+  if(d.revoked || d.used || e.status!=="Sent"){ root.innerHTML = estCErr("This estimate link is no longer active. Please contact "+contact+" for a new one."); return; }
+  var validDays = Number(d.snapshot&&d.snapshot.validDays)||0;
+  if(validDays>0 && e.sentAt && Date.now() > new Date(e.sentAt).getTime()+validDays*86400000){
+    root.innerHTML = estCErr("This estimate has expired. Please contact "+contact+" for an updated one."); return;
+  }
+  root.innerHTML = estCHtml(d);
+  try {
+    var raw = atob(d.pdfBase64), pb = new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) pb[i] = raw.charCodeAt(i);
+    var pdfUrl = URL.createObjectURL(new Blob([pb], {type:"application/pdf"}));
+    document.getElementById("est-c-pdf").innerHTML = "<a href='"+pdfUrl+"' target='_blank' rel='noopener' style='color:#2563eb;'>View / download the full PDF</a>";
+  } catch(x){}
+  var pad = estMakePad(document.getElementById("est-pad"));
+  document.getElementById("est-c-clear").onclick = function(){ pad.clear(); };
+  var btn = document.getElementById("est-c-sign");
+  btn.onclick = async function(){
+    var name = String(document.getElementById("est-c-name").value||"").trim();
+    if(!name){ alert("Please type your full name."); return; }
+    if(pad.isEmpty()){ alert("Please sign in the signature box."); return; }
+    if(!document.getElementById("est-c-agree").checked){ alert("Please tick the box to confirm you agree to the estimate and terms."); return; }
+    btn.disabled = true; btn.textContent = "Signing...";
+    try {
+      var signed = await estStampSigned(d.pdfBase64, d.fields, pad.data(), name, new Date().toLocaleDateString("en-US"));
+      var custName = String((e.customer&&e.customer.name)||name).replace(/[^A-Za-z0-9 ]+/g,"").trim();
+      var up = await estBridge("saveEstimatePdf", {pdfBase64:estBytesToB64(signed), fileName:"Estimate "+e.number+" - "+custName+" - Signed",
+        employeeName:e.createdBy, employeeEmail:e.createdByEmail, branch:e.branch});
+      if(!up || !up.ok) throw new Error((up&&up.error)||"Could not save the signed copy");
+      var done = await gs("completeEstimateSigning", {token:token, signedName:name, signedUrl:up.url, signedDownloadUrl:up.downloadUrl, signedFileId:up.fileId, folderUrl:up.folderUrl});
+      if(!done || !done.ok){
+        if(done && done.error==="already"){ root.innerHTML = estCErr("This estimate was already signed. Thank you!"); return; }
+        throw new Error((done&&done.error)||"Could not record your signature");
+      }
+      var m = estCSignedEmails(d, name, up, {});
+      var custEmail = String((e.customer&&e.customer.email)||"").trim();
+      var staffTo = (e.notifyEmails&&e.notifyEmails.length ? e.notifyEmails : [e.createdByEmail]).filter(Boolean).join(",");
+      if(custEmail) estBridge("sendEmail", {to:custEmail, subject:"Your signed estimate from "+m.co+" (#"+e.number+")", body:m.custText, htmlBody:m.custHtml, replyTo:e.createdByEmail||"", senderName:m.co}).catch(function(){});
+      if(staffTo) estBridge("sendEmail", {to:staffTo, subject:"Estimate #"+e.number+" signed - "+custName+" ("+estMoney(estTotals(e).total)+")", body:m.staffText, htmlBody:m.staffHtml, senderName:m.co}).catch(function(){});
+      root.innerHTML = estCHeader(d)+"<div style='background:#fff;border-radius:14px;padding:26px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
+        +"<div style='font-size:48px;'>✅</div><div style='font-size:20px;font-weight:700;color:#166534;margin:8px 0;'>Estimate signed - thank you!</div>"
+        +"<div style='font-size:14px;color:#4b5563;margin-bottom:16px;'>A signed copy has been emailed to you"+(custEmail?" at "+esc(custEmail):"")+". We'll be in touch to schedule the work.</div>"
+        +"<a href='"+esc(up.url)+"' style='display:inline-block;background:#1e3a8a;color:#fff;text-decoration:none;padding:13px 24px;border-radius:8px;font-weight:700;'>View signed copy</a></div>";
+    } catch(err){
+      console.error("Estimate signing failed:", err);
+      alert("Sorry, something went wrong: "+err.message+"\n\nPlease try again, or contact "+contact+".");
+      btn.disabled = false; btn.textContent = "Sign & Accept Estimate";
+    }
+  };
 }
 
 function msMakeTransparent(dataUrl){
@@ -1430,6 +1807,51 @@ async function gs(fn, data){
         }
       }
 
+      case "saveEstimateDoc": {
+        await fbSet("estimateDocs", data.id, {id:data.id, pdfBase64:data.pdfBase64||"", fields:data.fields||[], snapshot:data.snapshot||{}, updatedAt:new Date().toISOString()});
+        return {ok:true};
+      }
+      case "saveEstimateToken": {
+        await fbSet("estimateTokens", data.token, {token:data.token, estimateId:data.estimateId, branch:data.branch||"willamette", createdAt:new Date().toISOString(), used:false, revoked:false});
+        return {ok:true};
+      }
+      case "revokeEstimateToken": {
+        if(data && data.token){
+          await initFirebase();
+          await _db.collection("estimateTokens").doc(data.token).set({used:true, revoked:true, revokedAt:new Date().toISOString()}, {merge:true});
+        }
+        return {ok:true};
+      }
+      case "getEstimateForSigning": {
+        var tk = data && data.token ? await fbGet("estimateTokens", data.token) : null;
+        if(!tk) return {ok:false, error:"This link is not valid."};
+        var estRec = await fbGet("estimates", tk.estimateId);
+        var estDocRec = await fbGet("estimateDocs", tk.estimateId);
+        if(!estRec || !estDocRec) return {ok:false, error:"This estimate is no longer available."};
+        return {ok:true, used:!!tk.used, revoked:!!tk.revoked, signedUrl:tk.signedUrl||"",
+          estimate:{id:estRec.id, number:estRec.number, branch:estRec.branch, status:estRec.status, date:estRec.date, createdAt:estRec.createdAt, sentAt:estRec.sentAt,
+            createdBy:estRec.createdBy, createdByEmail:estRec.createdByEmail, employeePhone:estRec.employeePhone, customer:estRec.customer, items:estRec.items,
+            showPrices:estRec.showPrices, taxRate:estRec.taxRate, notes:estRec.notes, notifyEmails:estRec.notifyEmails||[]},
+          pdfBase64:estDocRec.pdfBase64, fields:estDocRec.fields||[], snapshot:estDocRec.snapshot||{}};
+      }
+      case "completeEstimateSigning": {
+        await initFirebase();
+        var tRef = _db.collection("estimateTokens").doc(data.token);
+        var claim = await _db.runTransaction(async function(tx){
+          var s = await tx.get(tRef);
+          if(!s.exists) return {ok:false, error:"This link is not valid."};
+          var tdata = s.data();
+          if(tdata.used) return {ok:false, error:"already"};
+          tx.update(tRef, {used:true, usedAt:new Date().toISOString(), signedUrl:data.signedUrl||"", signedName:data.signedName||""});
+          return {ok:true, estimateId:tdata.estimateId};
+        });
+        if(!claim.ok) return claim;
+        await _db.collection("estimates").doc(claim.estimateId).set({
+          status:"Signed", signedAt:new Date().toISOString(), signedName:data.signedName||"", signedUrl:data.signedUrl||"",
+          signedDownloadUrl:data.signedDownloadUrl||"", signedFileId:data.signedFileId||"", folderUrl:data.folderUrl||"", updatedAt:new Date().toISOString()
+        }, {merge:true});
+        return {ok:true};
+      }
       case "getAccounts": {
         var brKey = (data&&data.branch)||"willamette";
         var cfg = await fbGet("config","accounts_"+brKey);
@@ -4240,7 +4662,7 @@ function setPage(id){
 
 function render(){
   // Don't render normal UI if guest signing is active
-  if(new URLSearchParams(window.location.search).get("sign")) return;
+  if(new URLSearchParams(window.location.search).get("sign") || new URLSearchParams(window.location.search).get("estimate")) return;
   // Super admin gets its own console
   if(S.role==="superadmin"){
     document.getElementById("login").style.display="none";
@@ -11475,6 +11897,12 @@ setTimeout(function(){ if(!S.role) loadBranchList(); }, 100);
   } catch(e){
     document.getElementById("guest-content").innerHTML = "<div style='color:#ef4444;text-align:center;padding:20px;'>Error: "+e.message+"</div>";
   }
+})();
+
+// Customer estimate link (?estimate=token): opens the signing page, no login
+(function(){
+  var t = new URLSearchParams(window.location.search).get("estimate");
+  if(t) estCustomerBoot(t);
 })();
 
 // v2.0.0 Welcome splash - called after login
