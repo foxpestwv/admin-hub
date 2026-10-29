@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.8.5";
+const APP_VERSION = "4.8.6";
 
 function runInvValue(){ runReport("inventory-value"); }
 function runLowStock(){ runReport("low-stock"); }
@@ -3378,6 +3378,26 @@ async function handleAction(a,v,el,e){
     return;
   }
   if(a==="del-prod") { removeProd(v); return; }
+  if(a==="hide-selected-products"){
+    var checked = document.querySelectorAll(".prod-hide-cb:checked");
+    if(!checked.length) return;
+    if(!confirm("Hide "+checked.length+" selected product"+(checked.length>1?"s":"")+" from your branch?")) return;
+    var ids = Array.from(checked).map(function(cb){ return cb.getAttribute("data-pid"); });
+    showToast("Hiding "+ids.length+" products...");
+    var done = 0;
+    Promise.all(ids.map(function(id){
+      return gs("hideProduct",{id:id,branch:S.branch||"willamette"}).then(function(r){
+        if(r&&r.ok){ S.products=S.products.filter(function(p){return p.id!==id;}); done++; }
+      });
+    })).then(function(){
+      S._hiddenProductCount=(S._hiddenProductCount||0)+done;
+      lsSet("hub:products",S.products);
+      save();
+      showToast(done+" product"+(done>1?"s":"")+" hidden ✓");
+      S.settingsTab="products"; renderSettings();
+    });
+    return;
+  }
   if(a==="del-item") {
     var parts2=v.split("_"); var dci=parseInt(parts2[0]); var dii=parseInt(parts2[1]);
     if(confirm("Remove this item?")){
@@ -6555,7 +6575,8 @@ function renderSettings(){
         +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;cursor:pointer;'>"
         +"<input type='checkbox' data-field='hideFromCheckout' data-pid='"+p.id+"' "+(hideFromCheckout?"checked":"")+"> Hide from techs"
         +"</label>"
-        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Remove</button>"
+        +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-prod' data-v='"+p.id+"'>Hide</button>"
+        +"<input type='checkbox' class='prod-hide-cb' data-pid='"+p.id+"' style='width:18px;height:18px;cursor:pointer;'>"
         +"</div>"
         +"</div>"
         +"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px;'>"
@@ -6694,6 +6715,16 @@ function renderSettings(){
   pg.innerHTML = "<h2 style='font-size:20px;font-weight:700;margin-bottom:12px;'>Settings</h2>"
     +superAdminBar+tabBar+body;
 
+  // Wire up product hide checkboxes
+  pg.querySelectorAll(".prod-hide-cb").forEach(function(cb){
+    cb.addEventListener("change", function(){
+      var anyChecked = pg.querySelectorAll(".prod-hide-cb:checked").length > 0;
+      var btn = document.getElementById("hide-selected-btn");
+      if(btn) btn.style.display = anyChecked ? "block" : "none";
+      var count = pg.querySelectorAll(".prod-hide-cb:checked").length;
+      if(btn && count > 0) btn.textContent = "Hide Selected ("+count+")";
+    });
+  });
   // Wire up product field changes
   pg.querySelectorAll("input[data-pid]").forEach(function(inp){
     inp.addEventListener("change", function(){
@@ -6786,8 +6817,8 @@ async function removeProd(id){
       S._restockId=null; S._adjId=null;
       save();
       // Re-render whichever view is active
-      if(S.currentTab==="settings"){ S.settingsTab="products"; renderSettings(); }
-      else if(S.currentTab==="reports") renderReports();
+      if(S.currentTab==="settings"||S.tab==="settings"){ S.settingsTab="products"; renderSettings(); }
+      else if(S.currentTab==="reports"||S.tab==="reports") renderReports();
       else renderInv();
     } else {
       alert("Could not remove from sheet. Please sync and try again.");
