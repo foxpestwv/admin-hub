@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.0.3";
+const APP_VERSION = "5.0.6";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -9846,7 +9846,7 @@ async function signSubmitTech(){
             techEmail: req.techEmail||"",
             techSig: sigData,
             managerSig: req.managerSig||"",
-            managerEmail: (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
+            managerEmail: getNotifEmails("qa_ra_form") || (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",") || (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
             isQA: req.isQA||false,
             isRA: req.isRA||false,
             docName: req.docName||"",
@@ -9945,7 +9945,7 @@ async function signSubmitTech(){
                   action:"submitMultiSign",
                   signedPdfBase64: signedB64,
                   techName: "All Signers",
-                  managerEmail: (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
+                  managerEmail: getNotifEmails("qa_ra_form") || (S.managers||[]).map(function(m){return m.email;}).filter(Boolean).join(",") || (S.branch==="spokane"?"michael.grow@fox-marketingservices.com":"john.kluttz@fox-marketingservices.com"),
                   branch: S.branch||"willamette",
                   docName: finalDocName
                 })
@@ -10141,7 +10141,8 @@ async function submitQAForm(){
 
   try {
     // Step 1: Write data to QA sheet (fast)
-    var writeResult = await gs("writeQADataServer", {qaData:d, manager:S.managerName});
+    var tech2 = S.techAccounts.find(function(t){ return t.name===d.tech; });
+    var writeResult = await gs("writeQADataServer", {qaData:d, manager:S.managerName, techEmail:tech2?tech2.email:"", branch:S.branch||"willamette"});
     if(!writeResult||!writeResult.ok){
       document.getElementById("qa-loading")&&document.getElementById("qa-loading").remove();
       alert("Error writing to QA sheet: "+(writeResult?writeResult.error:"unknown"));
