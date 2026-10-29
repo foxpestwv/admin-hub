@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.9.1";
+const APP_VERSION = "4.9.3";
 
 function updateHideBtn(){
   var cbs = document.querySelectorAll(".prod-hide-cb:checked");
@@ -729,13 +729,18 @@ async function gs(fn, data){
       case "saveAccountsServer": {
         var brKeySave = (data&&data.branch)||"willamette";
         // Safety: never overwrite trucks/cats/inspFields with empty arrays
-        var existingAccts = await fbGet("config","accounts_"+brKeySave);
-        var trucksToSave = (data.trucks&&data.trucks.length>0) ? data.trucks : (existingAccts&&existingAccts.trucks&&existingAccts.trucks.length>0 ? existingAccts.trucks : []);
-        var catsToSave = (data.cats&&data.cats.length>0) ? data.cats : (existingAccts&&existingAccts.cats&&existingAccts.cats.length>0 ? existingAccts.cats : []);
-        var inspFieldsToSave = (data.inspFields&&data.inspFields.length>0) ? data.inspFields : (existingAccts&&existingAccts.inspFields&&existingAccts.inspFields.length>0 ? existingAccts.inspFields : []);
+        // Safety: read existing data first, never overwrite any array with empty
+        var existingAccts = await fbGet("config","accounts_"+brKeySave) || {};
+        var managersToSave = (data.managers&&data.managers.length>0) ? data.managers : (existingAccts.managers&&existingAccts.managers.length>0 ? existingAccts.managers : []);
+        var techsToSave = (data.techAccounts&&data.techAccounts.length>0) ? data.techAccounts : (existingAccts.techAccounts&&existingAccts.techAccounts.length>0 ? existingAccts.techAccounts : []);
+        var trucksToSave = (data.trucks&&data.trucks.length>0) ? data.trucks : (existingAccts.trucks&&existingAccts.trucks.length>0 ? existingAccts.trucks : []);
+        var catsToSave = (data.cats&&data.cats.length>0) ? data.cats : (existingAccts.cats&&existingAccts.cats.length>0 ? existingAccts.cats : []);
+        var inspFieldsToSave = (data.inspFields&&data.inspFields.length>0) ? data.inspFields : (existingAccts.inspFields&&existingAccts.inspFields.length>0 ? existingAccts.inspFields : []);
+        // Safety: never save if branch doesn't match current session
+        Logger.log("saveAccounts: branch="+brKeySave+" managers="+managersToSave.length+" techs="+techsToSave.length);
         await fbSet("config","accounts_"+brKeySave,{
-          managers: data.managers||[],
-          techAccounts: data.techAccounts||[],
+          managers: managersToSave,
+          techAccounts: techsToSave,
           trucks: trucksToSave,
           cats: catsToSave,
           inspFields: inspFieldsToSave,
@@ -1222,6 +1227,19 @@ async function gs(fn, data){
         var rs = await _db.collection("config").doc("reportSchedule_"+(data&&data.branch||"willamette")).get();
         return {schedule: rs.exists ? rs.data() : {}};
       }
+      case "saveProducts": {
+        // Safety: never overwrite products with empty array
+        if(!data.products || data.products.length===0){
+          Logger.log("saveProducts: skipping - empty products array");
+          return {ok:false, error:"Empty products array rejected"};
+        }
+        var branch2 = data.branch||"willamette";
+        for(var pi=0; pi<data.products.length; pi++){
+          var prod = data.products[pi];
+          if(prod.id) await fbSet("products", prod.id, Object.assign({},prod,{updatedAt:new Date().toISOString()}));
+        }
+        return {ok:true};
+      }
       case "saveNotifConfig": {
         await _db.collection("config").doc("notifConfig_"+(data.branch||"willamette")).set(data.config||{}, {merge:false});
         return {ok:true};
@@ -1704,11 +1722,13 @@ async function loadAccountsFromSheet(){
 
 async function saveAccountsToSheet(){
   try {
-    // Never save empty managers - prevents cross-branch data corruption
-    if(!S.managers || S.managers.length===0){
-      console.warn("saveAccountsToSheet: skipping - no managers to save");
-      return;
-    }
+    // Safety checks - never save if data looks wrong
+    if(!S.branch){ console.warn("saveAccountsToSheet: skipping - no branch set"); return; }
+    if(!S.managers || S.managers.length===0){ console.warn("saveAccountsToSheet: skipping - no managers"); return; }
+    if(!S.techAccounts){ console.warn("saveAccountsToSheet: skipping - no techAccounts"); return; }
+    // Extra check: make sure we are actually logged in
+    if(!S.role || !S.managerName){ console.warn("saveAccountsToSheet: skipping - not logged in"); return; }
+    console.log("saveAccountsToSheet: saving branch="+S.branch+" managers="+S.managers.length+" techs="+S.techAccounts.length);
     await gs("saveAccountsServer", {
       branch: S.branch||"willamette",
       managers: S.managers,
@@ -4288,7 +4308,7 @@ async function submitCartOrder(){
   var orderDoc = {
     id:orderId, tech:techName, date:new Date().toISOString(),
     status:"Pending", items:selectedItems, notes:comments,
-    requestedBy:techName
+    requestedBy:techName, branch:S.branch||"willamette"
   };
 
   try {
@@ -4409,6 +4429,7 @@ async function submitCheckout(){
     const groupedOrder = {
       id: orderId, date, tech, techEmail,
       status: "Pending", items: orderItems,
+      branch: S.branch||"willamette",
       approvedBy: "", createdAt: new Date().toISOString()
     };
     S.orders.unshift(groupedOrder);
@@ -4419,7 +4440,7 @@ async function submitCheckout(){
     if(orders.length>0){
       const itemList=itemLines.join("\n  - ");
       const miscNotes = (document.getElementById("checkout-misc")||{}).value||"";
-      const body="Product Request - Fox Pest Control Willamette Valley\n\n"
+      const body="Product Request - Fox Pest Control "+(S.branchName||"Willamette Valley")+"\n\n"
         +"Technician: "+tech+"\n"
         +"Date: "+new Date(date).toLocaleDateString("en-US")+"\n\n"
         +"Items Requested:\n  - "+itemList+"\n\n"
