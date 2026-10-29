@@ -439,7 +439,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "4.6.7";
+const APP_VERSION = "4.6.8";
 
 function getNotifEmails(key){
   var cfg = (S.notifConfig||{})[key]||{};
@@ -685,8 +685,8 @@ async function gs(fn, data){
             // Flatten items into individual checkout records
             return items.map(function(item){
               return {
-                tech: rec.techName||rec.requestedBy||"Unknown",
-                techName: rec.techName||rec.requestedBy||"Unknown",
+                tech: rec.tech||rec.techName||rec.requestedBy||"Unknown",
+                techName: rec.tech||rec.techName||rec.requestedBy||"Unknown",
                 product: item.name||"",
                 name: item.name||"",
                 qty: item.approvedQty||item.qty||0,
