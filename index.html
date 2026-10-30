@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.6.0";
+const APP_VERSION = "5.6.1";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -1850,6 +1850,26 @@ function homeSaBind(div, branchId, tcfg){
       showToast(el.checked ? "Turned on ✓" : "Turned off ✓");
     } catch(err){ showToast("Could not save: "+err.message); el.checked = !el.checked; state[el.dataset.sabt] = !!el.checked; }
   });
+}
+
+// ─── Hidden products: the Restore button always shows; the count loads in the background ─
+function hiddenRestoreButton(){
+  var n = S._hiddenProductCount;
+  return "<button class='btn bg' data-a='show-hidden-products' style='flex:1;padding:12px;'>👁 Restore Hidden"+(n>0 ? " ("+n+")" : "")+"</button>";
+}
+function hiddenCountEnsure(){
+  var b = S.branch || "willamette";
+  if(S._hiddenCountBranch===b) return;
+  if(S._hiddenCountBranch && S._hiddenCountBranch!==b) S._hiddenProductCount = undefined;   // never show another branch's count
+  S._hiddenCountBranch = b;
+  gs("getHiddenProducts", {branch:b}).then(function(r){
+    var hid = (r && r.hidden) || {};
+    var n = Object.keys(hid).filter(function(k){ return hid[k]; }).length;
+    if(n!==S._hiddenProductCount){
+      S._hiddenProductCount = n;
+      if(S.tab==="settings" && S.settingsTab==="products") renderSettings();
+    }
+  }).catch(function(){});
 }
 
 function msMakeTransparent(dataUrl){
@@ -4141,12 +4161,12 @@ async function handleAction(a,v,el,e){
   if(typeof a==="string" && a.indexOf("est-")===0){
     try { if(await estHandleAction(a,v)) return; } catch(err){ console.error("Estimate action error:", err); showToast("Estimate error: "+err.message); return; }
   }
-  if(a==="settings-tab") { S.settingsTab=v; render(); return; }
+  if(a==="settings-tab") { S.settingsTab=v; if(v==="products") S._hiddenCountBranch = null; render(); return; }
   if(a==="show-hidden-products"){
     var hRes3 = await gs("getHiddenProducts", {branch:S.branch||"willamette"});
     var hiddenIds3 = Object.keys(hRes3.hidden||{}).filter(function(k){return hRes3.hidden[k];});
     if(hiddenIds3.length===0){ showToast("No hidden products"); return; }
-    var allProds3 = await gs("getProducts", {branch:"willamette"});
+    var allProds3 = await gs("getProducts", {branch:S.branch||"willamette", includeHidden:true});   // include hidden ones so their names show
     var pg4 = document.getElementById("pg-settings");
     if(!pg4) return;
     var html3 = "<div style='padding:4px;'>"
@@ -8333,11 +8353,12 @@ function renderSettings(){
         +"</div>";
     }).join("");
 
+    hiddenCountEnsure();
     body = "<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Products</h2>"
       +prodRows
       +"<div style='display:flex;gap:8px;margin-top:12px;'>"
       +"<button class='btn bd' id='hide-selected-btn' data-a='hide-selected-products' style='flex:1;padding:12px;'>☑ Hide Selected</button>"
-      +(S._hiddenProductCount>0?"<button class='btn bg' data-a='show-hidden-products' style='flex:1;padding:12px;'>👁 Restore Hidden ("+S._hiddenProductCount+")</button>":"")
+      +hiddenRestoreButton()
       +"</div>";
 
   } else if(tab==="estimates"){
