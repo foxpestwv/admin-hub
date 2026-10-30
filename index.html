@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.5.0";
+const APP_VERSION = "5.6.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -1639,6 +1639,219 @@ async function estCLoadPhotos(token, e){
   } catch(err){ box.innerHTML = "<div style='font-size:12px;color:#6b7280;'>The photos are included in the full PDF below.</div>"; }
 }
 
+// ─── Home screen access: branch switches, role defaults, per-person overrides ─
+const HOME_TILES = [
+  {key:"inventory", label:"Inventory", roles:["manager","lead"]},
+  {key:"orders", label:"Orders", roles:["manager","lead"]},
+  {key:"inspect", label:"Fleet", roles:["manager","lead"]},
+  {key:"sign", label:"Sign / Documents", roles:["manager","lead","tech"]},
+  {key:"restock", label:"Restock", roles:["manager"]},
+  {key:"truckinv", label:"Truck Inventory", roles:["manager","lead","tech"]},
+  {key:"checkout", label:"Checkout / Request Products", roles:["manager","lead","tech"]},
+  {key:"scan", label:"Scan", roles:["manager","lead","tech"]},
+  {key:"reports", label:"Reports", roles:["manager"]},
+  {key:"ooo", label:"1-on-1", roles:["manager","lead","tech"]},
+  {key:"estimates", label:"Estimates", roles:["manager","lead","tech"]},
+  {key:"settings", label:"Settings", roles:["manager"], locked:true}
+];
+const HOME_ROLE_LABELS = {manager:"Manager", lead:"Lead Tech", tech:"Tech"};
+function homeKey(tab){ return tab==="__scan__" ? "scan" : tab; }
+function homePersonKey(p){ return String((p && (p.id || p.email || p.name)) || "").replace(/[^A-Za-z0-9_-]/g, "_"); }
+// Settings are tagged with the branch they belong to, so switching branches can never show another branch's tiles
+function homeCfg(){
+  var b = S.branch || "willamette";
+  if(S._tileCfg && S._tileCfgBranch===b) return S._tileCfg;
+  return lsGet("hub:tileCfg_"+b) || {};
+}
+function homeCfgEdit(){
+  var b = S.branch || "willamette";
+  if(!(S._tileCfg && S._tileCfgBranch===b)){ S._tileCfg = JSON.parse(JSON.stringify(homeCfg())); S._tileCfgBranch = b; }
+  return S._tileCfg;
+}
+function homeRoleKey(){ return S.role==="manager" ? "manager" : (((S.currentUser && S.currentUser.perms)==="lead") ? "lead" : "tech"); }
+function homeMe(){
+  var name = S.role==="manager" ? (S.managerName||"") : (S.currentTech || (S.currentUser && S.currentUser.name) || "");
+  var list = S.role==="manager" ? (S.managers||[]) : (S.techAccounts||[]);
+  var acct = list.find(function(x){ return x.name===name; }) || null;
+  return {name:name, acct:acct, key:homePersonKey(acct || {name:name})};
+}
+// The one rule: branch switch beats everything; then the person's override; then their role's default.
+function homeTileOn(key, cfg, roleKey, personKey){
+  cfg = cfg || {};
+  if(key==="settings" && roleKey==="manager") return true;                 // managers can never be locked out of Settings
+  if((cfg.branchTiles || {})[key]===false) return false;                  // branch doesn't use this feature
+  var ov = (cfg.overrides || {})[personKey];
+  if(ov && (ov[key]===true || ov[key]===false)) return ov[key];           // personal override
+  var rd = (cfg.roleDefaults || {})[roleKey] || {};
+  return rd[key]!==false;                                                 // role default (on unless switched off)
+}
+function homeVisible(tab){
+  var key = homeKey(tab);
+  var tile = HOME_TILES.find(function(t){ return t.key===key; });
+  if(!tile) return true;                                                   // not a switchable screen (e.g. Home)
+  return homeTileOn(key, homeCfg(), homeRoleKey(), homeMe().key);
+}
+function homeCanEdit(){
+  if(S.role!=="manager") return false;
+  var me = homeMe().acct;
+  return !!(me && (me.isAdmin===true || me.canManageHome===true));
+}
+function homeIsAdmin(){ var me = homeMe().acct; return !!(S.role==="manager" && me && me.isAdmin===true); }
+function homeSetMainAdmin(mgrs, email){
+  var target = String(email||"").toLowerCase();
+  return (mgrs||[]).map(function(m){ return Object.assign({}, m, {isAdmin: String(m.email||"").toLowerCase()===target}); });
+}
+function homeLocalSave(){ try { lsSet("hub:tileCfg_"+(S.branch||"willamette"), S._tileCfg||{}); } catch(x){} }
+
+// ── Settings → Home Screen tab (main admin + managers they authorize) ──
+function homePeople(){
+  return (S.managers||[]).map(function(p){ return {p:p, role:"manager"}; })
+    .concat((S.techAccounts||[]).map(function(p){ return {p:p, role:(p.perms==="lead" ? "lead" : "tech")}; }));
+}
+function homeSettingsBody(){
+  var branch = S.branch || "willamette";
+  if(S._homeLoadedFor!==branch){
+    S._homeLoadedFor = branch;
+    gs("getTileSettings", {branch:branch}).then(function(r){
+      S._tileCfg = (r && r.config) || {}; S._tileCfgBranch = branch; homeLocalSave();
+      if(S.tab==="settings" && S.settingsTab==="homescreen") renderSettings();
+    }).catch(function(){});
+  }
+  var cfg = homeCfg(), bt = cfg.branchTiles || {}, rd = cfg.roleDefaults || {}, ov = cfg.overrides || {};
+  var avail = HOME_TILES.filter(function(t){ return bt[t.key]!==false; });
+  var lab = "font-size:11px;color:#64748b;";
+  var h = "<h2 style='font-size:18px;font-weight:700;margin-bottom:4px;'>Home Screen</h2>"
+    +"<p style='font-size:12px;color:#64748b;margin-bottom:14px;'>Choose which squares each role sees on the home screen. Only features turned on for your branch are listed. Hiding a square hides that screen everywhere.</p>";
+  // 1. role defaults
+  h += "<div class='card' style='padding:14px;margin-bottom:14px;'><div style='font-weight:700;margin-bottom:10px;'>Role defaults</div>"
+    +"<div style='display:grid;grid-template-columns:1fr 58px 58px 58px;gap:6px 4px;align-items:center;font-size:13px;'>"
+    +"<div></div><div style='"+lab+"text-align:center;'>Manager</div><div style='"+lab+"text-align:center;'>Lead Tech</div><div style='"+lab+"text-align:center;'>Tech</div>";
+  avail.forEach(function(t){
+    h += "<div>"+esc(t.label)+"</div>";
+    ["manager","lead","tech"].forEach(function(role){
+      if(t.roles.indexOf(role)<0){ h += "<div style='text-align:center;color:#334155;'>-</div>"; return; }
+      var locked = t.locked && role==="manager", on = locked || ((rd[role]||{})[t.key]!==false);
+      h += "<div style='text-align:center;'><input type='checkbox' data-hrole='"+role+":"+t.key+"' "+(on?"checked ":"")+(locked?"disabled title='Managers always keep Settings' ":"")+"style='width:18px;height:18px;'></div>";
+    });
+  });
+  h += "</div></div>";
+  // 2. individual overrides
+  var people = homePeople();
+  if(people.length){
+    var selKey = S._homePerson;
+    if(!people.some(function(x){ return homePersonKey(x.p)===selKey; })) selKey = homePersonKey(people[0].p);
+    var sel = people.find(function(x){ return homePersonKey(x.p)===selKey; });
+    var myOv = ov[selKey] || {};
+    h += "<div class='card' style='padding:14px;margin-bottom:14px;'><div style='font-weight:700;margin-bottom:4px;'>Individual overrides</div>"
+      +"<div style='font-size:11px;color:#64748b;margin-bottom:10px;'>Give one person a different set than their role. Anything left on \"Follow role\" uses the role defaults above.</div>"
+      +"<select class='inp' data-hperson='1' style='margin-bottom:10px;'>"
+      +people.map(function(x){ var k = homePersonKey(x.p); return "<option value='"+esc(k)+"'"+(k===selKey?" selected":"")+">"+esc(x.p.name)+" - "+HOME_ROLE_LABELS[x.role]+"</option>"; }).join("")+"</select>";
+    avail.filter(function(t){ return t.roles.indexOf(sel.role)>=0; }).forEach(function(t){
+      var roleOn = homeTileOn(t.key, {branchTiles:bt, roleDefaults:rd, overrides:{}}, sel.role, "");
+      var cur = myOv[t.key]===true ? "on" : myOv[t.key]===false ? "off" : "";
+      var locked = t.locked && sel.role==="manager";
+      h += "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1e3a5f;font-size:13px;'><span>"+esc(t.label)+"</span>"
+        +(locked ? "<span style='font-size:11px;color:#64748b;'>Always on</span>"
+          : "<select class='inp' style='width:150px;padding:5px 8px;font-size:12px;' data-hover='"+esc(selKey)+":"+t.key+"'>"
+            +"<option value=''"+(cur===""?" selected":"")+">Follow role ("+(roleOn?"On":"Off")+")</option>"
+            +"<option value='on'"+(cur==="on"?" selected":"")+">Always on</option>"
+            +"<option value='off'"+(cur==="off"?" selected":"")+">Always off</option></select>")
+        +"</div>";
+    });
+    h += "</div>";
+  }
+  // 3. authorization (main admin only)
+  if(homeIsAdmin()){
+    var others = (S.managers||[]).filter(function(m){ return !m.isAdmin; });
+    h += "<div class='card' style='padding:14px;margin-bottom:14px;'><div style='font-weight:700;margin-bottom:4px;'>Authorization</div>"
+      +"<div style='font-size:11px;color:#64748b;margin-bottom:10px;'>You are this branch's main admin. Tick a manager to let them change these Home Screen settings too.</div>"
+      +(others.length ? others.map(function(m){
+          return "<label style='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1e3a5f;font-size:13px;'>"
+            +"<input type='checkbox' data-hauth='"+esc(m.email||"")+"' "+(m.canManageHome?"checked ":"")+"style='width:18px;height:18px;'>"
+            +"<span>"+esc(m.name)+"<span style='color:#64748b;font-size:11px;'> - can manage Home Screen settings</span></span></label>";
+        }).join("") : "<div style='font-size:12px;color:#64748b;'>No other managers in this branch yet.</div>")
+      +"</div>";
+  }
+  return h;
+}
+async function homeSetRole(spec, on){
+  var p = spec.split(":"), role = p[0], key = p[1];
+  var cfg = homeCfgEdit();
+  cfg.roleDefaults = cfg.roleDefaults || {};
+  var map = cfg.roleDefaults[role] = cfg.roleDefaults[role] || {};
+  map[key] = !!on;
+  var full = {};
+  HOME_TILES.forEach(function(t){ if(t.roles.indexOf(role)>=0) full[t.key] = map[t.key]!==false; });
+  cfg.roleDefaults[role] = full;
+  homeLocalSave();
+  var rdPatch = {}; rdPatch[role] = full;
+  await gs("saveTileSettings", {branch:S.branch||"willamette", by:homeMe().name, roleDefaults:rdPatch});
+  showToast("Saved ✓");
+}
+async function homeSetOverride(spec, value){
+  var p = spec.split(":"), personKey = p[0], tileKey = p[1];
+  var person = homePeople().find(function(x){ return homePersonKey(x.p)===personKey; });
+  var tile = HOME_TILES.find(function(t){ return t.key===tileKey; });
+  if(!person || !tile || tile.roles.indexOf(person.role)<0) return;      // only tiles that person's role actually has
+  var cfg = homeCfgEdit();
+  cfg.overrides = cfg.overrides || {};
+  var cur = cfg.overrides[personKey] || {}, map = {};
+  HOME_TILES.forEach(function(t){
+    if(t.roles.indexOf(person.role)<0) return;
+    map[t.key] = (cur[t.key]===true || cur[t.key]===false) ? cur[t.key] : null;
+  });
+  map[tileKey] = value==="on" ? true : value==="off" ? false : null;
+  cfg.overrides[personKey] = map;
+  homeLocalSave();
+  await gs("saveTileSettings", {branch:S.branch||"willamette", by:homeMe().name, override:{id:personKey, map:map}});
+  showToast("Saved ✓");
+}
+async function homeSetAuth(email, on){
+  var m = (S.managers||[]).find(function(x){ return String(x.email||"")===String(email); });
+  if(!m) return;
+  m.canManageHome = !!on;
+  await saveAccountsToSheet();
+  showToast(on ? m.name+" can now manage Home Screen settings" : m.name+" can no longer manage them");
+}
+function homeBindSettings(pg){
+  if(pg._homeBound) return; pg._homeBound = true;
+  pg.addEventListener("change", async function(ev){
+    var el = ev.target;
+    if(!el || !el.dataset) return;
+    try {
+      if(el.dataset.hrole){ await homeSetRole(el.dataset.hrole, el.checked); }
+      else if(el.dataset.hperson){ S._homePerson = el.value; renderSettings(); }
+      else if(el.dataset.hover){ await homeSetOverride(el.dataset.hover, el.value); }
+      else if(el.dataset.hauth!==undefined){ await homeSetAuth(el.dataset.hauth, el.checked); }
+    } catch(err){ showToast("Could not save: "+err.message); }
+  });
+}
+
+// ── Super admin console: per-branch feature switches ──
+function homeSaCard(b, tcfg){
+  var bt = (tcfg && tcfg.branchTiles) || {};
+  return "<div class='card' style='margin-bottom:12px;'>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;'>Home Screen Features</div>"
+    +"<div style='font-size:11px;color:#64748b;margin-bottom:10px;'>Turn off anything this branch doesn't use. It disappears for everyone here, and the branch's managers can't turn it back on.</div>"
+    +HOME_TILES.filter(function(t){ return !t.locked; }).map(function(t){
+      return "<label style='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3a5f;font-size:14px;'>"
+        +"<span>"+esc(t.label)+"</span><input type='checkbox' data-sabt='"+t.key+"' "+(bt[t.key]!==false?"checked ":"")+"style='width:20px;height:20px;'></label>";
+    }).join("")+"</div>";
+}
+function homeSaBind(div, branchId, tcfg){
+  var state = JSON.parse(JSON.stringify((tcfg && tcfg.branchTiles) || {}));
+  div.addEventListener("change", async function(ev){
+    var el = ev.target;
+    if(!el || !el.dataset || !el.dataset.sabt) return;
+    state[el.dataset.sabt] = !!el.checked;
+    var full = {}; HOME_TILES.forEach(function(t){ if(!t.locked) full[t.key] = state[t.key]!==false; });
+    try {
+      await gs("saveTileSettings", {branch:branchId, by:"Super Admin", branchTiles:full});
+      showToast(el.checked ? "Turned on ✓" : "Turned off ✓");
+    } catch(err){ showToast("Could not save: "+err.message); el.checked = !el.checked; state[el.dataset.sabt] = !!el.checked; }
+  });
+}
+
 function msMakeTransparent(dataUrl){
   return new Promise(function(resolve){
     try {
@@ -2102,6 +2315,21 @@ async function gs(fn, data){
           status:"Signed", signedAt:new Date().toISOString(), signedName:data.signedName||"", signedUrl:data.signedUrl||"",
           signedDownloadUrl:data.signedDownloadUrl||"", signedFileId:data.signedFileId||"", folderUrl:data.folderUrl||"", updatedAt:new Date().toISOString()
         }, {merge:true});
+        return {ok:true};
+      }
+      case "getTileSettings": {
+        var tsBranch = (data && data.branch) || "willamette";
+        var tsDoc = await fbGet("config", "tileSettings_"+tsBranch);
+        return {config: tsDoc || {}};
+      }
+      case "saveTileSettings": {
+        // Each part is written on its own so the super admin, a manager, and per-person edits never overwrite each other
+        var tsBranch2 = (data && data.branch) || "willamette";
+        var tsPatch = {updatedAt:new Date().toISOString(), updatedBy:data.by||""};
+        if(data.branchTiles) tsPatch.branchTiles = data.branchTiles;
+        if(data.roleDefaults) tsPatch.roleDefaults = data.roleDefaults;
+        if(data.override && data.override.id){ tsPatch.overrides = {}; tsPatch.overrides[data.override.id] = data.override.map || {}; }
+        await fbSet("config", "tileSettings_"+tsBranch2, tsPatch);
         return {ok:true};
       }
       case "getAccounts": {
@@ -3147,6 +3375,10 @@ async function syncFromSheet(){
     const [pr,tc,ro,insp,ti] = await Promise.all([gs("getProductsServer",_syncBranch),gs("getTechsServer",_syncBranch),gs("getRestockOrdersServer",_syncBranch),gs("getInspectionsServer",_syncBranch),gs("getTruckInventoryServer",_syncBranch)]);
     // Also load sign requests fresh
     try {
+      try {
+        var tcRes = await gs("getTileSettings", _syncBranch);
+        S._tileCfg = (tcRes && tcRes.config) || {}; S._tileCfgBranch = S.branch||"willamette"; homeLocalSave();
+      } catch(x){ console.warn("Tile settings load:", x); }
       var rsResult = await gs("getReportSchedule", _syncBranch);
       S.reportSchedule = rsResult.schedule||{};
       lsSet("hub:reportSchedule", S.reportSchedule);
@@ -3982,11 +4214,22 @@ async function handleAction(a,v,el,e){
     var mPin = prompt("Temporary PIN (4-8 digits):");
     if(!mPin||mPin.length<4){ alert("PIN must be at least 4 digits"); return; }
     var branchAccts = await gs("getAccounts",{branch:v});
-    var newMgr = {name:mName,email:mEmail.toLowerCase(),title:mTitle,tempPin:mPin,isTemp:true,pin:"",id:"mgr_"+Date.now()};
+    var newMgr = {name:mName,email:mEmail.toLowerCase(),title:mTitle,tempPin:mPin,isTemp:true,pin:"",id:"mgr_"+Date.now(),isAdmin:(branchAccts.managers||[]).length===0};   // the first manager added to a branch is its main admin
     var mgrs2 = (branchAccts.managers||[]).concat([newMgr]);
     await gs("saveAccounts",{branch:v,managers:mgrs2,techAccounts:branchAccts.techAccounts||[],trucks:branchAccts.trucks||[],cats:branchAccts.cats||[],inspFields:branchAccts.inspFields||[]});
     showToast(mName+" added ✓");
     S._saViewBranch = {id:v, name:S._saViewBranch&&S._saViewBranch.name||v};
+    renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-main-admin"){
+    var maParts = v.split("|");
+    if(!confirm("Make this manager the main admin for this branch?\n\nThey will control the branch's Home Screen settings and can authorize other managers to do the same. Any previous main admin loses that role.")) return;
+    var maAccts = await gs("getAccounts",{branch:maParts[0]});
+    var maMgrs = homeSetMainAdmin(maAccts.managers||[], maParts[1]);
+    await gs("saveAccounts",{branch:maParts[0],managers:maMgrs,techAccounts:maAccts.techAccounts||[],trucks:maAccts.trucks||[],cats:maAccts.cats||[],inspFields:maAccts.inspFields||[]});
+    showToast("Main admin updated ✓");
+    S._saViewBranch = {id:maParts[0], name:S._saViewBranch&&S._saViewBranch.name||maParts[0]};
     renderSuperAdmin();
     return;
   }
@@ -4946,6 +5189,7 @@ function render(){
   // Show version in header
   var vbadge = document.getElementById("version-badge");
   if(vbadge) vbadge.textContent = "v"+APP_VERSION;
+  if(S.tab && S.tab!=="dashboard" && !homeVisible(S.tab)){ S.tab = "dashboard"; }   // a screen that has been hidden sends you home
   setPage(S.tab);
   if(S.tab==="dashboard") renderDash();
   else if(S.tab==="inspect") renderInspect();
@@ -5032,7 +5276,7 @@ function renderDash(){
     techTiles.push({icon:"🚛", label:"Fleet", tab:"inspect", color:"#1a2f2f", accent:"#06b6d4", badge:0});
   }
 
-  var tiles = S.role==="manager" ? mgrTiles : techTiles;
+  var tiles = (S.role==="manager" ? mgrTiles : techTiles).filter(function(t){ return homeVisible(t.tab); });
   var cols = S.role==="manager" ? 3 : 3;
 
   var photoHtml = photo
@@ -5048,6 +5292,9 @@ function renderDash(){
       +badgeHtml
       +"</div>";
   }).join("");
+  if(!tiles.length){
+    tilesHtml = "<div style='grid-column:1/-1;text-align:center;color:#64748b;padding:30px 10px;font-size:14px;'>Nothing is available on your home screen yet.<br>Ask your manager if you need access to something.</div>";
+  }
 
   pg.innerHTML = ""
     // Header card
@@ -6773,7 +7020,7 @@ function renderDrawerNav(){
     {id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"},{id:"settings",l:"Settings"}
   ];
   var tTabs=[{id:"dashboard",l:"Home"},{id:"checkout",l:"Request"},{id:"truckinv",l:"My Truck"},{id:"sign",l:"Sign"},{id:"__scan__",l:"Scan Barcode"}];
-  var tabs = S.role==="manager" ? mTabs : tTabs;
+  var tabs = (S.role==="manager" ? mTabs : tTabs).filter(function(t){ return t.id==="dashboard" || homeVisible(t.id); });
   var pending = (S.orders||[]).filter(function(o){ return o.status==="Pending"; }).length;
   var pendSign = S.role==="manager" ? 0 : (S.signRequests||[]).filter(function(r){ return r.status==="Pending"&&r.techName===(S.currentTech||S.managerName); }).length;
 
@@ -7885,7 +8132,8 @@ function renderSuperAdminBranch(pg){
     +"</div>";
 
   // Load this branch's accounts and render settings
-  gs("getAccounts",{branch:b.id}).then(function(res){
+  Promise.all([gs("getAccounts",{branch:b.id}), gs("getTileSettings",{branch:b.id})]).then(function(rs){
+    var res = rs[0], tcfg = (rs[1] && rs[1].config) || {};
     var mgrs = res&&res.managers||[];
     var techs = res&&res.techAccounts||[];
     var settingsDiv = document.getElementById("sa-branch-settings");
@@ -7897,9 +8145,11 @@ function renderSuperAdminBranch(pg){
         return "<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e3a5f;'>"
           +"<div><div style='font-weight:600;'>"+esc(m.name)+"</div>"
           +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
-          +"<div style='font-size:11px;color:#f59e0b;'>"+esc(m.title||"Manager")+"</div></div>"
+          +"<div style='font-size:11px;color:#f59e0b;'>"+esc(m.title||"Manager")+(m.isAdmin?" · ★ Main admin":"")+"</div></div>"
+          +"<div style='display:flex;gap:6px;'>"
+          +(m.isAdmin ? "" : "<button class='btn bg' style='padding:5px 10px;font-size:11px;' data-a='sa-main-admin' data-v='"+b.id+"|"+m.email+"'>Make main admin</button>")
           +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
-          +"data-a='sa-remove-manager' data-v='"+b.id+"|"+m.email+"'>Remove</button>"
+          +"data-a='sa-remove-manager' data-v='"+b.id+"|"+m.email+"'>Remove</button></div>"
           +"</div>";
       }).join("")
       +"<button class='btn bp' data-a='sa-add-manager' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Manager</button>"
@@ -7916,7 +8166,9 @@ function renderSuperAdminBranch(pg){
       }).join("")
       +"<button class='btn bp' data-a='sa-add-tech' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Technician</button>"
       +"</div>";
+    html += homeSaCard(b, tcfg);
     settingsDiv.innerHTML = html;
+    homeSaBind(settingsDiv, b.id, tcfg);
   });
 }
 
@@ -7924,6 +8176,7 @@ function renderSettings(){
   const pg = document.getElementById("pg-settings");
   if(!pg) return;
   estBindSettings(pg);
+  homeBindSettings(pg);
   const tab = S.settingsTab||"access";
 
   const tabs = [
@@ -7934,6 +8187,7 @@ function renderSettings(){
     {id:"estimates",l:"Estimates"},
     {id:"notifications",l:"Notifications"}
   ];
+  if(homeCanEdit()) tabs.push({id:"homescreen",l:"Home Screen"});
 
   const tabBar = "<div style='display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px;'>"
     +tabs.map(function(t){
@@ -8088,6 +8342,9 @@ function renderSettings(){
 
   } else if(tab==="estimates"){
     body = estSettingsBody();
+
+  } else if(tab==="homescreen"){
+    body = homeCanEdit() ? homeSettingsBody() : "<div style='text-align:center;color:#64748b;padding:30px;'>Only your branch's main admin (or a manager they authorize) can change the Home Screen.</div>";
 
   } else if(tab==="notifications"){
     var notifConfig = S.notifConfig || {};
