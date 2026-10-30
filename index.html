@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.6.1";
+const APP_VERSION = "5.8.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -1867,9 +1867,212 @@ function hiddenCountEnsure(){
     var n = Object.keys(hid).filter(function(k){ return hid[k]; }).length;
     if(n!==S._hiddenProductCount){
       S._hiddenProductCount = n;
-      if(S.tab==="settings" && S.settingsTab==="products") renderSettings();
+      if(S.tab==="settings" && S.settingsTab==="products" && !S._hidPageOpen) renderSettings();
     }
   }).catch(function(){});
+}
+
+// ─── Super admin: welcome email for new managers (web address, login email, temporary PIN) ─
+const APP_PROD_URL = "https://foxpestwv.github.io/admin-hub";
+function saWelcomeEmail(mgr, branchName){
+  var first = String((mgr && mgr.name) || "").trim().split(" ")[0] || "there";
+  var branch = branchName || "your branch", admin = !!(mgr && mgr.isAdmin);
+  var adminLine = admin ? "You're set up as the main admin for "+branch+". Under Settings → Home Screen you choose which screens each role sees, and you can authorize other managers to do the same." : "";
+  var text = "Hi "+first+",\n\nWelcome to the Fox Pest Control Admin Hub. Your account for "+branch+" is ready.\n\n"
+    +"Web address:\n"+APP_PROD_URL+"\n\n"
+    +"To sign in the first time:\n"
+    +"1. Open the address above.\n"
+    +"2. Select your branch: "+branch+"\n"
+    +"3. Enter your email ("+mgr.email+") and tap Continue.\n"
+    +"4. Enter your temporary PIN: "+mgr.tempPin+"\n"
+    +"5. When asked, create your own 4-digit PIN. Use that PIN from then on.\n\n"
+    +(adminLine ? adminLine+"\n\n" : "")
+    +"Tip: on your phone you can add the page to your home screen from the browser's share or menu button, so it opens like an app.\n\nFox Pest Control";
+  var step = function(n, t){ return "<tr><td style='vertical-align:top;padding:4px 10px 4px 0;color:#1e3a8a;font-weight:bold;'>"+n+".</td><td style='padding:4px 0;'>"+t+"</td></tr>"; };
+  var html = estEmailShell(
+    "<h2 style='margin:0 0 12px;color:#111827;'>Welcome to the Admin Hub</h2>"
+    +"<p>Hi "+esc(first)+",</p>"
+    +"<p>Your account for <b>"+esc(branch)+"</b> is ready.</p>"
+    +"<p style='margin:20px 0;'>"+estBtn(APP_PROD_URL, "Open the Admin Hub")+"</p>"
+    +"<p style='margin:0 0 6px;'><b>To sign in the first time:</b></p>"
+    +"<table style='border-collapse:collapse;font-size:15px;'>"
+    +step(1, "Open the link above.")
+    +step(2, "Select your branch: <b>"+esc(branch)+"</b>")
+    +step(3, "Enter your email (<b>"+esc(mgr.email)+"</b>) and tap Continue.")
+    +step(4, "Enter your temporary PIN:")
+    +"</table>"
+    +"<p style='margin:6px 0 10px 24px;'><span style='display:inline-block;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:8px 18px;font-size:24px;letter-spacing:6px;font-weight:bold;color:#111827;'>"+esc(mgr.tempPin)+"</span></p>"
+    +"<table style='border-collapse:collapse;font-size:15px;'>"+step(5, "When asked, create your own <b>4-digit</b> PIN. Use that PIN from then on.")+"</table>"
+    +(adminLine ? "<p style='margin-top:18px;padding:12px;background:#eff6ff;border-radius:8px;font-size:14px;'>"+esc(adminLine)+"</p>" : "")
+    +"<p style='font-size:13px;color:#6b7280;margin-top:18px;'>Tip: on your phone you can add the page to your home screen from the browser's share or menu button, so it opens like an app.</p>",
+    "Fox Pest Control");
+  return {subject:"Welcome to the Fox Pest Control Admin Hub - "+branch, text:text, html:html};
+}
+async function saSendWelcome(mgr, branchName){
+  if(!mgr || !mgr.email) return {ok:false, error:"This manager has no email address."};
+  if(!(mgr.isTemp && mgr.tempPin)) return {ok:false, error:"already"};
+  var m = saWelcomeEmail(mgr, branchName);
+  try {
+    var res = await estBridge("sendEmail", {to:mgr.email, subject:m.subject, body:m.text, htmlBody:m.html,
+      replyTo:(S.currentUser && S.currentUser.email) || "", senderName:"Fox Pest Control"});
+    return (res && res.ok) ? {ok:true} : {ok:false, error:(res && res.error) || "The email service didn't respond."};
+  } catch(err){ return {ok:false, error:err.message}; }
+}
+
+// ─── Hidden products page: search, categories, A-Z, restore many at once ─────
+const HID_CAT_ORDER = ["General Pest","25B Exempt/Repellents","IGR","Baits","Rodent","Equipment/PPE","Adjuvants","Pheromone Traps","Parts"];
+function hidCatRank(c){ var i = HID_CAT_ORDER.indexOf(c); return i<0 ? 999 : i; }
+// Product ids made by the sync look like prod_<13-digit timestamp>, so the id tells us roughly when it was created
+function hidIdDate(id){
+  var m = /^prod_(\d{13})/.exec(String(id)); if(!m) return "";
+  var d = new Date(Number(m[1])); if(isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
+}
+async function hiddenPageOpen(){
+  var pg = document.getElementById("pg-settings"); if(!pg) return;
+  S._hidPageOpen = true;
+  pg.innerHTML = "<div style='padding:30px;text-align:center;color:#64748b;'>Loading hidden products...</div>";
+  var branch = S.branch || "willamette";
+  var res = await Promise.all([gs("getHiddenProducts", {branch:branch}), gs("getProducts", {branch:branch, includeHidden:true})]);
+  var hiddenMap = (res[0] && res[0].hidden) || {}, prods = (res[1] && res[1].products) || [], byId = {};
+  prods.forEach(function(p){ byId[p.id] = p; });
+  var items = [], unknown = [];
+  Object.keys(hiddenMap).filter(function(k){ return hiddenMap[k]; }).forEach(function(id){
+    var p = byId[id];
+    if(p && p.name) items.push({id:id, name:p.name, category:p.category||"General Pest", unit:p.unit||""});
+    else unknown.push({id:id});
+  });
+  S._hid = {items:items, unknown:unknown, search:"", sel:{}, open:{}};
+  S._hiddenProductCount = items.length + unknown.length;
+  hiddenBind(pg);
+  hiddenPageRender();
+}
+function hidFiltered(){
+  var h = S._hid, q = String(h.search||"").trim().toLowerCase();
+  var list = h.items.filter(function(x){ return !q || x.name.toLowerCase().indexOf(q)>=0; });
+  list.sort(function(a,b){ return a.name.localeCompare(b.name, undefined, {sensitivity:"base"}); });
+  return list;
+}
+function hidListHtml(){
+  var h = S._hid, q = String(h.search||"").trim(), list = hidFiltered();
+  var row = function(x){
+    return "<div style='display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #1e3a5f;'>"
+      +"<input type='checkbox' data-hsel='"+esc(x.id)+"' "+(h.sel[x.id]?"checked ":"")+"style='width:18px;height:18px;flex:none;'>"
+      +"<div style='flex:1;min-width:0;'><div style='font-size:13px;font-weight:600;'>"+esc(x.name)+"</div>"+(x.unit?"<div style='font-size:11px;color:#64748b;'>"+esc(x.unit)+"</div>":"")+"</div>"
+      +"<button class='btn bp' style='padding:5px 12px;font-size:12px;flex:none;' data-a='hid-restore' data-v='"+esc(x.id)+"'>Restore</button></div>";
+  };
+  var html = "";
+  if(q){
+    html += list.length ? "<div class='card' style='padding:0;overflow:hidden;'>"+list.map(row).join("")+"</div>"
+                        : "<div style='text-align:center;color:#64748b;padding:24px;'>No hidden products match \""+esc(q)+"\".</div>";
+    return html;
+  }
+  var groups = {};
+  list.forEach(function(x){ (groups[x.category] = groups[x.category] || []).push(x); });
+  Object.keys(groups).sort(function(a,b){ return (hidCatRank(a)-hidCatRank(b)) || a.localeCompare(b); }).forEach(function(cat){
+    var open = h.open[cat]===true;
+    html += "<div style='margin-bottom:8px;'><button class='btn' data-a='hid-cat' data-v='"+esc(cat)+"' style='width:100%;text-align:left;padding:10px 14px;background:#0f2040;border:1px solid #1e3a5f;border-radius:8px;display:flex;justify-content:space-between;align-items:center;'>"
+      +"<span style='font-weight:600;font-size:13px;color:#f59e0b;'>"+esc(cat)+"</span><span style='color:#64748b;font-size:12px;'>"+groups[cat].length+" items "+(open?"▲":"▼")+"</span></button>"
+      +(open ? "<div class='card' style='padding:0;overflow:hidden;margin-top:4px;'>"+groups[cat].map(row).join("")+"</div>" : "")+"</div>";
+  });
+  if(h.unknown.length){
+    var uopen = h.open.__unknown__===true;
+    html += "<div style='margin:14px 0 8px;'><button class='btn' data-a='hid-cat' data-v='__unknown__' style='width:100%;text-align:left;padding:10px 14px;background:#2a1a0a;border:1px solid #f59e0b55;border-radius:8px;display:flex;justify-content:space-between;align-items:center;'>"
+      +"<span style='font-weight:600;font-size:13px;color:#fb923c;'>Not in the product list</span><span style='color:#64748b;font-size:12px;'>"+h.unknown.length+" "+(uopen?"▲":"▼")+"</span></button>";
+    if(uopen){
+      html += "<div style='font-size:12px;color:#94a3b8;margin:8px 2px;'>These were hidden, but no product with that ID exists any more (for example, a duplicate that was cleaned up). Restoring them would do nothing, so they can just be cleared from the hidden list.</div>"
+        +"<button class='btn bd' data-a='hid-clear-unknown' style='width:100%;padding:10px;margin-bottom:8px;font-size:13px;'>Clear all "+h.unknown.length+"</button>"
+        +"<div class='card' style='padding:0;overflow:hidden;'>"+h.unknown.map(function(x){
+          var dt = hidIdDate(x.id);
+          return "<div style='display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #1e3a5f;'>"
+            +"<div style='flex:1;min-width:0;'><div style='font-size:12px;font-family:monospace;word-break:break-all;'>"+esc(x.id)+"</div>"+(dt?"<div style='font-size:11px;color:#64748b;'>Created about "+esc(dt)+"</div>":"")+"</div>"
+            +"<button class='btn bg' style='padding:5px 12px;font-size:12px;flex:none;' data-a='hid-restore' data-v='"+esc(x.id)+"'>Clear</button></div>";
+        }).join("")+"</div>";
+    }
+    html += "</div>";
+  }
+  return html;
+}
+function hiddenSelIds(){
+  var h = S._hid; if(!h) return [];
+  var live = {}; h.items.forEach(function(x){ live[x.id] = true; });
+  return Object.keys(h.sel).filter(function(id){ return h.sel[id] && live[id]; });
+}
+function hiddenUpdateSelLabel(){
+  var b = document.getElementById("hid-restore-sel"); if(!b) return;
+  var n = hiddenSelIds().length;
+  b.textContent = "Restore selected ("+n+")"; b.style.opacity = n ? "1" : "0.5";
+}
+function hiddenPageRender(){
+  var pg = document.getElementById("pg-settings"), h = S._hid;
+  if(!pg || !h) return;
+  pg.innerHTML = "<div style='padding:4px;'>"
+    +"<button class='btn bg' data-a='settings-tab' data-v='products' style='margin-bottom:12px;'>← Back to Products</button>"
+    +"<h2 style='font-size:18px;font-weight:700;margin-bottom:10px;'>Hidden Products <span style='color:#64748b;font-size:14px;font-weight:400;'>("+(h.items.length+h.unknown.length)+")</span></h2>"
+    +(h.items.length||h.unknown.length
+      ? "<input id='hid-search' class='inp' placeholder='🔍 Search hidden products...' value='"+esc(h.search)+"' style='margin-bottom:10px;'>"
+        +"<div style='display:flex;gap:8px;margin-bottom:10px;'>"
+        +"<button class='btn bg' style='flex:1;padding:9px;font-size:12px;' data-a='hid-select-all'>Select all matching</button>"
+        +"<button class='btn bg' style='flex:1;padding:9px;font-size:12px;' data-a='hid-select-none'>Clear selection</button>"
+        +"<button class='btn bg' style='flex:1;padding:9px;font-size:12px;' data-a='hid-expand-all'>Expand / collapse</button></div>"
+        +"<button id='hid-restore-sel' class='btn bp' data-a='hid-restore-selected' style='width:100%;padding:12px;margin-bottom:12px;'>Restore selected (0)</button>"
+        +"<div id='hid-list'>"+hidListHtml()+"</div>"
+      : "<div style='text-align:center;color:#64748b;padding:30px;'>No hidden products.</div>")
+    +"</div>";
+  hiddenUpdateSelLabel();
+}
+async function hiddenRestore(ids, label){
+  var h = S._hid; ids = (ids||[]).filter(Boolean);
+  if(!h || !ids.length) return;
+  var branch = S.branch || "willamette";
+  try { await gs("unhideProducts", {ids:ids, branch:branch}); }
+  catch(err){ showToast("Could not save: "+err.message); return; }
+  var gone = {}; ids.forEach(function(id){ gone[id] = true; delete h.sel[id]; });
+  h.items = h.items.filter(function(x){ return !gone[x.id]; });
+  h.unknown = h.unknown.filter(function(x){ return !gone[x.id]; });
+  S._hiddenProductCount = h.items.length + h.unknown.length;
+  try {   // refresh the live product list so restored products show up straight away
+    var pr = await gs("getProducts", {branch:branch});
+    if(pr && pr.products){ S.products = pr.products; lsSet("hub:products", S.products); }
+  } catch(x){}
+  hiddenPageRender();
+  showToast(ids.length+" "+(label||"restored")+" ✓");
+}
+async function hiddenHandleAction(a, v){
+  var h = S._hid;
+  if(!h) return false;
+  if(a==="hid-cat"){ h.open[v] = !h.open[v]; var l = document.getElementById("hid-list"); if(l) l.innerHTML = hidListHtml(); return true; }
+  if(a==="hid-expand-all"){
+    var anyOpen = Object.keys(h.open).some(function(k){ return h.open[k]; });
+    var cats = {}; h.items.forEach(function(x){ cats[x.category] = true; }); if(h.unknown.length) cats.__unknown__ = true;
+    h.open = {}; if(!anyOpen) Object.keys(cats).forEach(function(k){ h.open[k] = true; });
+    var l2 = document.getElementById("hid-list"); if(l2) l2.innerHTML = hidListHtml(); return true;
+  }
+  if(a==="hid-select-all"){ hidFiltered().forEach(function(x){ h.sel[x.id] = true; }); var l3 = document.getElementById("hid-list"); if(l3) l3.innerHTML = hidListHtml(); hiddenUpdateSelLabel(); return true; }
+  if(a==="hid-select-none"){ h.sel = {}; var l4 = document.getElementById("hid-list"); if(l4) l4.innerHTML = hidListHtml(); hiddenUpdateSelLabel(); return true; }
+  if(a==="hid-restore"){ var isUnknown = h.unknown.some(function(x){ return x.id===v; }); await hiddenRestore([v], isUnknown ? "cleared" : "restored"); return true; }
+  if(a==="hid-restore-selected"){
+    var ids = hiddenSelIds();
+    if(!ids.length){ showToast("Tick the products you want to restore first"); return true; }
+    if(ids.length>10 && !confirm("Restore "+ids.length+" products?")) return true;
+    await hiddenRestore(ids, "restored"); return true;
+  }
+  if(a==="hid-clear-unknown"){
+    if(!confirm("Clear these "+h.unknown.length+" entries from the hidden list?\n\nThey don't match any product, so nothing else changes.")) return true;
+    await hiddenRestore(h.unknown.map(function(x){ return x.id; }), "cleared"); return true;
+  }
+  return false;
+}
+function hiddenBind(pg){
+  if(pg._hidBound) return; pg._hidBound = true;
+  pg.addEventListener("input", function(ev){
+    var el = ev.target;
+    if(el && el.id==="hid-search" && S._hid){ S._hid.search = el.value; var l = document.getElementById("hid-list"); if(l) l.innerHTML = hidListHtml(); }
+  });
+  pg.addEventListener("change", function(ev){
+    var el = ev.target;
+    if(el && el.dataset && el.dataset.hsel!==undefined && S._hid){ S._hid.sel[el.dataset.hsel] = !!el.checked; hiddenUpdateSelLabel(); }
+  });
 }
 
 function msMakeTransparent(dataUrl){
@@ -2515,6 +2718,14 @@ async function gs(fn, data){
         unhideUpdate[data.id] = false;
         await _db.collection("config").doc("hiddenProducts_"+unhideBranch).set(unhideUpdate, {merge:true});
         return {ok:true};
+      }
+      case "unhideProducts": {
+        // Restore many at once in a single write
+        var uhBranch2 = (data && data.branch) || "willamette";
+        var uhIds = (data && data.ids) || [], uhUpdate = {};
+        uhIds.forEach(function(id){ if(id) uhUpdate[id] = false; });
+        if(uhIds.length) await _db.collection("config").doc("hiddenProducts_"+uhBranch2).set(uhUpdate, {merge:true});
+        return {ok:true, count:uhIds.length};
       }
       case "getHiddenProducts": {
         var ghBranch = (data&&data.branch)||"willamette";
@@ -3656,12 +3867,12 @@ function showSetPin(){
       <h2 style="text-align:center;font-size:18px;font-weight:600;margin-bottom:8px;">Welcome, `+S.currentUser.name.split(" ")[0]+`!</h2>
       <p style="text-align:center;color:#64748b;font-size:13px;margin-bottom:20px;">Create your personal PIN</p>
       <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">New PIN (4-8 digits)</label>
-        <input type="password" id="new-pin-1" class="inp" placeholder="Enter new PIN" maxlength="8">
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">New PIN (4 digits)</label>
+        <input type="password" id="new-pin-1" class="inp" placeholder="Enter new PIN" maxlength="4" inputmode="numeric">
       </div>
       <div style="margin-bottom:20px;">
         <label style="display:block;font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Confirm PIN</label>
-        <input type="password" id="new-pin-2" class="inp" placeholder="Confirm new PIN" maxlength="8">
+        <input type="password" id="new-pin-2" class="inp" placeholder="Confirm new PIN" maxlength="4" inputmode="numeric">
       </div>
       <div id="set-pin-err" style="color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px;text-align:center;"></div>
       <button class="btn bp" id="set-pin-btn" style="width:100%;padding:14px;font-size:15px;">Set My PIN</button>
@@ -3677,7 +3888,7 @@ function showSetPin(){
     var p1 = document.getElementById("new-pin-1").value.replace(/[^0-9]/g,"");
     var p2 = document.getElementById("new-pin-2").value.replace(/[^0-9]/g,"");
     var errDiv = document.getElementById("set-pin-err");
-    if(p1.length < 4){ errDiv.textContent="PIN must be at least 4 digits."; return; }
+    if(p1.length !== 4){ errDiv.textContent="Your PIN must be exactly 4 digits."; return; }
     if(p1 !== p2){ errDiv.textContent="PINs do not match."; return; }
     // Save PIN
     S.currentUser.pin = p1;
@@ -4158,29 +4369,15 @@ async function handleAction(a,v,el,e){
   }
   if(a==="approve-order") { confirmApprove(v); return; }
   if(a==="deny-order") { confirmDeny(v); return; }
+  if(typeof a==="string" && a.indexOf("hid-")===0){
+    try { if(await hiddenHandleAction(a,v)) return; } catch(err){ console.error("Hidden products action error:", err); showToast("Error: "+err.message); return; }
+  }
   if(typeof a==="string" && a.indexOf("est-")===0){
     try { if(await estHandleAction(a,v)) return; } catch(err){ console.error("Estimate action error:", err); showToast("Estimate error: "+err.message); return; }
   }
-  if(a==="settings-tab") { S.settingsTab=v; if(v==="products") S._hiddenCountBranch = null; render(); return; }
+  if(a==="settings-tab") { S.settingsTab=v; S._hidPageOpen = false; if(v==="products") S._hiddenCountBranch = null; render(); return; }
   if(a==="show-hidden-products"){
-    var hRes3 = await gs("getHiddenProducts", {branch:S.branch||"willamette"});
-    var hiddenIds3 = Object.keys(hRes3.hidden||{}).filter(function(k){return hRes3.hidden[k];});
-    if(hiddenIds3.length===0){ showToast("No hidden products"); return; }
-    var allProds3 = await gs("getProducts", {branch:S.branch||"willamette", includeHidden:true});   // include hidden ones so their names show
-    var pg4 = document.getElementById("pg-settings");
-    if(!pg4) return;
-    var html3 = "<div style='padding:4px;'>"
-      +"<button class='btn bg' data-a='settings-tab' data-v='products' style='margin-bottom:14px;'>← Back to Products</button>"
-      +"<h2 style='font-size:18px;font-weight:700;margin-bottom:12px;'>Hidden Products</h2>";
-    hiddenIds3.forEach(function(id){
-      var p3 = (allProds3.products||[]).find(function(p){return p.id===id;})||{id:id,name:id};
-      html3 += "<div class='card' style='margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;'>"
-        +"<span style='font-weight:600;'>"+esc(p3.name)+"</span>"
-        +"<button class='btn bp' style='padding:6px 14px;font-size:12px;' data-a='unhide-product' data-v='"+id+"'>Restore</button>"
-        +"</div>";
-    });
-    html3 += "</div>";
-    pg4.innerHTML = html3;
+    await hiddenPageOpen();
     return;
   }
   if(a==="unhide-product"){
@@ -4231,15 +4428,30 @@ async function handleAction(a,v,el,e){
     var mEmail = prompt("Manager email:");
     if(!mEmail) return;
     var mTitle = prompt("Title (e.g. Branch Manager):")||"Manager";
-    var mPin = prompt("Temporary PIN (4-8 digits):");
-    if(!mPin||mPin.length<4){ alert("PIN must be at least 4 digits"); return; }
+    var mPin = prompt("Temporary PIN (exactly 4 digits):");
+    if(!/^[0-9]{4}$/.test(mPin||"")){ alert("The temporary PIN must be exactly 4 digits - the login keypad only accepts 4."); return; }
     var branchAccts = await gs("getAccounts",{branch:v});
     var newMgr = {name:mName,email:mEmail.toLowerCase(),title:mTitle,tempPin:mPin,isTemp:true,pin:"",id:"mgr_"+Date.now(),isAdmin:(branchAccts.managers||[]).length===0};   // the first manager added to a branch is its main admin
     var mgrs2 = (branchAccts.managers||[]).concat([newMgr]);
     await gs("saveAccounts",{branch:v,managers:mgrs2,techAccounts:branchAccts.techAccounts||[],trucks:branchAccts.trucks||[],cats:branchAccts.cats||[],inspFields:branchAccts.inspFields||[]});
     showToast(mName+" added ✓");
+    var welcomeBranch = (S._saViewBranch && S._saViewBranch.name) || v;
+    if(confirm("Send a welcome email to "+mName+" ("+newMgr.email+") now?\n\nIt includes the web address, their login email and the temporary PIN."+(newMgr.isAdmin ? "\n\nThey are this branch's main admin, and the email says so." : ""))){
+      var wr0 = await saSendWelcome(newMgr, welcomeBranch);
+      showToast(wr0.ok ? "Welcome email sent ✓" : "Added, but the email didn't send: "+wr0.error);
+    }
     S._saViewBranch = {id:v, name:S._saViewBranch&&S._saViewBranch.name||v};
     renderSuperAdmin();
+    return;
+  }
+  if(a==="sa-welcome"){
+    var wParts = v.split("|");
+    var wAccts = await gs("getAccounts",{branch:wParts[0]});
+    var wMgr = (wAccts.managers||[]).find(function(m){ return String(m.email||"").toLowerCase()===String(wParts[1]||"").toLowerCase(); });
+    if(!wMgr){ showToast("Manager not found"); return; }
+    if(!confirm("Send a welcome email to "+wMgr.name+" ("+wMgr.email+")?\n\nIt includes their temporary PIN.")) return;
+    var wRes = await saSendWelcome(wMgr, (S._saViewBranch && S._saViewBranch.name) || wParts[0]);
+    showToast(wRes.ok ? "Welcome email sent ✓" : (wRes.error==="already" ? "They have already set their own PIN" : "Email didn't send: "+wRes.error));
     return;
   }
   if(a==="sa-main-admin"){
@@ -8166,7 +8378,8 @@ function renderSuperAdminBranch(pg){
           +"<div><div style='font-weight:600;'>"+esc(m.name)+"</div>"
           +"<div style='font-size:12px;color:#64748b;'>"+esc(m.email)+"</div>"
           +"<div style='font-size:11px;color:#f59e0b;'>"+esc(m.title||"Manager")+(m.isAdmin?" · ★ Main admin":"")+"</div></div>"
-          +"<div style='display:flex;gap:6px;'>"
+          +"<div style='display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;'>"
+          +((m.isTemp && m.tempPin) ? "<button class='btn bg' style='padding:5px 10px;font-size:11px;' data-a='sa-welcome' data-v='"+b.id+"|"+m.email+"'>✉ Welcome email</button>" : "")
           +(m.isAdmin ? "" : "<button class='btn bg' style='padding:5px 10px;font-size:11px;' data-a='sa-main-admin' data-v='"+b.id+"|"+m.email+"'>Make main admin</button>")
           +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
           +"data-a='sa-remove-manager' data-v='"+b.id+"|"+m.email+"'>Remove</button></div>"
