@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.4.0";
+const APP_VERSION = "5.5.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -614,7 +614,8 @@ function estNewDraft(){
     createdAt:new Date().toISOString(), date:new Date().toISOString(),
     createdBy:u.name, createdByEmail:u.email, employeePhone:(lsGet("hub:estPhone")||""),
     customer:{name:"", street:"", city:"", state:"OR", zip:"", phone:"", email:""},
-    items:[], showPrices:true, taxRate:Number(st.taxRate)||0, notes:""};
+    items:[], showPrices:true, taxRate:Number(st.taxRate)||0, notes:"",
+    inspection:{areas:"", activity:"", entry:"", conditions:"", recommendations:""}, photos:[]};
 }
 async function estEnsureLoaded(){
   var b = S.branch||"willamette";
@@ -721,6 +722,7 @@ function renderEstimateForm(pg){
     +lib.map(function(l){ return "<option value='"+esc(l.id)+"'>"+esc(l.title)+(l.price?" - "+estMoney(l.price):"")+"</option>"; }).join("")+"</select>";
   h += (e.items||[]).map(estItemRow).join("");
   h += "<button class='btn bg' style='width:100%;padding:10px;margin-bottom:12px;' data-a='est-add-item'>+ Add custom item</button>";
+  h += estInspectionCard(e);
   h += "<div class='card' style='padding:14px;margin-bottom:12px;'>"
     +"<label style='display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;'><input type='checkbox' data-est='showPrices' "+(e.showPrices!==false?"checked":"")+"> Show price on each line item</label>"
     +estField("Tax rate (%)","taxRate",e.taxRate,"number")
@@ -774,6 +776,9 @@ function estBind(pg){
     if(el.dataset.est){
       estSetPath(el.dataset.est, el.type==="checkbox" ? el.checked : el.value);
       estRecalcUI();
+    } else if(el.dataset.ephoto){
+      var pm = String(el.dataset.ephoto).split(":"), ph = (S._est.photos||[])[parseInt(pm[0])];
+      if(ph) ph.caption = el.value;
     } else if(el.dataset.eitem){
       var m = String(el.dataset.eitem).split(":"), it = S._est.items[parseInt(m[0])], f = m[1];
       if(!it) return;
@@ -786,6 +791,11 @@ function estBind(pg){
   pg.addEventListener("input", onEdit);
   pg.addEventListener("change", function(ev){
     var el = ev.target;
+    if(el && el.dataset && el.dataset.ephotoin){
+      var picked = el.files;
+      estAddPhotos(picked).then(function(){ try { el.value = ""; } catch(x){} });
+      return;
+    }
     if(el && el.dataset && el.dataset.elib){
       var lib = (S.estimateItems||[]).find(function(l){ return l.id===el.value; });
       if(lib && S._est){
@@ -821,8 +831,10 @@ async function estSave(){
   }
   var t = estTotals(e);
   e.subtotal = t.subtotal; e.tax = t.tax; e.total = t.total;
-  await gs("saveEstimate", {estimate:e});
-  var copy = JSON.parse(JSON.stringify(e));
+  await estSavePhotos(e);
+  var eSave = estForSave(e);
+  await gs("saveEstimate", {estimate:eSave});
+  var copy = JSON.parse(JSON.stringify(eSave));
   S.estimates = S.estimates||[];
   var ix = S.estimates.findIndex(function(x){ return x.id===copy.id; });
   if(ix>=0) S.estimates[ix] = copy; else S.estimates.unshift(copy);
@@ -832,6 +844,7 @@ async function estPreview(){
   var e = S._est; if(!e) return;
   if(!(e.items||[]).length){ alert("Add at least one line item first."); return; }
   if(!(await estSave())) return;
+  if(!(await estEnsurePhotos(e))){ alert("Some photos haven't finished loading. Check your connection and try again."); return; }
   showToast("Building PDF...");
   var out = await estBuildPdf(e);
   var blob = new Blob([out.bytes], {type:"application/pdf"});
@@ -929,6 +942,36 @@ async function estBuildPdf(e){
   if(t.tax>0){ T("Tax ("+(Number(e.taxRate)||0)+"%)",lx,y,10.5,font,gray); TR(estMoney(t.tax),W-M,y,10.5); y -= 16; }
   line(lx,y+10,W-M,0.75,dark); y -= 4;
   T("Total",lx,y,13,bold); TR(estMoney(t.total),W-M,y,13,bold); y -= 26;
+  // ── Inspection report + photos ──
+  var insp = e.inspection || {};
+  var inspRows = EST_INSPECTION_FIELDS.filter(function(f){ return String(insp[f[0]]||"").trim(); });
+  var pics = (e.photos||[]).filter(function(p){ return p.dataUrl; });
+  if(inspRows.length || pics.length){
+    heading("Inspection Report");
+    inspRows.forEach(function(f){ ensure(32); T(f[1],M,y,10,bold); y -= 14; para(insp[f[0]],9.5,font,dark,13); y -= 6; });
+    if(pics.length){
+      var gap = 16, cw = (CW-gap)/2, maxH = 180;
+      for(var pi=0; pi<pics.length; pi+=2){
+        var cells = [];
+        for(var pj=pi; pj<Math.min(pi+2, pics.length); pj++){
+          var pim = await doc.embedJpg(estDataUrlBytes(pics[pj].dataUrl));
+          var psc = Math.min(cw/pim.width, maxH/pim.height);
+          cells.push({im:pim, w:pim.width*psc, h:pim.height*psc, cap:wrap(pics[pj].caption||"",font,8.5,cw)});
+        }
+        var rowH = Math.max.apply(null, cells.map(function(c2){ return c2.h + (c2.cap.length ? c2.cap.length*11+8 : 0); }));
+        ensure(rowH + 12 + (pi===0 ? 30 : 0));   // keep the "Photos" label together with its first row
+        if(pi===0){ y -= 4; T("Photos",M,y,11,bold); y -= 16; }
+        cells.forEach(function(c2, k){
+          var px = M + k*(cw+gap);
+          page.drawImage(c2.im, {x:px, y:y-c2.h, width:c2.w, height:c2.h});
+          var cy = y - c2.h - 12;
+          c2.cap.forEach(function(l){ T(l,px,cy,8.5,font,gray); cy -= 11; });
+        });
+        y -= rowH + 14;
+      }
+    }
+    y -= 6;
+  }
   if(String(e.notes||"").trim()){ heading("Notes"); para(e.notes,9.5,font,dark,13); y -= 6; }
 
   // ── Warranty and terms ──
@@ -1015,7 +1058,9 @@ async function estHandleAction(a, v){
     case "est-open": {
       var found = (S.estimates||[]).find(function(x){ return x.id===v; });
       if(!found) return true;
-      S._est = JSON.parse(JSON.stringify(found)); S._estView = (found.status && found.status!=="Draft") ? "detail" : "form"; renderEstimates(); return true;
+      S._est = JSON.parse(JSON.stringify(found)); S._est.photos = S._est.photos || []; S._estView = (found.status && found.status!=="Draft") ? "detail" : "form"; renderEstimates();
+      if(S._estView==="form") estLoadPhotos(S._est);
+      return true;
     }
     case "est-back": S._estView = "list"; S._est = null; renderEstimates(); return true;
     case "est-edit": S._estView = "form"; renderEstimates(); return true;
@@ -1055,11 +1100,19 @@ async function estHandleAction(a, v){
     }
     case "est-view-pdf": {
       var ee = S._est; if(!ee) return true;
+      if(!(await estEnsurePhotos(ee))){ alert("Some photos haven't finished loading. Check your connection and try again."); return true; }
       showToast("Building PDF...");
       var po = await estBuildPdf(ee);
       if(S._estPdfUrl){ try { URL.revokeObjectURL(S._estPdfUrl); } catch(x){} }
       S._estPdfUrl = URL.createObjectURL(new Blob([po.bytes], {type:"application/pdf"}));
       S._estPreviewFrom = "detail"; S._estView = "preview"; renderEstimates(); return true;
+    }
+    case "est-photo-del": {
+      var pe = S._est; if(!pe) return true;
+      var pidx = parseInt(v), pph = (pe.photos||[])[pidx];
+      if(!pph) return true;
+      if(pph.saved){ pe._deletedPhotoIds = (pe._deletedPhotoIds||[]).concat([pph.id]); }
+      pe.photos.splice(pidx, 1); renderEstimates(); return true;
     }
     case "est-settings-save": {
       function val(id){ var el = document.getElementById(id); return el ? el.value : ""; }
@@ -1156,6 +1209,7 @@ async function estSend(){
     return;
   }
   if(!(await estSave())) return;
+  if(!(await estEnsurePhotos(e))){ alert("Some photos haven't finished loading. Check your connection and try again."); return; }
   var out = await estBuildPdf(e);
   if(e.token){ try { await gs("revokeEstimateToken", {token:e.token}); } catch(x){} }
   var token = estNewToken();
@@ -1165,9 +1219,10 @@ async function estSend(){
   var notify = [e.createdByEmail].concat(String(st.notifyExtra||"").split(",")).map(function(x){ return String(x||"").trim(); }).filter(Boolean);
   e.notifyEmails = notify.filter(function(x,i){ return notify.indexOf(x)===i; });
   e.status = "Sent"; e.sentAt = new Date().toISOString(); e.sentTo = email; e.token = token;
-  await gs("saveEstimate", {estimate:e});
+  var eSave2 = estForSave(e);
+  await gs("saveEstimate", {estimate:eSave2});
   var ix = (S.estimates||[]).findIndex(function(x){ return x.id===e.id; });
-  var copy = JSON.parse(JSON.stringify(e));
+  var copy = JSON.parse(JSON.stringify(eSave2));
   if(ix>=0) S.estimates[ix] = copy; else S.estimates.unshift(copy);
   var m = estCustomerEmail(e, estLink(token), st);
   var res = await estBridge("sendEmail", estMailTo(e, st, m.subject, m.text, m.html));
@@ -1185,10 +1240,12 @@ async function estWithdraw(){
   if(!confirm("Withdraw this estimate so you can edit it?\n\nThe customer's current link will stop working. You can send a new one afterward.")) return;
   try { await gs("revokeEstimateToken", {token:e.token}); } catch(x){}
   e.status = "Draft"; e.token = null; e.sentAt = null;
-  await gs("saveEstimate", {estimate:e});
+  var eSave3 = estForSave(e);
+  await gs("saveEstimate", {estimate:eSave3});
   var ix = (S.estimates||[]).findIndex(function(x){ return x.id===e.id; });
-  if(ix>=0) S.estimates[ix] = JSON.parse(JSON.stringify(e));
+  if(ix>=0) S.estimates[ix] = JSON.parse(JSON.stringify(eSave3));
   S._estView = "form"; showToast("Estimate withdrawn - you can edit it again"); renderEstimates();
+  estLoadPhotos(e);
 }
 async function estRefresh(force){
   var b = S.branch||"willamette";
@@ -1271,6 +1328,7 @@ function estCHtml(d){
     +"<div style='background:#fff;border-radius:14px;padding:6px 18px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
     +"<div style='font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;padding-top:12px;'>Work to be done</div>"+items
     +"<div style='padding-top:10px;'>"+row("Subtotal",estMoney(t.subtotal))+(t.tax>0?row("Tax ("+(Number(e.taxRate)||0)+"%)",estMoney(t.tax)):"")+row("Total",estMoney(t.total),true)+"</div></div>"
+    +estCInspectionHtml(e)
     +(String(e.notes||"").trim() ? "<div style='background:#fff;border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:13px;color:#4b5563;white-space:pre-wrap;'><b style='color:#111827;'>Notes</b><br>"+esc(e.notes)+"</div>" : "")
     +section("Warranty", snap.warranty)+section("Terms and Conditions", snap.terms)
     +"<div style='background:#fff;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
@@ -1391,6 +1449,7 @@ async function estCustomerBoot(token){
     root.innerHTML = estCErr("This estimate has expired. Please contact "+contact+" for an updated one."); return;
   }
   root.innerHTML = estCHtml(d);
+  estCLoadPhotos(token, e);
   try {
     var raw = atob(d.pdfBase64), pb = new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) pb[i] = raw.charCodeAt(i);
     var pdfUrl = URL.createObjectURL(new Blob([pb], {type:"application/pdf"}));
@@ -1431,6 +1490,153 @@ async function estCustomerBoot(token){
       btn.disabled = false; btn.textContent = "Sign & Accept Estimate";
     }
   };
+}
+
+// ─── Estimates: inspection report + photos ───────────────────────────────────
+const EST_MAX_PHOTOS = 12;
+const EST_INSPECTION_FIELDS = [
+  ["areas","Areas inspected","Crawlspace, attic, exterior..."],
+  ["activity","Evidence of activity","Droppings, rub marks, damage..."],
+  ["entry","Entry points found","Vents, pipe gaps, burrows..."],
+  ["conditions","Conditions contributing to the problem","Food sources, clutter, vegetation..."],
+  ["recommendations","Recommendations","Exclusion, trapping, sanitation..."]
+];
+
+// Shrink a camera photo so it stays small enough to store and print (about 1000px, JPEG)
+function estCompressImage(file){
+  return new Promise(function(resolve, reject){
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      try {
+        var max = 1000, w = img.naturalWidth, h = img.naturalHeight, sc = Math.min(1, max/Math.max(w,h));
+        var cw = Math.max(1, Math.round(w*sc)), ch = Math.max(1, Math.round(h*sc));
+        var c = document.createElement("canvas"); c.width = cw; c.height = ch;
+        var x = c.getContext("2d"); x.fillStyle = "#ffffff"; x.fillRect(0,0,cw,ch); x.drawImage(img,0,0,cw,ch);
+        var q = 0.72, out = c.toDataURL("image/jpeg", q);
+        while(out.length > 600000 && q > 0.4){ q -= 0.08; out = c.toDataURL("image/jpeg", q); }
+        URL.revokeObjectURL(url); resolve(out);
+      } catch(err){ URL.revokeObjectURL(url); reject(err); }
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error("Could not read that image")); };
+    img.src = url;
+  });
+}
+function estDataUrlBytes(dataUrl){
+  return Uint8Array.from(atob(String(dataUrl).split(",")[1]), function(ch){ return ch.charCodeAt(0); });
+}
+// What gets written to the estimate record: photo captions/order only (images are stored separately)
+function estForSave(e){
+  var o = JSON.parse(JSON.stringify(e, function(k, v){ return (k && k.charAt(0)==="_") ? undefined : v; }));
+  o.photos = (e.photos||[]).map(function(p){ return {id:p.id, caption:p.caption||""}; });
+  return o;
+}
+async function estSavePhotos(e){
+  var gone = e._deletedPhotoIds || [];
+  for(var i=0;i<gone.length;i++){ await gs("deleteEstimatePhoto", {estimateId:e.id, id:gone[i]}); }
+  e._deletedPhotoIds = [];
+  var list = e.photos || [];
+  for(var j=0;j<list.length;j++){
+    var p = list[j];
+    if(p.dataUrl && !p.saved){ await gs("saveEstimatePhoto", {estimateId:e.id, id:p.id, dataUrl:p.dataUrl}); p.saved = true; }
+  }
+}
+async function estLoadPhotos(e){
+  if(!e || !(e.photos||[]).length) return;
+  try {
+    var r = await gs("getEstimatePhotos", {estimateId:e.id}), map = {};
+    ((r&&r.photos)||[]).forEach(function(p){ map[p.id] = p.dataUrl; });
+    e.photos.forEach(function(p){ if(map[p.id]){ p.dataUrl = map[p.id]; p.saved = true; } });
+    var pg = document.getElementById("pg-estimates");
+    if(pg && S._est && S._est.id===e.id && S._estView==="form" && S.tab==="estimates") renderEstimateForm(pg);
+  } catch(err){ console.warn("Photo load:", err); }
+}
+async function estEnsurePhotos(e){
+  var ready = function(){ return (e.photos||[]).every(function(p){ return !!p.dataUrl; }); };
+  if(ready()) return true;
+  await estLoadPhotos(e);
+  return ready();
+}
+async function estAddPhotos(files){
+  var e = S._est; if(!e) return;
+  e.photos = e.photos || [];
+  var room = EST_MAX_PHOTOS - e.photos.length;
+  if(room <= 0){ alert("This estimate already has the maximum of "+EST_MAX_PHOTOS+" photos."); return; }
+  var list = Array.prototype.slice.call(files||[]).filter(function(f){ return /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name||""); }).slice(0, room);
+  if(!list.length) return;
+  showToast("Adding "+list.length+" photo"+(list.length>1?"s":"")+"...");
+  var added = 0;
+  for(var i=0;i<list.length;i++){
+    try {
+      var dataUrl = await estCompressImage(list[i]);
+      e.photos.push({id:"ph_"+Date.now().toString(36)+i, caption:"", dataUrl:dataUrl, saved:false});
+      added++;
+    } catch(err){ alert("Couldn't add one of the photos: "+err.message); }
+  }
+  var pg = document.getElementById("pg-estimates");
+  if(pg && S._est===e) renderEstimateForm(pg);
+  if(!added) return;
+  if(String((e.customer&&e.customer.name)||"").trim()){
+    try { if(await estSave()){ showToast("Photos saved ✓"); } } catch(err){ showToast("Photos added - tap Save Draft to keep them"); }
+  } else {
+    showToast("Enter the customer's name, then tap Save Draft to keep the photos");
+  }
+}
+function estInspectionCard(e){
+  var ins = e.inspection || {}, photos = e.photos || [];
+  var lab = "font-size:11px;color:#64748b;margin:8px 0 3px;";
+  var h = "<div class='card' style='padding:14px;margin-bottom:12px;'><div style='font-weight:700;margin-bottom:2px;'>Inspection Report</div>"
+    +"<div style='font-size:11px;color:#64748b;'>Optional. Whatever you fill in prints on the estimate, followed by the photos.</div>";
+  EST_INSPECTION_FIELDS.forEach(function(f){
+    h += "<div style='"+lab+"'>"+f[1]+"</div><textarea class='inp' rows='2' data-est='inspection."+f[0]+"' placeholder='"+esc(f[2])+"'>"+esc(ins[f[0]]||"")+"</textarea>";
+  });
+  h += "<div style='font-weight:600;margin:14px 0 6px;'>Photos ("+photos.length+"/"+EST_MAX_PHOTOS+")</div>";
+  if(photos.length){
+    h += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;'>"
+      +photos.map(function(p,i){
+        return "<div style='background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:6px;'>"
+          +(p.dataUrl ? "<img src='"+p.dataUrl+"' alt='' style='width:100%;height:110px;object-fit:cover;border-radius:6px;display:block;'>"
+                      : "<div style='height:110px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:12px;'>Loading...</div>")
+          +"<input class='inp' data-ephoto='"+i+":caption' value='"+esc(p.caption||"")+"' placeholder='Caption (optional)' style='margin-top:6px;font-size:12px;padding:6px 8px;'>"
+          +"<button class='btn bd' style='width:100%;margin-top:6px;padding:6px;font-size:12px;' data-a='est-photo-del' data-v='"+i+"'>Remove</button></div>";
+      }).join("")+"</div>";
+  }
+  h += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+    +"<label class='btn bg' style='text-align:center;padding:11px;cursor:pointer;display:block;'>📷 Take Photo<input type='file' accept='image/*' capture='environment' data-ephotoin='1' style='display:none;'></label>"
+    +"<label class='btn bg' style='text-align:center;padding:11px;cursor:pointer;display:block;'>🖼 Choose Photos<input type='file' accept='image/*' multiple data-ephotoin='1' style='display:none;'></label></div>"
+    +"<div style='font-size:11px;color:#64748b;margin-top:8px;'>Photos are saved when you tap Save Draft (or Preview / Send).</div></div>";
+  return h;
+}
+
+// ── Customer page: inspection findings + lazy-loaded photos ──
+function estCInspectionHtml(e){
+  var ins = e.inspection || {}, rows = EST_INSPECTION_FIELDS.filter(function(f){ return String(ins[f[0]]||"").trim(); });
+  var hasPhotos = (e.photos||[]).length > 0;
+  if(!rows.length && !hasPhotos) return "";
+  return "<div style='background:#fff;border-radius:14px;padding:14px 18px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
+    +"<div style='font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;'>Inspection report</div>"
+    +rows.map(function(f){ return "<div style='margin-bottom:10px;'><div style='font-weight:700;font-size:13px;color:#111827;'>"+esc(f[1])+"</div><div style='font-size:14px;color:#4b5563;white-space:pre-wrap;'>"+esc(ins[f[0]])+"</div></div>"; }).join("")
+    +(hasPhotos ? "<div id='est-c-photos' style='margin-top:6px;'></div>" : "")+"</div>";
+}
+function estLightbox(src){
+  var ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:100000;display:flex;align-items:center;justify-content:center;padding:12px;";
+  ov.innerHTML = "<img src='"+src+"' alt='' style='max-width:100%;max-height:100%;object-fit:contain;'>";
+  ov.onclick = function(){ ov.remove(); };
+  document.body.appendChild(ov);
+}
+async function estCLoadPhotos(token, e){
+  var box = document.getElementById("est-c-photos"); if(!box) return;
+  box.innerHTML = "<div style='font-size:12px;color:#6b7280;'>Loading photos...</div>";
+  try {
+    var r = await gs("getEstimatePhotos", {token:token}), map = {};
+    ((r&&r.photos)||[]).forEach(function(p){ map[p.id] = p.dataUrl; });
+    var cells = (e.photos||[]).filter(function(p){ return map[p.id]; }).map(function(p){
+      return "<div><img src='"+map[p.id]+"' alt='' style='width:100%;border-radius:8px;display:block;cursor:zoom-in;'>"
+        +(p.caption ? "<div style='font-size:12px;color:#4b5563;margin-top:4px;'>"+esc(p.caption)+"</div>" : "")+"</div>";
+    }).join("");
+    box.innerHTML = cells ? "<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;'>"+cells+"</div>" : "";
+    Array.prototype.forEach.call(box.querySelectorAll("img"), function(im){ im.onclick = function(){ estLightbox(im.src); }; });
+  } catch(err){ box.innerHTML = "<div style='font-size:12px;color:#6b7280;'>The photos are included in the full PDF below.</div>"; }
 }
 
 function msMakeTransparent(dataUrl){
@@ -1771,6 +1977,13 @@ async function gs(fn, data){
       case "deleteEstimate": {
         var estCur = await fbGet("estimates", data.id);
         if(estCur && estCur.status && estCur.status!=="Draft") return {ok:false, error:"Only drafts can be deleted."};
+        // Remove the photos and stored PDF that belong to this draft too
+        for(var dpi=0; dpi<((estCur&&estCur.photos)||[]).length; dpi++){ await fbDelete("estimatePhotos", data.id+"__"+estCur.photos[dpi].id); }
+        var oldDoc = await fbGet("estimateDocs", data.id);
+        if(oldDoc){
+          for(var dci=0; dci<(Number(oldDoc.chunks)||0); dci++){ await fbDelete("estimateDocChunks", data.id+"__"+dci); }
+          await fbDelete("estimateDocs", data.id);
+        }
         await fbDelete("estimates", data.id);
         return {ok:true};
       }
@@ -1808,8 +2021,41 @@ async function gs(fn, data){
       }
 
       case "saveEstimateDoc": {
-        await fbSet("estimateDocs", data.id, {id:data.id, pdfBase64:data.pdfBase64||"", fields:data.fields||[], snapshot:data.snapshot||{}, updatedAt:new Date().toISOString()});
+        // Big PDFs (with photos) are split into pieces; a single Firestore record can't hold more than ~1MB
+        var pdfB64 = data.pdfBase64 || "", CHUNK = 700000;
+        var docBase = {id:data.id, fields:data.fields||[], snapshot:data.snapshot||{}, updatedAt:new Date().toISOString()};
+        if(pdfB64.length <= CHUNK){
+          await fbSet("estimateDocs", data.id, Object.assign(docBase, {pdfBase64:pdfB64, chunks:0}));
+        } else {
+          var pieces = Math.ceil(pdfB64.length / CHUNK);
+          for(var pi2=0; pi2<pieces; pi2++){
+            await fbSet("estimateDocChunks", data.id+"__"+pi2, {id:data.id, i:pi2, data:pdfB64.slice(pi2*CHUNK, (pi2+1)*CHUNK)});
+          }
+          await fbSet("estimateDocs", data.id, Object.assign(docBase, {pdfBase64:"", chunks:pieces}));
+        }
         return {ok:true};
+      }
+      case "saveEstimatePhoto": {
+        if(!data.estimateId || !data.id || !data.dataUrl) return {ok:false, error:"Missing photo data"};
+        await fbSet("estimatePhotos", data.estimateId+"__"+data.id, {estimateId:data.estimateId, id:data.id, dataUrl:data.dataUrl, createdAt:new Date().toISOString()});
+        return {ok:true};
+      }
+      case "deleteEstimatePhoto": {
+        if(data.estimateId && data.id) await fbDelete("estimatePhotos", data.estimateId+"__"+data.id);
+        return {ok:true};
+      }
+      case "getEstimatePhotos": {
+        // From the customer page the link token decides which estimate; the app passes the estimate id directly
+        var phEstId = data.estimateId;
+        if(data.token){
+          var phTk = await fbGet("estimateTokens", data.token);
+          if(!phTk) return {ok:false, error:"This link is not valid."};
+          phEstId = phTk.estimateId;
+        }
+        var phEst = phEstId ? await fbGet("estimates", phEstId) : null;
+        if(!phEst) return {ok:true, photos:[]};
+        var phRows = await Promise.all((phEst.photos||[]).map(function(p){ return fbGet("estimatePhotos", phEstId+"__"+p.id); }));
+        return {ok:true, photos: phRows.filter(Boolean).map(function(r){ return {id:r.id, dataUrl:r.dataUrl}; })};
       }
       case "saveEstimateToken": {
         await fbSet("estimateTokens", data.token, {token:data.token, estimateId:data.estimateId, branch:data.branch||"willamette", createdAt:new Date().toISOString(), used:false, revoked:false});
@@ -1828,11 +2074,17 @@ async function gs(fn, data){
         var estRec = await fbGet("estimates", tk.estimateId);
         var estDocRec = await fbGet("estimateDocs", tk.estimateId);
         if(!estRec || !estDocRec) return {ok:false, error:"This estimate is no longer available."};
+        var pdfFull = estDocRec.pdfBase64 || "";
+        if(Number(estDocRec.chunks) > 0){
+          var chunkRows = await Promise.all(Array.from({length:Number(estDocRec.chunks)}, function(_, ci){ return fbGet("estimateDocChunks", tk.estimateId+"__"+ci); }));
+          pdfFull = chunkRows.map(function(r){ return (r && r.data) || ""; }).join("");
+        }
         return {ok:true, used:!!tk.used, revoked:!!tk.revoked, signedUrl:tk.signedUrl||"",
           estimate:{id:estRec.id, number:estRec.number, branch:estRec.branch, status:estRec.status, date:estRec.date, createdAt:estRec.createdAt, sentAt:estRec.sentAt,
             createdBy:estRec.createdBy, createdByEmail:estRec.createdByEmail, employeePhone:estRec.employeePhone, customer:estRec.customer, items:estRec.items,
-            showPrices:estRec.showPrices, taxRate:estRec.taxRate, notes:estRec.notes, notifyEmails:estRec.notifyEmails||[]},
-          pdfBase64:estDocRec.pdfBase64, fields:estDocRec.fields||[], snapshot:estDocRec.snapshot||{}};
+            showPrices:estRec.showPrices, taxRate:estRec.taxRate, notes:estRec.notes, notifyEmails:estRec.notifyEmails||[],
+            inspection:estRec.inspection||{}, photos:(estRec.photos||[]).map(function(p){ return {id:p.id, caption:p.caption||""}; })},
+          pdfBase64:pdfFull, fields:estDocRec.fields||[], snapshot:estDocRec.snapshot||{}};
       }
       case "completeEstimateSigning": {
         await initFirebase();
