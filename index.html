@@ -449,7 +449,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.8.0";
+const APP_VERSION = "5.8.1";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -2568,10 +2568,19 @@ async function gs(fn, data){
         // Safety: read existing data first, never overwrite any array with empty
         var existingAccts = await fbGet("config","accounts_"+brKeySave) || {};
         var managersToSave = (data.managers&&data.managers.length>0) ? data.managers : (existingAccts.managers&&existingAccts.managers.length>0 ? existingAccts.managers : []);
-        var techsToSave = (data.techAccounts&&data.techAccounts.length>0) ? data.techAccounts : (existingAccts.techAccounts&&existingAccts.techAccounts.length>0 ? existingAccts.techAccounts : []);
-        var trucksToSave = (data.trucks&&data.trucks.length>0) ? data.trucks : (existingAccts.trucks&&existingAccts.trucks.length>0 ? existingAccts.trucks : []);
-        var catsToSave = (data.cats&&data.cats.length>0) ? data.cats : (existingAccts.cats&&existingAccts.cats.length>0 ? existingAccts.cats : []);
-        var inspFieldsToSave = (data.inspFields&&data.inspFields.length>0) ? data.inspFields : (existingAccts.inspFields&&existingAccts.inspFields.length>0 ? existingAccts.inspFields : []);
+        // An empty list is normally treated as a mistake and the old list is kept. A deliberate removal
+        // says so with allowEmpty (never for managers - a branch always keeps at least one).
+        var allowEmpty = Array.isArray(data.allowEmpty) ? data.allowEmpty : [];
+        var pickList = function(key){
+          var given = data[key];
+          if(Array.isArray(given) && (given.length>0 || allowEmpty.indexOf(key)>=0)) return given;
+          var kept = existingAccts[key];
+          return (kept && kept.length>0) ? kept : [];
+        };
+        var techsToSave = pickList("techAccounts");
+        var trucksToSave = pickList("trucks");
+        var catsToSave = pickList("cats");
+        var inspFieldsToSave = pickList("inspFields");
         // Safety: never save if branch doesn't match current session
         console.log("saveAccounts: branch="+brKeySave+" managers="+managersToSave.length+" techs="+techsToSave.length);
         await fbSet("config","accounts_"+brKeySave,{
@@ -3579,7 +3588,7 @@ async function loadAccountsFromSheet(){
   } catch(e){ console.warn("Load accounts:", e.message); }
 }
 
-async function saveAccountsToSheet(){
+async function saveAccountsToSheet(allowEmpty){
   try {
     // Safety checks - never save if data looks wrong
     if(!S.branch){ console.warn("saveAccountsToSheet: skipping - no branch set"); return; }
@@ -3594,7 +3603,8 @@ async function saveAccountsToSheet(){
       techAccounts: S.techAccounts,
       trucks: S.trucks,
       cats: S.cats,
-      inspFields: S.inspFields
+      inspFields: S.inspFields,
+      allowEmpty: allowEmpty || []
     });
   } catch(e){ console.warn("Save accounts:", e.message); }
 }
@@ -4467,9 +4477,13 @@ async function handleAction(a,v,el,e){
   }
   if(a==="sa-remove-manager"){
     var rmParts = v.split("|");
-    if(!confirm("Remove this manager?")) return;
     var rmAccts = await gs("getAccounts",{branch:rmParts[0]});
-    var rmMgrs = (rmAccts.managers||[]).filter(function(m){return m.email!==rmParts[1];});
+    var rmAll = rmAccts.managers||[];
+    var rmTarget = rmAll.find(function(m){ return m.email===rmParts[1]; });
+    var rmMgrs = rmAll.filter(function(m){ return m.email!==rmParts[1]; });
+    if(!rmTarget){ showToast("Couldn't find that manager - refresh and try again"); renderSuperAdmin(); return; }
+    if(rmMgrs.length===0){ alert("A branch needs at least one manager.\n\nAdd the replacement manager first, then remove this one."); return; }
+    if(!confirm("Remove "+(rmTarget.name||"this manager")+"?"+(rmTarget.isAdmin ? "\n\nThey are this branch's main admin. You'll need to choose a new main admin afterwards." : ""))) return;
     await gs("saveAccounts",{branch:rmParts[0],managers:rmMgrs,techAccounts:rmAccts.techAccounts||[],trucks:rmAccts.trucks||[],cats:rmAccts.cats||[],inspFields:rmAccts.inspFields||[]});
     showToast("Manager removed");
     renderSuperAdmin();
@@ -4491,11 +4505,16 @@ async function handleAction(a,v,el,e){
     return;
   }
   if(a==="sa-remove-tech"){
-    var rtParts = v.split("|");
-    if(!confirm("Remove this technician?")) return;
-    var rtAccts = await gs("getAccounts",{branch:rtParts[0]});
-    var rtTechs = (rtAccts.techAccounts||[]).filter(function(t){return t.email!==rtParts[1];});
-    await gs("saveAccounts",{branch:rtParts[0],managers:rtAccts.managers||[],techAccounts:rtTechs,trucks:rtAccts.trucks||[],cats:rtAccts.cats||[],inspFields:rtAccts.inspFields||[]});
+    var rtParts = v.split("|"), rtBranch = rtParts[0], rtEmail = rtParts[1]||"", rtId = rtParts[2]||"", rtName = "";
+    try { rtName = decodeURIComponent(rtParts[3]||""); } catch(x){ rtName = rtParts[3]||""; }
+    var rtAccts = await gs("getAccounts",{branch:rtBranch});
+    // match exactly one person: by id, else by email, else by name (blank emails must never match each other)
+    var rtMatches = function(t){ return rtId ? t.id===rtId : (rtEmail ? t.email===rtEmail : (!t.email && !t.id && t.name===rtName)); };
+    var rtAll = rtAccts.techAccounts||[];
+    if(!rtAll.some(rtMatches)){ showToast("Couldn't find that technician - refresh and try again"); renderSuperAdmin(); return; }
+    if(!confirm("Remove "+(rtName||rtEmail||"this technician")+"?")) return;
+    var rtTechs = rtAll.filter(function(t){ return !rtMatches(t); });
+    await gs("saveAccounts",{branch:rtBranch,managers:rtAccts.managers||[],techAccounts:rtTechs,trucks:rtAccts.trucks||[],cats:rtAccts.cats||[],inspFields:rtAccts.inspFields||[],allowEmpty:["techAccounts"]});
     showToast("Technician removed");
     renderSuperAdmin();
     return;
@@ -5193,7 +5212,7 @@ async function handleAction(a,v,el,e){
   if(a==="ti-submit") { tiSubmit(); return; }
   if(a==="save-mgr-name") { S.managerName=document.getElementById("mgr-name-inp").value||S.managerName; save(); alert("Saved!"); return; }
   if(a==="add-truck") { const inp=document.getElementById("new-truck-inp"); if(inp&&inp.value.trim()){S.trucks.push(inp.value.trim());save();render();} return; }
-  if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();saveAccountsToSheet();render();} return; }
+  if(a==="del-truck") { if(confirm("Remove this truck?")){S.trucks.splice(parseInt(v),1);save();saveAccountsToSheet(["trucks"]);render();} return; }
   if(a==="truck-up") { var tui=parseInt(v); if(tui>0){var tutmp=S.trucks[tui-1];S.trucks[tui-1]=S.trucks[tui];S.trucks[tui]=tutmp;save();saveAccountsToSheet();render();} return; }
   if(a==="truck-down") { var tdi=parseInt(v); if(tdi<S.trucks.length-1){var tdtmp=S.trucks[tdi+1];S.trucks[tdi+1]=S.trucks[tdi];S.trucks[tdi]=tdtmp;save();saveAccountsToSheet();render();} return; }
   if(a==="assign-truck") {
@@ -5253,7 +5272,7 @@ async function handleAction(a,v,el,e){
     if(confirm("Remove "+dtName+"? This cannot be undone.")){
       S.techAccounts.splice(dtIdx,1);
       S.techs = S.techs.filter(function(t){ return t!==dtName; });
-      await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields});
+      await gs("saveAccountsServer", {branch:S.branch||"willamette", managers:S.managers, techAccounts:S.techAccounts, trucks:S.trucks, cats:S.cats, inspFields:S.inspFields, allowEmpty:["techAccounts"]});
       lsSet("hub:techAccounts", S.techAccounts);
       lsSet("hub:techs", S.techs);
       showToast(dtName+" removed ✓");
@@ -8394,7 +8413,7 @@ function renderSuperAdminBranch(pg){
           +"<div><div style='font-weight:600;'>"+esc(t.name)+"</div>"
           +"<div style='font-size:12px;color:#64748b;'>"+esc(t.email)+"</div></div>"
           +"<button class='btn' style='padding:5px 10px;font-size:11px;background:#1a1a2e;color:#ef4444;border:1px solid #ef444444;' "
-          +"data-a='sa-remove-tech' data-v='"+b.id+"|"+t.email+"'>Remove</button>"
+          +"data-a='sa-remove-tech' data-v='"+b.id+"|"+esc(t.email||"")+"|"+esc(t.id||"")+"|"+encodeURIComponent(t.name||"").replace(/'/g,"%27")+"'>Remove</button>"
           +"</div>";
       }).join("")
       +"<button class='btn bp' data-a='sa-add-tech' data-v='"+b.id+"' style='width:100%;padding:10px;margin-top:10px;font-size:13px;'>+ Add Technician</button>"
@@ -12388,7 +12407,7 @@ function addTechAccount(){
 }
 
 function delTechAccount(i){
-  if(confirm("Remove "+S.techAccounts[i].name+"?")){ S.techAccounts.splice(i,1); save(); saveAccountsToSheet(); render(); }
+  if(confirm("Remove "+S.techAccounts[i].name+"?")){ S.techAccounts.splice(i,1); save(); saveAccountsToSheet(["techAccounts"]); render(); }
 }
 
 function resetTechPin(i){
