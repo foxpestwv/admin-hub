@@ -89,10 +89,15 @@ input,textarea,select,button{font-family:inherit;}
 </head>
 <body>
 <div id="dev-banner" style="display:none;background:#f59e0b;color:#000;text-align:center;padding:6px;font-size:12px;font-weight:700;position:fixed;top:0;left:0;right:0;z-index:99999;">
-  ⚠️ DEV VERSION — Changes here do not affect the live app
+  TEST COPY
 </div>
 <script>
-  if(location.hostname.includes("admin-hub-dev")) {
+  // Only the test site loads its own database settings (test-config.js exists only in the test repo)
+  if(/admin-hub-dev/i.test(location.hostname + location.pathname)) document.write('<script src="test-config.js"><\/script>');
+</script>
+<script>
+  // The test site lives at .../admin-hub-dev/ on the same host as the live one, so look at the path too
+  if(/admin-hub-dev/i.test(location.hostname + location.pathname)) {
     document.getElementById("dev-banner").style.display="block";
     document.body.style.paddingTop="28px";
   }
@@ -449,7 +454,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "5.8.7";
+const APP_VERSION = "6.1.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -1226,14 +1231,22 @@ async function estSend(){
   if(ix>=0) S.estimates[ix] = copy; else S.estimates.unshift(copy);
   var m = estCustomerEmail(e, estLink(token), st);
   var res = await estBridge("sendEmail", estMailTo(e, st, m.subject, m.text, m.html));
-  showToast(res && res.ok ? "Sent to "+email+" ✓" : "Saved, but the email didn't send - use Copy Link below");
+  if(res && res.ok){ showToast("Sent to "+email+" ✓"); }
+  else {
+    showToast("Saved, but the email didn't send - use Copy Link below");
+    alert("The estimate was saved, but the email didn't send.\n\nThe bridge said: "+((res && res.error) || "(no reply)")+"\n\nUse Copy Link below to give the customer the link.");
+  }
   S._estView = "detail"; renderEstimates();
 }
 async function estResend(){
   var e = S._est; if(!e || !e.token) return;
   var st = estSettings(), m = estCustomerEmail(e, estLink(e.token), st);
   var res = await estBridge("sendEmail", estMailTo(e, st, m.subject, m.text, m.html));
-  showToast(res && res.ok ? "Email re-sent ✓" : "Email didn't send - use Copy Link");
+  if(res && res.ok){ showToast("Email re-sent ✓"); }
+  else {
+    showToast("Email didn't send - use Copy Link");
+    alert("The email didn't send.\n\nThe bridge said: "+((res && res.error) || "(no reply)")+"\n\nYou can still use Copy Link to give the customer the link.");
+  }
 }
 async function estWithdraw(){
   var e = S._est; if(!e) return;
@@ -1434,9 +1447,9 @@ async function estStampSigned(unsignedB64, fields, sigDataUrl, name, dateText){
 }
 function estCSignedEmails(d, name, up, st){
   var e = d.estimate, t = estTotals(e), co = (d.snapshot&&d.snapshot.company&&d.snapshot.company.name) || "Fox Pest Control";
-  var custText = "Hi "+name.split(" ")[0]+",\n\nThank you! Your signed copy of estimate #"+e.number+" ("+estMoney(t.total)+") is saved here:\n\n"+up.url+"\n\nWe'll be in touch to schedule the work. Questions? Contact "+e.createdBy+(e.employeePhone?" at "+e.employeePhone:"")+".\n\n"+co;
+  var custText = "Hi "+name.split(" ")[0]+",\n\nThank you! Your signed copy of estimate #"+e.number+" ("+estMoney(t.total)+") is attached to this email as a PDF. Please keep it for your records.\n\nWe'll be in touch to schedule the work. Questions? Contact "+e.createdBy+(e.employeePhone?" at "+e.employeePhone:"")+".\n\n"+co;
   var custHtml = estEmailShell("<h2 style='margin:0 0 12px;color:#111827;'>Thank you - your estimate is signed</h2><p>Hi "+esc(name.split(" ")[0])+",</p>"
-    +"<p>Your signed copy of estimate <b>#"+esc(e.number)+"</b> ("+estMoney(t.total)+") is ready.</p><p style='margin:22px 0;'>"+estBtn(up.url,"View Signed Estimate")+"</p>"
+    +"<p>Your signed copy of estimate <b>#"+esc(e.number)+"</b> ("+estMoney(t.total)+") is attached to this email as a PDF. Please keep it for your records.</p>"
     +"<p style='font-size:14px;color:#374151;'>We'll be in touch to schedule the work. Questions? Contact "+esc(e.createdBy)+(e.employeePhone?" at "+esc(e.employeePhone):"")+".</p>", co);
   var staffText = name+" signed estimate #"+e.number+" ("+estMoney(t.total)+").\n\nSigned PDF: "+up.url+"\nYour folder: "+(up.folderUrl||"")+"\n\nOpen the Admin Hub > Estimates to see it.";
   var staffHtml = estEmailShell("<h2 style='margin:0 0 12px;color:#111827;'>Estimate #"+esc(e.number)+" signed</h2><p><b>"+esc(name)+"</b> signed estimate #"+esc(e.number)+" for <b>"+estMoney(t.total)+"</b>.</p>"
@@ -1455,8 +1468,8 @@ async function estCustomerBoot(token){
   catch(err){ root.innerHTML = estCIsConnectionProblem(err.message) ? estCConnectionHtml(err.message) : estCErr("We couldn't load this estimate. Please check your connection and try again."); return; }
   if(!d || !d.ok){ root.innerHTML = estCIsConnectionProblem(d&&d.error) ? estCConnectionHtml(d&&d.error) : estCErr((d&&d.error)||"This link is not valid."); return; }
   var e = d.estimate, contact = e.createdBy + (e.employeePhone ? " at "+e.employeePhone : "");
-  if(d.used && d.signedUrl){
-    root.innerHTML = estCHeader(d)+"<div style='background:#fff;border-radius:14px;padding:22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);'><div style='font-size:40px;'>✅</div><div style='font-weight:700;font-size:18px;margin:8px 0;'>This estimate has been signed</div><a href='"+esc(d.signedUrl)+"' style='color:#2563eb;'>View signed copy</a></div>";
+  if(d.used && !d.revoked){
+    root.innerHTML = estCHeader(d)+"<div style='background:#fff;border-radius:14px;padding:22px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);'><div style='font-size:40px;'>✅</div><div style='font-weight:700;font-size:18px;margin:8px 0;'>This estimate has been signed</div><div style='font-size:14px;color:#4b5563;'>A signed copy was emailed to the customer. If you need another copy, please contact "+esc(contact)+".</div></div>";
     return;
   }
   if(d.revoked || d.used || e.status!=="Sent"){ root.innerHTML = estCErr("This estimate link is no longer active. Please contact "+contact+" for a new one."); return; }
@@ -1483,7 +1496,8 @@ async function estCustomerBoot(token){
     try {
       var signed = await estStampSigned(d.pdfBase64, d.fields, pad.data(), name, new Date().toLocaleDateString("en-US"));
       var custName = String((e.customer&&e.customer.name)||name).replace(/[^A-Za-z0-9 ]+/g,"").trim();
-      var up = await estBridge("saveEstimatePdf", {pdfBase64:estBytesToB64(signed), fileName:"Estimate "+e.number+" - "+custName+" - Signed",
+      var signedB64 = estBytesToB64(signed);
+      var up = await estBridge("saveEstimatePdf", {pdfBase64:signedB64, fileName:"Estimate "+e.number+" - "+custName+" - Signed",
         employeeName:e.createdBy, employeeEmail:e.createdByEmail, branch:e.branch});
       if(!up || !up.ok) throw new Error((up&&up.error)||"Could not save the signed copy");
       var done = await gs("completeEstimateSigning", {token:token, signedName:name, signedUrl:up.url, signedDownloadUrl:up.downloadUrl, signedFileId:up.fileId, folderUrl:up.folderUrl});
@@ -1494,12 +1508,29 @@ async function estCustomerBoot(token){
       var m = estCSignedEmails(d, name, up, {});
       var custEmail = String((e.customer&&e.customer.email)||"").trim();
       var staffTo = (e.notifyEmails&&e.notifyEmails.length ? e.notifyEmails : [e.createdByEmail]).filter(Boolean).join(",");
-      if(custEmail) estBridge("sendEmail", {to:custEmail, subject:"Your signed estimate from "+m.co+" (#"+e.number+")", body:m.custText, htmlBody:m.custHtml, replyTo:e.createdByEmail||"", senderName:m.co}).catch(function(){});
-      if(staffTo) estBridge("sendEmail", {to:staffTo, subject:"Estimate #"+e.number+" signed - "+custName+" ("+estMoney(estTotals(e).total)+")", body:m.staffText, htmlBody:m.staffHtml, senderName:m.co}).catch(function(){});
+      var pdfName = "Estimate "+e.number+" - "+custName+" - Signed.pdf";
+      var mailFailed = function(err){ return {ok:false, error:(err && err.message) || "no reply from the bridge"}; };
+      var custMail = custEmail ? estBridge("sendEmail", {to:custEmail, subject:"Your signed estimate from "+m.co+" (#"+e.number+")", body:m.custText, htmlBody:m.custHtml, replyTo:e.createdByEmail||"", senderName:m.co,
+        attachments:[{name:pdfName, base64:signedB64, mimeType:"application/pdf"}]}).catch(mailFailed) : Promise.resolve(null);
+      var staffMail = staffTo ? estBridge("sendEmail", {to:staffTo, subject:"Estimate #"+e.number+" signed - "+custName+" ("+estMoney(estTotals(e).total)+")", body:m.staffText, htmlBody:m.staffHtml, senderName:m.co}).catch(mailFailed) : Promise.resolve(null);
+      // Wait for the bridge's answers (but never more than EST_MAIL_WAIT_MS) so this screen can say what really happened
+      var mailAnswers = await Promise.race([Promise.all([custMail, staffMail]), new Promise(function(r){ setTimeout(function(){ r("timeout"); }, EST_MAIL_WAIT_MS); })]);
+      var custState = !custEmail ? "none" : (mailAnswers==="timeout" ? "unknown" : ((mailAnswers[0] && mailAnswers[0].ok) ? "yes" : "no"));
+      var thanks = {
+        yes:"A signed copy has been emailed to you at "+esc(custEmail)+". We'll be in touch to schedule the work.",
+        no:"Your signature has been saved. We couldn't email your copy just now, so please tap <b>Download signed copy</b> below to keep it. We'll be in touch to schedule the work.",
+        unknown:"Your signature has been saved, and your signed copy is on its way by email. You can also download it now. We'll be in touch to schedule the work.",
+        none:"Your signature has been saved. Please download your signed copy below. We'll be in touch to schedule the work."
+      }[custState];
+      var devNote = "";
+      if(isDevCopy() && mailAnswers!=="timeout"){
+        var problems = [["customer email", mailAnswers && mailAnswers[0]], ["staff email", mailAnswers && mailAnswers[1]]].filter(function(p){ return p[1] && p[1].ok===false; }).map(function(p){ return p[0]+": "+p[1].error; });
+        if(problems.length) devNote = "<div style='font-size:12px;color:#b45309;background:#fef3c7;border-radius:8px;padding:8px;margin-bottom:14px;text-align:left;'><b>Test copy only:</b> the bridge said - "+esc(problems.join(" | "))+"</div>";
+      }
       root.innerHTML = estCHeader(d)+"<div style='background:#fff;border-radius:14px;padding:26px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08);'>"
         +"<div style='font-size:48px;'>✅</div><div style='font-size:20px;font-weight:700;color:#166534;margin:8px 0;'>Estimate signed - thank you!</div>"
-        +"<div style='font-size:14px;color:#4b5563;margin-bottom:16px;'>A signed copy has been emailed to you"+(custEmail?" at "+esc(custEmail):"")+". We'll be in touch to schedule the work.</div>"
-        +"<a href='"+esc(up.url)+"' style='display:inline-block;background:#1e3a8a;color:#fff;text-decoration:none;padding:13px 24px;border-radius:8px;font-weight:700;'>View signed copy</a></div>";
+        +"<div style='font-size:14px;color:#4b5563;margin-bottom:16px;'>"+thanks+"</div>"+devNote
+        +"<a href='"+URL.createObjectURL(new Blob([signed], {type:"application/pdf"}))+"' download='"+esc(pdfName)+"' style='display:inline-block;background:#1e3a8a;color:#fff;text-decoration:none;padding:13px 24px;border-radius:8px;font-weight:700;'>Download signed copy</a></div>";
     } catch(err){
       console.error("Estimate signing failed:", err);
       alert("Sorry, something went wrong: "+err.message+"\n\nPlease try again, or contact "+contact+".");
@@ -2174,6 +2205,245 @@ function rsBind(pg){
   pg.addEventListener("change", function(ev){ var t = ev.target; if(t && t.type==="checkbox" && String(t.id||"").indexOf("rs-")===0) rsUpdateCounts(pg); });
 }
 
+// ─── Test copy safety ────────────────────────────────────────────────────────
+// The test copy (…/admin-hub-dev/) runs different code but shares the live database and bridge, so it has to be loud about that.
+function isDevCopy(){ return /admin-hub-dev/i.test(String(location.hostname)+String(location.pathname)); }
+// Numeric version compare (5.10.0 is newer than 5.9.0). Returns 1, 0 or -1.
+function versionCmp(a, b){
+  var pa = String(a||"").split("."), pb = String(b||"").split("."), n = Math.max(pa.length, pb.length);
+  for(var i=0;i<n;i++){
+    var x = parseInt(pa[i],10)||0, y = parseInt(pb[i],10)||0;
+    if(x>y) return 1; if(x<y) return -1;
+  }
+  return 0;
+}
+function devBannerUpdate(){
+  var el = document.getElementById("dev-banner"); if(!el) return;
+  if(!isDevCopy()){ el.style.display = "none"; return; }
+  var cfg = firebaseConfigInUse();
+  el.style.display = "block";
+  if(!cfg){
+    el.style.background = "#ef4444"; el.style.color = "#fff";
+    el.textContent = "TEST COPY - blocked: no test database connected";
+  } else {
+    el.style.background = "#22c55e"; el.style.color = "#000";
+    el.textContent = "TEST COPY - separate test database ("+cfg.projectId+"). Live data is safe.";
+  }
+  document.body.style.paddingTop = "28px";
+}
+
+// ─── Separate test database for the test copy ───────────────────────────────
+// The live site uses FIREBASE_LIVE. The test copy (…/admin-hub-dev/) loads its own settings from test-config.js, a file that only
+// exists in the test repo, so the same index.html can be promoted to live untouched. Without that file the test copy refuses to
+// start - it can never fall back to the live database.
+function firebaseConfigInUse(){
+  if(!isDevCopy()) return FIREBASE_LIVE;
+  var t = window.FIREBASE_TEST_CONFIG;
+  if(t && t.apiKey && !/^PASTE/i.test(String(t.apiKey)) && t.projectId && !/^PASTE/i.test(String(t.projectId)) && t.projectId!==FIREBASE_LIVE.projectId) return t;   // an unfilled template does not count
+  return null;
+}
+function devBlockScreen(){
+  if(document.getElementById("dev-block")) return;
+  var t = window.FIREBASE_TEST_CONFIG;
+  var why = !t ? "No test-config.js was found in this test site." : (t.projectId===FIREBASE_LIVE.projectId ? "test-config.js points at the LIVE database, which is not allowed." : "test-config.js is missing its settings.");
+  var d = document.createElement("div"); d.id = "dev-block";
+  d.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:#0b1220;color:#e2e8f0;z-index:100001;overflow:auto;padding:70px 20px 40px;font-family:Arial,Helvetica,sans-serif;";
+  d.innerHTML = "<div style='max-width:520px;margin:0 auto;'><div style='font-size:38px;'>🧪</div>"
+    +"<h2 style='margin:8px 0 12px;font-size:22px;'>Test copy - not connected to a test database</h2>"
+    +"<p style='color:#94a3b8;line-height:1.5;'>This copy is blocked from touching your live data until it has a database of its own.</p>"
+    +"<ol style='line-height:1.7;color:#cbd5e1;padding-left:20px;'><li>Create a second, free Firebase project just for testing.</li>"
+    +"<li>Add a file named <b>test-config.js</b> to the <b>admin-hub-dev</b> repository with that project's settings.</li>"
+    +"<li>Reload this page.</li></ol><p style='color:#64748b;font-size:12px;'>"+why+"</p></div>";
+  document.body.appendChild(d);
+}
+// Copy the live setup (branches, accounts, settings, products, estimate library) into the test database. Live is only READ.
+async function devCopyLiveData(){
+  if(!isDevCopy()) throw new Error("This only works on the test copy.");
+  var cfg = firebaseConfigInUse();
+  if(!cfg || cfg.projectId===FIREBASE_LIVE.projectId) throw new Error("The test copy is not connected to a separate test database.");
+  await initFirebase();
+  var liveApp;
+  try { liveApp = firebase.app("live"); } catch(x){ liveApp = firebase.initializeApp(FIREBASE_LIVE, "live"); }
+  if(!liveApp.auth().currentUser){ try { await liveApp.auth().signInAnonymously(); } catch(x){} }
+  var live = liveApp.firestore(), counts = {}, total = 0;
+  var cols = ["config", "products", "estimateItems"];
+  for(var i=0;i<cols.length;i++){
+    var col = cols[i], snap = await live.collection(col).get();
+    var docs = snap.docs.filter(function(d){ return !(col==="config" && d.id==="appVersion"); });
+    for(var j=0;j<docs.length;j+=400){
+      var batch = _db.batch();
+      docs.slice(j, j+400).forEach(function(d){ batch.set(_db.collection(col).doc(d.id), d.data()); });
+      await batch.commit();
+    }
+    counts[col] = docs.length; total += docs.length;
+  }
+  return {counts:counts, total:total};
+}
+// Everything the test copy sends to the bridge is marked as a test, so the bridge never touches real sheets, folders or inboxes
+function installDevBridgeFlag(){
+  if(window._devFetchWrapped) return; window._devFetchWrapped = true;
+  var orig = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    try {
+      if(typeof EMAIL_BRIDGE!=="undefined" && String(url).indexOf(EMAIL_BRIDGE)===0 && opts && typeof opts.body==="string"){
+        var b = JSON.parse(opts.body); b.dev = true;
+        if(b.data && typeof b.data==="object") b.data.dev = true;
+        opts = Object.assign({}, opts, {body: JSON.stringify(b)});
+      }
+    } catch(x){}
+    return orig(url, opts);
+  };
+}
+
+// ─── Super Admin: estimate clean-up tool ─────────────────────────────────────
+// Lists estimates (any status) and permanently removes the ones you tick: the estimate, its stored PDF, photos and signing links,
+// and (optionally) moves the signed PDF in Drive to the trash. Signed estimates cannot be deleted anywhere else in the app.
+function estClnFiltered(){
+  var k = S._cln, q = String(k.search||"").trim().toLowerCase();
+  return (k.list||[]).filter(function(e){
+    if(k.status!=="all" && (e.status||"Draft")!==k.status) return false;
+    if(!q) return true;
+    var hay = ("#"+e.number+" "+((e.customer&&e.customer.name)||"")+" "+(e.createdBy||"")+" "+((e.customer&&e.customer.email)||"")).toLowerCase();
+    return hay.indexOf(q)>=0;
+  }).sort(function(a,b){ return String(b.createdAt||"").localeCompare(String(a.createdAt||"")); });
+}
+function estClnSelectedIds(){
+  var k = S._cln, live = {};
+  (k.list||[]).forEach(function(e){ live[e.id] = true; });
+  return Object.keys(k.sel||{}).filter(function(id){ return k.sel[id] && live[id]; });
+}
+function estClnRowsHtml(){
+  var k = S._cln, list = estClnFiltered();
+  var colors = {Draft:"#64748b", Sent:"#3b82f6", Signed:"#22c55e", Declined:"#ef4444"};
+  var bname = {}; (k.branches||[]).forEach(function(b){ bname[b.id] = b.name; });
+  if(!list.length) return "<div style='text-align:center;color:#64748b;padding:26px;'>No estimates match.</div>";
+  return "<div class='card' style='padding:0;overflow:hidden;'>"+list.map(function(e){
+    var t = estTotals(e), st = e.status||"Draft";
+    return "<label style='display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #1e3a5f;cursor:pointer;'>"
+      +"<input type='checkbox' data-clnsel='"+esc(e.id)+"' "+(k.sel[e.id]?"checked ":"")+"style='width:18px;height:18px;flex:none;'>"
+      +"<div style='flex:1;min-width:0;'><div style='font-size:13px;font-weight:600;'>#"+esc(e.number||"—")+" · "+esc((e.customer&&e.customer.name)||"No name")+"</div>"
+      +"<div style='font-size:11px;color:#64748b;'>"+esc(fd(e.createdAt||e.date))+(k.branch==="__all__"?" · "+esc(bname[e.branch]||e.branch||""):"")+" · "+esc(e.createdBy||"")+(e.signedFileId?" · PDF in Drive":"")+"</div></div>"
+      +"<div style='text-align:right;flex:none;'><div style='font-size:11px;font-weight:700;color:"+(colors[st]||"#64748b")+";'>"+esc(st)+"</div><div style='font-size:12px;color:#cbd5e1;'>"+estMoney(t.total)+"</div></div></label>";
+  }).join("")+"</div>";
+}
+function estClnUpdateButtons(){
+  var n = estClnSelectedIds().length, b = document.getElementById("cln-delete-btn");
+  if(b){ b.textContent = "Delete selected ("+n+")"; b.style.opacity = n ? "1" : "0.5"; }
+}
+function estCleanupRender(){
+  var pg = document.getElementById("pg-dashboard"), k = S._cln;
+  if(!pg || !k || S._saTool!=="estimates") return;
+  var counts = {all:(k.list||[]).length}; (k.list||[]).forEach(function(e){ var s = e.status||"Draft"; counts[s] = (counts[s]||0)+1; });
+  var opt = function(v, label, cur){ return "<option value='"+esc(v)+"'"+(String(cur)===String(v)?" selected":"")+">"+esc(label)+"</option>"; };
+  var canReset = k.branch!=="__all__" && k.list && k.list.length===0;
+  pg.innerHTML = "<div style='padding:16px;max-width:640px;margin:0 auto;'>"
+    +"<button class='btn bg' data-a='cln-back' style='margin-bottom:12px;'>← Super Admin</button>"
+    +"<h2 style='font-size:20px;font-weight:700;margin-bottom:4px;'>Clean Up Estimates</h2>"
+    +"<div style='font-size:12px;margin-bottom:12px;padding:8px 10px;border-radius:8px;"+(isDevCopy()?"background:#14532d;color:#bbf7d0;":"background:#7f1d1d;color:#fecaca;")+"'>"
+      +(isDevCopy()?"This is the TEST database. Nothing here touches live data.":"This is your LIVE database. Deletions are permanent.")+"</div>"
+    +"<div style='display:flex;gap:8px;margin-bottom:8px;'>"
+    +"<select class='inp' data-cln='branch' style='flex:1;'>"+opt("__all__","All branches",k.branch)+(k.branches||[]).map(function(b){ return opt(b.id, b.name, k.branch); }).join("")+"</select>"
+    +"<select class='inp' data-cln='status' style='flex:1;'>"+opt("all","All statuses ("+counts.all+")",k.status)+["Draft","Sent","Signed"].map(function(s){ return opt(s, s+" ("+(counts[s]||0)+")", k.status); }).join("")+"</select></div>"
+    +"<input id='cln-search' class='inp' placeholder='🔍 Search by number, customer or employee...' value='"+esc(k.search||"")+"' style='margin-bottom:10px;'>"
+    +"<div style='display:flex;gap:8px;margin-bottom:10px;'>"
+    +"<button class='btn bg' style='flex:1;padding:9px;font-size:12px;' data-a='cln-select-all'>Select all shown</button>"
+    +"<button class='btn bg' style='flex:1;padding:9px;font-size:12px;' data-a='cln-select-none'>Clear selection</button>"
+    +"<button class='btn bg' style='padding:9px 12px;font-size:12px;' data-a='cln-refresh'>↻</button></div>"
+    +"<label style='display:flex;align-items:center;gap:8px;font-size:13px;color:#cbd5e1;margin-bottom:10px;'><input type='checkbox' data-cln='removefiles' "+(k.removeFiles?"checked ":"")+"style='width:18px;height:18px;'> Also move the signed PDFs in Drive to the trash</label>"
+    +"<button id='cln-delete-btn' class='btn bd' data-a='cln-delete' style='width:100%;padding:12px;margin-bottom:12px;'>Delete selected (0)</button>"
+    +"<div id='cln-rows'>"+(k.list===null?"<div style='text-align:center;color:#64748b;padding:26px;'>Loading estimates...</div>":estClnRowsHtml())+"</div>"
+    +"<div style='margin-top:18px;border-top:1px solid #1e3a5f;padding-top:14px;'>"
+    +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;'>Estimate numbering</div>"
+    +"<div style='font-size:12px;color:#64748b;margin-bottom:8px;'>Numbers keep counting up after deletes. Once a branch has no estimates left you can start it again at #1001.</div>"
+    +"<button class='btn bg' data-a='cln-reset-counter' style='width:100%;padding:10px;"+(canReset?"":"opacity:.45;")+"'>Reset numbering to #1001"+(k.branch==="__all__"?" (pick one branch)":"")+"</button></div>"
+    +"</div>";
+  estClnUpdateButtons();
+}
+function estClnBind(pg){
+  if(pg._clnBound) return; pg._clnBound = true;
+  pg.addEventListener("input", function(ev){
+    var el = ev.target;
+    if(el && el.id==="cln-search" && S._cln){ S._cln.search = el.value; var r = document.getElementById("cln-rows"); if(r) r.innerHTML = estClnRowsHtml(); estClnUpdateButtons(); }
+  });
+  pg.addEventListener("change", function(ev){
+    var el = ev.target; if(!el || !el.dataset || !S._cln) return;
+    if(el.dataset.clnsel!==undefined){ S._cln.sel[el.dataset.clnsel] = !!el.checked; estClnUpdateButtons(); }
+    else if(el.dataset.cln==="status"){ S._cln.status = el.value; estCleanupRender(); }
+    else if(el.dataset.cln==="branch"){ S._cln.branch = el.value; S._cln.sel = {}; S._cln.list = null; estCleanupRender(); estCleanupLoad(); }
+    else if(el.dataset.cln==="removefiles"){ S._cln.removeFiles = !!el.checked; }
+  });
+}
+async function estCleanupOpen(){
+  if(S.role!=="superadmin") return;
+  S._saTool = "estimates";
+  S._cln = {branch:"__all__", status:"all", search:"", sel:{}, list:null, branches:[], removeFiles:true};
+  var pg = document.getElementById("pg-dashboard"); if(pg) estClnBind(pg);
+  estCleanupRender();
+  try { var br = await gs("getBranches", null); S._cln.branches = (br && br.branches) || []; } catch(x){}
+  await estCleanupLoad();
+}
+async function estCleanupLoad(){
+  var k = S._cln; if(!k) return;
+  var branch = k.branch;
+  var r = await gs("getEstimates", {branch:branch});
+  if(!S._cln || S._cln.branch!==branch) return;          // the branch was changed while this was loading
+  k.list = (r && r.estimates) || [];
+  estCleanupRender();
+}
+async function estCleanupDelete(){
+  var k = S._cln; if(!k || S.role!=="superadmin") return;
+  var ids = estClnSelectedIds();
+  if(!ids.length){ showToast("Tick the estimates you want to delete first"); return; }
+  var chosen = k.list.filter(function(e){ return ids.indexOf(e.id)>=0; });
+  var by = {}; chosen.forEach(function(e){ var s = e.status||"Draft"; by[s] = (by[s]||0)+1; });
+  var withFiles = chosen.filter(function(e){ return e.signedFileId || e.signedUrl; }).length;
+  var msg = "PERMANENTLY delete "+ids.length+" estimate"+(ids.length===1?"":"s")+"?\n\n"
+    +Object.keys(by).map(function(s){ return "  "+by[s]+" "+s; }).join("\n")+"\n\n"
+    +(by.Signed ? "Signed estimates are signed agreements. This cannot be undone.\n" : "")
+    +(by.Sent ? "Customers' links for sent estimates will stop working.\n" : "")
+    +(k.removeFiles ? (withFiles ? withFiles+" signed PDF file"+(withFiles===1?"":"s")+" in Drive will be moved to the trash (recoverable there for 30 days)." : "No signed PDFs to remove from Drive.") : "The PDF files will stay in Drive.")
+    +"\n\nThis is the "+(isDevCopy() ? "TEST" : "LIVE")+" database.";
+  if(!confirm(msg)) return;
+  var typed = prompt("Type DELETE to confirm:");
+  if(String(typed||"").trim()!=="DELETE"){ showToast("Cancelled - nothing was deleted"); return; }
+  showToast("Deleting...");
+  var removed = 0, failed = [], fileIds = [];
+  for(var i=0;i<ids.length;i++){
+    try {
+      var r = await gs("purgeEstimate", {id:ids[i]});
+      if(r && r.ok){ removed++; (r.fileIds||[]).forEach(function(f){ if(fileIds.indexOf(f)<0) fileIds.push(f); }); delete k.sel[ids[i]]; }
+      else failed.push(ids[i]+": "+((r&&r.error)||"no reply"));
+    } catch(err){ failed.push(ids[i]+": "+err.message); }
+  }
+  var driveLine = "";
+  if(k.removeFiles && fileIds.length){
+    try {
+      var tr = await estBridge("trashEstimateFiles", {fileIds:fileIds});
+      if(tr && tr.ok) driveLine = "\nDrive: "+tr.trashed+" file"+(tr.trashed===1?"":"s")+" moved to the trash"+((tr.skipped&&tr.skipped.length)?", "+tr.skipped.length+" skipped (not in the Fox Estimates folders)":"")+((tr.failed&&tr.failed.length)?", "+tr.failed.length+" could not be moved":"")+".";
+      else driveLine = "\nDrive: the files could not be moved ("+((tr&&tr.error)||"no reply")+"). The estimates are deleted; remove the files in Drive by hand.";
+    } catch(err){ driveLine = "\nDrive: couldn't reach the bridge ("+err.message+"). The estimates are deleted; remove the files in Drive by hand."; }
+  }
+  await estCleanupLoad();
+  alert("Deleted "+removed+" of "+ids.length+" estimate"+(ids.length===1?"":"s")+"."+driveLine+(failed.length?"\n\nCould not delete:\n"+failed.join("\n"):""));
+}
+async function estCleanupHandleAction(a){
+  var k = S._cln;
+  if(a==="cln-back"){ S._saTool = null; S._cln = null; renderSuperAdmin(); return true; }
+  if(!k) return false;
+  if(a==="cln-select-all"){ estClnFiltered().forEach(function(e){ k.sel[e.id] = true; }); var r = document.getElementById("cln-rows"); if(r) r.innerHTML = estClnRowsHtml(); estClnUpdateButtons(); return true; }
+  if(a==="cln-select-none"){ k.sel = {}; var r2 = document.getElementById("cln-rows"); if(r2) r2.innerHTML = estClnRowsHtml(); estClnUpdateButtons(); return true; }
+  if(a==="cln-refresh"){ k.list = null; estCleanupRender(); await estCleanupLoad(); return true; }
+  if(a==="cln-delete"){ await estCleanupDelete(); return true; }
+  if(a==="cln-reset-counter"){
+    if(k.branch==="__all__"){ alert("Pick one branch first."); return true; }
+    if(!confirm("Restart estimate numbering for this branch at #1001?")) return true;
+    var rr = await gs("resetEstimateCounter", {branch:k.branch});
+    if(rr && rr.ok) showToast("Numbering reset ✓"); else alert((rr && rr.error) || "Could not reset the numbering.");
+    return true;
+  }
+  return false;
+}
+
 function msMakeTransparent(dataUrl){
   return new Promise(function(resolve){
     try {
@@ -2301,7 +2571,7 @@ const BRANCHES = {
 }; // Increment this with every update
 
 // ─── Firebase Configuration ──────────────────────────────────────────────────
-const firebaseConfig = {
+const FIREBASE_LIVE = {
   apiKey: "AIzaSyAq_cRLmI0GZDxPqBPGiX2cTRGhesvvb0w",
   authDomain: "fox-pest-admin-hub.firebaseapp.com",
   projectId: "fox-pest-admin-hub",
@@ -2313,6 +2583,7 @@ const firebaseConfig = {
 // Firebase SDK loaded via script tags in <head>
 var _fbApp, _db, _auth, _fbReady = false;
 
+var EST_MAIL_WAIT_MS = 12000;   // longest the customer waits for the emails before the thank-you screen appears
 var _fbInitPromise = null;
 // The app signs in quietly so the database rules let it through. Some browsers (the built-in browser inside email apps,
 // strict privacy modes) block the storage that sign-in normally uses. If that happens, keep the sign-in in memory and retry.
@@ -2339,7 +2610,12 @@ function initFirebase(){
       if(typeof firebase !== "undefined" && firebase.firestore){
         clearInterval(check);
         if(!_fbApp){
-          _fbApp = firebase.initializeApp(firebaseConfig);
+          var fbCfg = firebaseConfigInUse();
+          if(!fbCfg){                                   // the test copy without its own database: refuse, never fall back to live
+            clearInterval(check); _fbInitPromise = null; devBlockScreen();
+            reject(new Error("The test copy has no test database configured")); return;
+          }
+          _fbApp = firebase.initializeApp(fbCfg);
           _db = firebase.firestore();
           _auth = firebase.auth();
         }
@@ -2362,6 +2638,7 @@ function initFirebase(){
 
 // ─── Auto Update Check ───────────────────────────────────────────────────────
 async function checkForUpdates(silent){
+  if(isDevCopy()) return;      // the test copy never registers a version or shows the update banner to anyone
   try {
     // Check localStorage FIRST before any network call
     var dismissedVersion = "";
@@ -2375,10 +2652,10 @@ async function checkForUpdates(silent){
     var latestNote = vdoc.data().note||"";
     
     // If the deployed app version is newer than Firebase config, update Firebase config so all devices know!
-    if(APP_VERSION > (latestVersion || "")){
+    if(versionCmp(APP_VERSION, latestVersion) > 0){
       await fbSet("config", "appVersion", {
         version: APP_VERSION,
-        note: "Truck inventory & sync improvements",
+        note: "New features and fixes",
         updatedAt: new Date().toISOString()
       });
       latestVersion = APP_VERSION;
@@ -2388,7 +2665,7 @@ async function checkForUpdates(silent){
     window._latestVersion = latestVersion;
 
     // Don't show banner if: versions match, already dismissed, or app IS latest
-    if(APP_VERSION === latestVersion) return;
+    if(versionCmp(APP_VERSION, latestVersion) >= 0) return;   // up to date (or ahead): no banner
     if(dismissedVersion === latestVersion) return;
 
     if(latestVersion !== APP_VERSION){
@@ -2513,7 +2790,7 @@ async function gs(fn, data){
       case "getEstimates": {
         var esB3 = (data&&data.branch)||"willamette";
         var esAll = await fbGet("estimates");
-        var esList = (esAll||[]).filter(function(x){ return x.branch===esB3; });
+        var esList = (esAll||[]).filter(function(x){ return esB3==="__all__" || x.branch===esB3; });
         esList.sort(function(a,b){ return String(b.createdAt||"").localeCompare(String(a.createdAt||"")); });
         return {estimates: esList};
       }
@@ -2629,7 +2906,7 @@ async function gs(fn, data){
           var chunkRows = await Promise.all(Array.from({length:Number(estDocRec.chunks)}, function(_, ci){ return fbGet("estimateDocChunks", tk.estimateId+"__"+ci); }));
           pdfFull = chunkRows.map(function(r){ return (r && r.data) || ""; }).join("");
         }
-        return {ok:true, used:!!tk.used, revoked:!!tk.revoked, signedUrl:tk.signedUrl||"",
+        return {ok:true, used:!!tk.used, revoked:!!tk.revoked,
           estimate:{id:estRec.id, number:estRec.number, branch:estRec.branch, status:estRec.status, date:estRec.date, createdAt:estRec.createdAt, sentAt:estRec.sentAt,
             createdBy:estRec.createdBy, createdByEmail:estRec.createdByEmail, employeePhone:estRec.employeePhone, customer:estRec.customer, items:estRec.items,
             showPrices:estRec.showPrices, taxRate:estRec.taxRate, notes:estRec.notes, notifyEmails:estRec.notifyEmails||[],
@@ -2667,6 +2944,40 @@ async function gs(fn, data){
         if(data.roleDefaults) tsPatch.roleDefaults = data.roleDefaults;
         if(data.override && data.override.id){ tsPatch.overrides = {}; tsPatch.overrides[data.override.id] = data.override.map || {}; }
         await fbSet("config", "tileSettings_"+tsBranch2, tsPatch);
+        return {ok:true};
+      }
+      case "purgeEstimate": {
+        // Removes EVERYTHING belonging to one estimate, whatever its status. Only the Super Admin clean-up tool calls this.
+        var pgId = data && data.id;
+        if(!pgId) return {ok:false, error:"Missing estimate id"};
+        var pgEst = await fbGet("estimates", pgId);
+        var pgDoc = await fbGet("estimateDocs", pgId);
+        var pgFiles = [];
+        if(pgEst){
+          if(pgEst.signedFileId) pgFiles.push(pgEst.signedFileId);
+          var pgM = /\/file\/d\/([\w-]+)/.exec(pgEst.signedUrl || "");
+          if(pgM && pgFiles.indexOf(pgM[1])<0) pgFiles.push(pgM[1]);
+        }
+        var pgCounts = {estimate:0, pdf:0, pdfPieces:0, photos:0, links:0};
+        var pgPhotos = (pgEst && pgEst.photos) || [];
+        for(var pgI=0; pgI<pgPhotos.length; pgI++){ await fbDelete("estimatePhotos", pgId+"__"+pgPhotos[pgI].id); pgCounts.photos++; }
+        if(pgDoc){
+          for(var pgC=0; pgC<(Number(pgDoc.chunks)||0); pgC++){ await fbDelete("estimateDocChunks", pgId+"__"+pgC); pgCounts.pdfPieces++; }
+          await fbDelete("estimateDocs", pgId); pgCounts.pdf = 1;
+        }
+        // every signing link that points at this estimate - the current one and any old withdrawn ones
+        var pgToks = (await fbGet("estimateTokens")) || [];
+        for(var pgT=0; pgT<pgToks.length; pgT++){
+          if(pgToks[pgT].estimateId===pgId){ await fbDelete("estimateTokens", pgToks[pgT]._id || pgToks[pgT].token); pgCounts.links++; }
+        }
+        if(pgEst){ await fbDelete("estimates", pgId); pgCounts.estimate = 1; }
+        return {ok:true, found:!!pgEst, counts:pgCounts, fileIds:pgFiles};
+      }
+      case "resetEstimateCounter": {
+        var rcBranch = (data && data.branch) || "willamette";
+        var rcLeft = ((await fbGet("estimates")) || []).filter(function(x){ return x.branch===rcBranch; });
+        if(rcLeft.length) return {ok:false, error:"This branch still has "+rcLeft.length+" estimate"+(rcLeft.length===1?"":"s")+". Delete them all first - resetting now could create duplicate numbers."};
+        await fbSet("config", "estimateCounter_"+rcBranch, {next:1001});
         return {ok:true};
       }
       case "getAccounts": {
@@ -3624,7 +3935,7 @@ async function gs(fn, data){
         // Also write to Google Sheet via Apps Script for PDF generation
         var qaResp = await fetch(EMAIL_BRIDGE, {
           method:"POST", headers:{"Content-Type":"text/plain"},
-          body: JSON.stringify({action:"writeQAData", qaData:data.qaData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
+          body: JSON.stringify({action:"writeQAData", branch:S.branch||"willamette", qaData:data.qaData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return qaResp.ok ? {ok:true, id:qaId2} : qaResp;
       }
@@ -3642,7 +3953,7 @@ async function gs(fn, data){
         // Also write to Google Sheet via Apps Script for PDF generation
         var raResp = await fetch(EMAIL_BRIDGE, {
           method:"POST", headers:{"Content-Type":"text/plain"},
-          body: JSON.stringify({action:"writeRAData", raData:data.raData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
+          body: JSON.stringify({action:"writeRAData", branch:S.branch||"willamette", raData:data.raData, manager:data.manager, managerSig:data.managerSig||"", techEmail:data.techEmail||""})
         }).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false,error:e.message}; });
         return raResp.ok ? {ok:true, id:raId2} : raResp;
       }
@@ -4503,6 +4814,9 @@ async function handleAction(a,v,el,e){
   }
   if(a==="approve-order") { confirmApprove(v); return; }
   if(a==="deny-order") { confirmDeny(v); return; }
+  if(typeof a==="string" && a.indexOf("cln-")===0){
+    try { if(await estCleanupHandleAction(a)) return; } catch(err){ console.error("Estimate clean-up error:", err); showToast("Error: "+err.message); return; }
+  }
   if(typeof a==="string" && a.indexOf("hid-")===0){
     try { if(await hiddenHandleAction(a,v)) return; } catch(err){ console.error("Hidden products action error:", err); showToast("Error: "+err.message); return; }
   }
@@ -4641,6 +4955,29 @@ async function handleAction(a,v,el,e){
     await gs("saveAccounts",{branch:rtBranch,managers:rtAccts.managers||[],techAccounts:rtTechs,trucks:rtAccts.trucks||[],cats:rtAccts.cats||[],inspFields:rtAccts.inspFields||[],allowEmpty:["techAccounts"]});
     showToast("Technician removed");
     renderSuperAdmin();
+    return;
+  }
+  if(a==="dev-copy-live"){
+    if(!confirm("Copy your LIVE branches, accounts, settings, products and estimate library into this TEST database?\n\nLive data is only read - it is never changed. Test records with the same name are overwritten.")) return;
+    showToast("Copying...");
+    try {
+      var cr = await devCopyLiveData();
+      showToast("Copied "+cr.total+" records ✓");
+      alert("Copied into the test database:\n\n"+Object.keys(cr.counts).map(function(k){ return "  "+k+": "+cr.counts[k]; }).join("\n")+"\n\n(Orders, inspections, truck counts and estimates are not copied.)");
+    } catch(err){ showToast("Copy failed: "+err.message); }
+    return;
+  }
+  if(a==="sa-estimate-cleanup"){ await estCleanupOpen(); return; }
+  if(a==="sa-check-bridge"){
+    showToast("Checking the bridge...");
+    try {
+      var pr = await estBridge("ping", {sendTest:true});
+      if(pr && pr.ok){
+        alert("Bridge check\n\nBridge version: "+pr.bridgeVersion+"\nTest mode: "+(pr.testMode?"yes (this is the test copy)":"no (live)")+"\nScript owner lookup: "+pr.ownerLookup+(pr.owner?" ("+pr.owner+")":"")+"\nFallback address: "+pr.emailFallback+"\nEmails left today: "+pr.mailQuotaLeft+"\nTest email: "+(pr.testEmail||"not attempted")+"\n\nIf the test email says 'sent', check that inbox for '[TEST] Fox bridge check'.");
+      } else {
+        alert("The bridge answered, but not as expected:\n\n"+JSON.stringify(pr).slice(0,300)+"\n\nIf this says 'Unknown action', the newest FoxAdminBridge.gs has not been deployed yet.");
+      }
+    } catch(err){ alert("Couldn't reach the bridge: "+err.message); }
     return;
   }
   if(a==="sa-find-dupes"){
@@ -8450,6 +8787,7 @@ function buildOOOFormHtml(form){
 function renderSuperAdmin(){
   var pg = document.getElementById("pg-dashboard");
   if(!pg) return;
+  if(S._saTool==="estimates" && S._cln){ estClnBind(pg); estCleanupRender(); return; }   // the estimate clean-up tool
 
   // If viewing a branch's settings, show that
   if(S._saViewBranch){
@@ -8469,6 +8807,9 @@ function renderSuperAdmin(){
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Shared Product Catalog</div>"
     +"<button class='btn bg' data-a='sa-import-products' style='width:100%;padding:12px;margin-bottom:8px;'>📥 Sync Products from Order Sheet</button>"
     +"<button class='btn bg' data-a='sa-find-dupes' style='width:100%;padding:12px;margin-bottom:8px;'>🔍 Find Duplicate Products</button>"
+    +"<button class='btn bg' data-a='sa-check-bridge' style='width:100%;padding:12px;margin-bottom:8px;'>🩺 Check the bridge (email, Drive, version)</button>"
+    +"<button class='btn bg' data-a='sa-estimate-cleanup' style='width:100%;padding:12px;margin-bottom:8px;'>🧹 Clean up estimates</button>"
+    +(isDevCopy() ? "<button class='btn bp' data-a='dev-copy-live' style='width:100%;padding:12px;margin-bottom:8px;'>🧪 Copy live data into this test database</button>" : "")
     +"<div style='font-size:11px;color:#475569;text-align:center;'>Reads order sheet and adds/updates products in Firebase</div>"
     +"</div>"
     +"</div>";
@@ -11908,6 +12249,7 @@ async function signSubmitTech(){
           method:"POST", headers:{"Content-Type":"text/plain"},
           body: JSON.stringify({
             action: "submitTechSignature",
+            branch: S.branch||"willamette",
             techName: req.techName||"",
             techEmail: req.techEmail||"",
             techSig: sigData,
@@ -12786,6 +13128,15 @@ setTimeout(function(){ if(!S.role) loadBranchList(); }, 100);
   } catch(e){
     document.getElementById("guest-content").innerHTML = "<div style='color:#ef4444;text-align:center;padding:20px;'>Error: "+e.message+"</div>";
   }
+})();
+
+// Test copy: keep the warning banner accurate as the branch changes, and label the browser tab
+(function(){
+  if(!isDevCopy()) return;
+  try { document.title = "[TEST] " + document.title; } catch(x){}
+  installDevBridgeFlag();
+  if(!firebaseConfigInUse()) devBlockScreen();
+  devBannerUpdate(); setInterval(devBannerUpdate, 1000);
 })();
 
 // Customer estimate link (?estimate=token): opens the signing page, no login
