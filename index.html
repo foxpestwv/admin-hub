@@ -50,6 +50,20 @@ input,textarea,select,button{font-family:inherit;}
 .bdg{background:#ef4444;color:#fff;border-radius:50%;width:15px;height:15px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;}
 #wrap{max-width:760px;margin:0 auto;padding:20px 14px;}
 .pg{display:none;} .pg.on{display:block;}
+/* Home Screen honeycomb: a compact comb - rows alternate 2 and 3 hexagons, centred, nested together */
+.hive{container-type:inline-size;max-width:420px;margin:0 auto;padding-bottom:6px;}
+.hive-row{display:flex;margin-top:calc(-9.62% + 4px);}
+.hive-row:first-child{margin-top:0;}
+.hive-row.s2 .hexw:first-child{margin-left:calc(100% / 6 + 2px);}
+.hive-row.one .hexw:first-child{margin-left:calc(100% / 3 + 2px);}
+.hexw{position:relative;width:calc(100% / 3 - 4px);margin:0 2px;aspect-ratio:0.866;pointer-events:none;flex:none;}
+.hex,.hexin{clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);}
+.hex{position:absolute;inset:0;pointer-events:auto;cursor:pointer;touch-action:manipulation;transition:transform .12s,filter .12s;-webkit-tap-highlight-color:transparent;}
+.hex:active{transform:scale(.94);filter:brightness(1.25);}
+.hexin{position:absolute;inset:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 10%;text-align:center;}
+.hexin .hi{font-size:clamp(20px,8.5cqw,34px);line-height:1;}
+.hexin .hl{font-size:clamp(9.5px,2.9cqw,13px);font-weight:600;color:#e2e8f0;line-height:1.15;}
+.hexb{position:absolute;top:9%;right:17%;min-width:20px;height:20px;padding:0 4px;box-sizing:border-box;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;border:2px solid #0a1628;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
 .sc{background:#0f1f38;border-radius:12px;border:1px solid #1e3a5f;padding:16px;}
@@ -455,7 +469,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.9.0";
+const APP_VERSION = "6.11.0";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -7320,17 +7334,22 @@ function renderDash(){
     ? "<img src='"+photo+"' style='width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid #f59e0b;'>"
     : "<div style='width:64px;height:64px;border-radius:50%;background:#1e3a5f;border:3px solid #f59e0b;display:flex;align-items:center;justify-content:center;font-size:28px;'>"+name.charAt(0).toUpperCase()+"</div>";
 
-  var tilesHtml = tiles.map(function(t){
-    var badgeHtml = t.badge>0 ? "<div style='position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;'>"+t.badge+"</div>" : "";
+  var hexHtml = function(t){
+    var badgeHtml = t.badge>0 ? "<div class='hexb'>"+t.badge+"</div>" : "";
     var tileAction = t.tab==="__scan__" ? "data-a='quick-scan'" : "data-a='tab' data-v='"+t.tab+"'";
-    return "<div "+tileAction+" style='position:relative;background:"+t.color+";border:1px solid "+t.accent+"33;border-radius:16px;padding:20px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;min-height:90px;touch-action:manipulation;'>"
-      +"<div style='font-size:28px;'>"+t.icon+"</div>"
-      +"<div style='font-size:12px;font-weight:600;color:#e2e8f0;text-align:center;line-height:1.2;'>"+t.label+"</div>"
-      +badgeHtml
-      +"</div>";
-  }).join("");
+    return "<div class='hexw'><div class='hex' "+tileAction+" title='"+esc(t.label)+"' style='background:"+t.accent+"88;'>"
+      +"<div class='hexin' style='background:"+t.color+";'><div class='hi'>"+t.icon+"</div><div class='hl'>"+esc(t.label)+"</div></div></div>"+badgeHtml+"</div>";
+  };
+  var tilesHtml = "";
+  // rows alternate 2 and 3 hexagons; start with 2 unless that would leave a lone pair in a row of 3 (a pair cannot be centred in it)
+  var hiveRows = function(first){ var out = [], n = 0, slot = first; while(n<tiles.length){ var k = Math.min(slot, tiles.length-n); out.push({slot:slot, tiles:tiles.slice(n, n+k)}); n += k; slot = slot===2 ? 3 : 2; } return out; };
+  var plan = hiveRows(2), lastRow = plan[plan.length-1];
+  if(lastRow.slot===3 && lastRow.tiles.length===2) plan = hiveRows(3);
+  plan.forEach(function(row){
+    tilesHtml += "<div class='hive-row"+(row.slot===2 ? " s2" : "")+(row.tiles.length===1 ? " one" : "")+"'>"+row.tiles.map(hexHtml).join("")+"</div>";
+  });
   if(!tiles.length){
-    tilesHtml = "<div style='grid-column:1/-1;text-align:center;color:#64748b;padding:30px 10px;font-size:14px;'>Nothing is available on your home screen yet.<br>Ask your manager if you need access to something.</div>";
+    tilesHtml = "<div style='text-align:center;color:#64748b;padding:30px 10px;font-size:14px;'>Nothing is available on your home screen yet.<br>Ask your manager if you need access to something.</div>";
   }
 
   pg.innerHTML = ""
@@ -7360,10 +7379,8 @@ function renderDash(){
         +"</div>"
       :"")
 
-    // Nav grid
-    +"<div style='display:grid;grid-template-columns:repeat("+cols+",1fr);gap:12px;'>"
-    +tilesHtml
-    +"</div>";
+    // Home Screen honeycomb
+    +"<div class='hive'>"+tilesHtml+"</div>";
 }
 
 
