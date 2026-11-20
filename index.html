@@ -50,19 +50,16 @@ input,textarea,select,button{font-family:inherit;}
 .bdg{background:#ef4444;color:#fff;border-radius:50%;width:15px;height:15px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;}
 #wrap{max-width:760px;margin:0 auto;padding:20px 14px;}
 .pg{display:none;} .pg.on{display:block;}
-/* Home Screen honeycomb: a compact comb - rows alternate 2 and 3 hexagons, centred, nested together */
+/* Home Screen honeycomb: tiles build outward in a circle - one in the middle, then a ring of six, then a ring of twelve */
 .hive{container-type:inline-size;max-width:420px;margin:0 auto;padding-bottom:6px;}
-.hive-row{display:flex;margin-top:calc(-9.62% + 4px);}
-.hive-row:first-child{margin-top:0;}
-.hive-row.s2 .hexw:first-child{margin-left:calc(100% / 6 + 2px);}
-.hive-row.one .hexw:first-child{margin-left:calc(100% / 3 + 2px);}
-.hexw{position:relative;width:calc(100% / 3 - 4px);margin:0 2px;aspect-ratio:0.866;pointer-events:none;flex:none;}
+.comb{position:relative;width:100%;height:0;}
+.hexw{position:absolute;aspect-ratio:0.866;pointer-events:none;}
 .hex,.hexin{clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);}
-.hex{position:absolute;inset:0;pointer-events:auto;cursor:pointer;touch-action:manipulation;transition:transform .12s,filter .12s;-webkit-tap-highlight-color:transparent;}
+.hex{position:absolute;inset:2px;pointer-events:auto;cursor:pointer;touch-action:manipulation;transition:transform .12s,filter .12s;-webkit-tap-highlight-color:transparent;}
 .hex:active{transform:scale(.94);filter:brightness(1.25);}
 .hexin{position:absolute;inset:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 10%;text-align:center;}
-.hexin .hi{font-size:clamp(20px,8.5cqw,34px);line-height:1;}
-.hexin .hl{font-size:clamp(9.5px,2.9cqw,13px);font-weight:600;color:#e2e8f0;line-height:1.15;}
+.hexin .hi{font-size:clamp(18px,calc(var(--hw,33.3)*.255cqw),34px);line-height:1;}
+.hexin .hl{font-size:clamp(9px,calc(var(--hw,33.3)*.087cqw),13px);font-weight:600;color:#e2e8f0;line-height:1.15;}
 .hexb{position:absolute;top:9%;right:17%;min-width:20px;height:20px;padding:0 4px;box-sizing:border-box;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;border:2px solid #0a1628;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
@@ -469,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.11.0";
+const APP_VERSION = "6.14.1";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -636,7 +633,7 @@ function estTotals(e){
 }
 function estNewDraft(){
   var u = estUser(), st = estSettings();
-  return {id:"est_"+Date.now(), number:null, branch:S.branch||"willamette", status:"Draft",
+  return {id:"est_"+Date.now()+"_"+randHex(6), number:null, branch:S.branch||"willamette", status:"Draft",
     createdAt:new Date().toISOString(), date:new Date().toISOString(),
     createdBy:u.name, createdByEmail:u.email, employeePhone:(lsGet("hub:estPhone")||""),
     customer:{name:"", street:"", city:"", state:"OR", zip:"", phone:"", email:""},
@@ -2013,8 +2010,9 @@ function saWelcomeEmail(mgr, branchName){
 }
 async function saSendWelcome(mgr, branchName){
   if(!mgr || !mgr.email) return {ok:false, error:"This manager has no email address."};
-  if(!(mgr.isTemp && mgr.tempPin)) return {ok:false, error:"already"};
-  var m = saWelcomeEmail(mgr, branchName);
+  var wTmp = tmpPinOf(mgr);
+  if(!(mgr.isTemp && wTmp)) return {ok:false, error: mgr.isTemp ? "nopin" : "already"};
+  var m = saWelcomeEmail(Object.assign({}, mgr, {tempPin:wTmp}), branchName);
   try {
     var res = await estBridge("sendEmail", {to:mgr.email, subject:m.subject, body:m.text, htmlBody:m.html,
       replyTo:(S.currentUser && S.currentUser.email) || "", senderName:"Fox Pest Control"});
@@ -2584,7 +2582,7 @@ async function saTermsSave(){
 }
 
 // ─── Super Admin PIN: changeable, stored as a salted hash (not written in the app's code) ───
-// Until it is changed, the original PIN in SUPER_ADMIN_PIN keeps working. Once changed, only the new one works.
+// The PIN lives only as a salted hash in the database; nothing is written in the app's code.
 var _adminBusy = false, _adminFails = 0, _adminLockedUntil = 0;
 async function saPbkdf2(pin, saltB64){
   var enc = new TextEncoder(), salt = Uint8Array.from(atob(saltB64), function(ch){ return ch.charCodeAt(0); });
@@ -2599,11 +2597,10 @@ async function saVerifyPin(pin){
   var rec;
   try { rec = await saLoadPinRecord(); } catch(err){ return {ok:false, reason:"offline"}; }
   if(rec && rec.hash && rec.salt){ return {ok: (await saPbkdf2(pin, rec.salt))===rec.hash, custom:true}; }
-  return {ok: String(pin)===SUPER_ADMIN_PIN, custom:false};
+  return {ok:false, reason:"nopin"};   // no PIN has been saved: nobody gets in (no PIN is written in the app's code any more)
 }
 function saPinProblem(p, current){
   if(!/^\d{6}$/.test(p)) return "The PIN must be exactly 6 digits.";
-  if(p===SUPER_ADMIN_PIN) return "That is the original PIN, which is written in the app's code. Choose a different one.";
   if(p===current) return "That is already your PIN.";
   if(/^(\d)\1{5}$/.test(p)) return "Don't use the same digit six times.";
   if("0123456789".indexOf(p)>=0 || "9876543210".indexOf(p)>=0) return "Don't use a straight run of numbers (like 123456).";
@@ -2635,13 +2632,89 @@ function renderSaPin(pg){
     +"<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Change Super Admin PIN</h2>"
     +(!p.loaded ? "<div style='color:#64748b;padding:20px;text-align:center;'>Loading...</div>" :
       "<div style='font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:14px;"+(p.custom?"background:#14532d;color:#bbf7d0;":"background:#7f1d1d;color:#fecaca;")+"'>"
-        +(p.custom ? "You are using a custom PIN"+(p.changedAt?" (changed "+esc(new Date(p.changedAt).toLocaleDateString("en-US"))+")":"")+"." : "You are still using the original PIN. It is written in the app's code, so please change it.")+"</div>"
+        +(p.custom ? "A Super Admin PIN is saved"+(p.changedAt?" (changed "+esc(new Date(p.changedAt).toLocaleDateString("en-US"))+")":"")+"." : "No Super Admin PIN is saved on this database.")+"</div>"
       +(p.error ? "<div style='font-size:12px;color:#fb923c;margin-bottom:10px;'>"+esc(p.error)+"</div>" : "")
       +field("pin-old","Current PIN")+field("pin-new","New PIN (6 digits)")+field("pin-new2","Confirm new PIN")
       +"<button class='btn bp' data-a='sat-pin-change' style='width:100%;padding:12px;margin-bottom:14px;'>Change PIN</button>"
       +"<div style='font-size:11px;color:#64748b;line-height:1.5;'>This database ("+(isDevCopy()?"test":"live")+") has its own Super Admin PIN. "
-      +"If you ever forget it, open the Firebase console, go to Firestore &rarr; <b>config</b>, and delete the document named <b>superAdmin</b>. The original PIN works again and you can set a new one.</div>")
+      +"If you ever forget it, open the Firebase console, go to Firestore &rarr; <b>config</b>, and delete the document named <b>superAdmin</b>. The next 6-digit PIN typed on the Super Admin screen becomes the new PIN, so do this only when you are about to sign in.</div>")
     +"</div>";
+}
+
+// ─── Super Admin tool: convert every account to secure sign-in (one time, safe to run again) ───
+async function saSecureOpen(){
+  if(S.role!=="superadmin") return;
+  S._saTool = "secure"; S._sec = {loaded:false, running:false, log:[], flags:{}};
+  renderSuperAdmin();
+  S._sec.flags = await securityFlags(true);
+  S._sec.loaded = true;
+  renderSuperAdmin();
+}
+function renderSaSecure(pg){
+  var c = S._sec || {log:[], flags:{}}, fl = (c.flags && c.flags.branches) || {};
+  var done = Object.keys(fl).filter(function(k){ return fl[k]; });
+  pg.innerHTML = "<div style='padding:16px;max-width:560px;margin:0 auto;'>"
+    +"<button class='btn bg' data-a='sat-back' style='margin-bottom:12px;'>← Super Admin</button>"
+    +"<h2 style='font-size:20px;font-weight:700;margin-bottom:6px;'>Secure sign-in for all accounts</h2>"
+    +"<div style='font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:14px;'>Gives every manager and technician their own protected sign-in and erases the plain-text PINs from the database. Nobody has to do anything: their email and PIN stay the same. It is safe to run again.</div>"
+    +"<div style='font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:14px;"+(done.length?"background:#14532d;color:#bbf7d0;":"background:#7f1d1d;color:#fecaca;")+"'>"
+    +(done.length ? "Converted branches: "+esc(done.join(", ")) : "No branch has been converted yet.")+"</div>"
+    +"<button class='btn bp' data-a='sa-secure-run' style='width:100%;padding:12px;margin-bottom:14px;'"+(c.running||!c.loaded?" disabled":"")+">"+(c.running?"Working...":"Convert all branches now")+"</button>"
+    +"<div style='font-size:12px;line-height:1.7;color:#cbd5e1;white-space:pre-wrap;background:#0a1628;border-radius:8px;padding:10px;"+(c.log.length?"":"display:none;")+"'>"+esc(c.log.join("\n"))+"</div>"
+    +"<div style='font-size:11px;color:#64748b;line-height:1.5;margin-top:12px;'>Needs the Email/Password sign-in method switched on in this Firebase project. People with no email address or no saved PIN are listed and skipped; a manager can reset their PIN afterwards.</div>"
+    +"</div>";
+}
+async function saSecureRun(){
+  if(S.role!=="superadmin" || !S._sec || S._sec.running) return;
+  if(!confirm("Convert every account in every branch to secure sign-in on this "+(isDevCopy()?"TEST":"LIVE")+" database?\n\nPlain-text PINs are erased afterwards.")) return;
+  var c = S._sec; c.running = true; c.log = ["Starting..."]; renderSuperAdmin();
+  var log = function(m){ c.log.push(m); renderSuperAdmin(); };
+  try {
+    await initFirebase();
+    var ids = Object.keys(BRANCHES);
+    try { var br = await gs("getBranches", null); ((br && br.branches)||[]).forEach(function(b){ if(ids.indexOf(b.id)<0) ids.push(b.id); }); } catch(e){}
+    var flags = (await securityFlags(true)).branches || {};
+    var okBranches = {};
+    for(var i=0;i<ids.length;i++){
+      var id = ids[i];
+      var docName = "accounts_"+id;
+      var doc = await fbGet("config", docName);
+      if(!doc && id==="willamette"){ doc = await fbGet("config", "accounts"); docName = "accounts"; }
+      if(!doc){ log(id+": no accounts found, skipped"); continue; }
+      var mgrs = doc.managers||[], techs = doc.techAccounts||[], made = 0, skipped = 0, failed = 0, already = 0;
+      var each = async function(role, a){
+        if(a.secure){ already++; return; }
+        var plain = a.isTemp ? (a.tempPin||a.pin||"") : (a.pin||a.tempPin||"");
+        if(!plain){ skipped++; log("  "+id+": "+(a.name||a.email||"?")+" has no saved PIN - skipped"); return; }
+        if(!a.email){ skipped++; log("  "+id+": "+(a.name||"?")+" has no email - skipped"); return; }
+        try { await secureAccount(role, a, id); made++; }
+        catch(e){ failed++; log("  "+id+": "+(a.name||a.email)+" FAILED: "+e.message); }
+      };
+      for(var m=0;m<mgrs.length;m++) await each("manager", mgrs[m]);
+      for(var t=0;t<techs.length;t++) await each("tech", techs[t]);
+      if(failed===0){
+        await fbSet("config", docName, {managers:mgrs, techAccounts:techs, updatedAt:new Date().toISOString()});
+        okBranches[id] = true;
+        log(id+": "+made+" converted, "+already+" already secure, "+skipped+" skipped");
+      } else {
+        log(id+": "+failed+" failed - nothing saved for this branch (plain PINs left as they were)");
+      }
+    }
+    // the old shared copy (Willamette's original list) must not keep any PINs either
+    try {
+      var legacy = await fbGet("config","accounts");
+      if(legacy && okBranches["willamette"]){
+        var strip = function(arr){ return (arr||[]).map(function(a){ var o = Object.assign({}, a); o.pin = ""; o.tempPin = ""; return o; }); };
+        await fbSet("config","accounts", {managers:strip(legacy.managers), techAccounts:strip(legacy.techAccounts)});
+        log("Older shared account list: PINs erased");
+      }
+    } catch(e){ log("Older shared list: "+e.message); }
+    var newFlags = Object.assign({}, flags, okBranches);
+    await fbSet("config","security", {branches:newFlags, updatedAt:new Date().toISOString()});
+    _secureFlags = null; c.flags = await securityFlags(true);
+    log("Done.");
+  } catch(e){ log("Stopped: "+e.message); }
+  c.running = false; renderSuperAdmin();
 }
 async function saPinChange(){
   if(S.role!=="superadmin") return;
@@ -2657,6 +2730,7 @@ async function saPinChange(){
   _adminFails = 0;
   var salt = saNewSalt(), hash = await saPbkdf2(np, salt);
   await fbSet("config", "superAdmin", {hash:hash, salt:salt, algo:"pbkdf2-sha256-150000", changedAt:new Date().toISOString()});
+  try { var cuS = _auth && _auth.currentUser; if(cuS && !cuS.isAnonymous) await cuS.updatePassword(authPw(np)); } catch(eP){ console.warn("Super Admin sign-in password:", eP.message); }
   showToast("Super Admin PIN changed ✓");
   S._pin = {loaded:true, custom:true, changedAt:new Date().toISOString()};
   renderSuperAdmin();
@@ -3845,7 +3919,6 @@ function getNotifEmails(key){
   return cfg.emails||null; // null = use default
 }
 const SUPER_ADMINS = ["john.kluttz@fox-marketingservices.com"];
-const SUPER_ADMIN_PIN = "159753"; // Change this to your preferred PIN
 var _adminPin = "";
 
 // Branch configuration
@@ -3886,6 +3959,138 @@ async function fbSignIn(){
     return false;
   }
 }
+// ─── Secure sign-in: every person has their own Firebase account; PINs are never stored in the database ───
+// The login email + role + branch become a private "alias" address (nobody receives mail there); the PIN, with a fixed
+// suffix to meet Firebase's 6-character minimum, is the account's password. Firebase keeps it hashed and slows down guessing.
+var AUTH_ALIAS_DOMAIN = "login.foxhub.example";
+function authHash(str){ var h = 5381; for(var i=0;i<str.length;i++){ h = (((h<<5)+h) + str.charCodeAt(i))|0; } return (h>>>0).toString(36); }
+function authAlias(role, branch, email, ver){
+  var e = String(email||"").trim().toLowerCase();
+  var tag = role==="manager" ? "m" : role==="superadmin" ? "s" : "t";
+  var clean = e.replace(/[^a-z0-9]/g,"").substring(0,20);
+  return tag+"."+String(branch||"x").replace(/[^a-z0-9]/g,"")+"."+clean+"."+authHash(tag+"|"+branch+"|"+e)+(ver>1?".v"+ver:"")+"@"+AUTH_ALIAS_DOMAIN;
+}
+function authPw(pin){ return String(pin)+"-Fx#hub"; }
+var _secureFlags = null;     // config/security: which branches have been converted
+async function securityFlags(force){
+  if(_secureFlags && !force) return _secureFlags;
+  try { _secureFlags = (await fbGet("config","security")) || {}; } catch(e){ _secureFlags = {}; }
+  return _secureFlags;
+}
+async function branchIsSecure(b){ var f = await securityFlags(); return !!(f.branches && f.branches[b]); }
+// a temporary PIN is shown only in memory, for the welcome email, right after it is created or reset
+function tmpPinOf(a){ return (a && a.tempPin) || (a && S._tmpPins && S._tmpPins[a.id||a.email]) || ""; }
+async function authCreateUser(alias, pw){
+  await initFirebase();
+  var app2 = (firebase.apps||[]).find(function(x){ return x.name==="cred"; });
+  if(!app2) app2 = firebase.initializeApp(firebaseConfigInUse(), "cred");     // a second connection, so the admin stays signed in
+  var a2 = app2.auth();
+  try {
+    var cr = await a2.createUserWithEmailAndPassword(alias, pw);
+    var uid = cr.user.uid;
+    try { await a2.signOut(); } catch(x){}
+    return {ok:true, uid:uid};
+  } catch(e){ return {ok:false, code:e.code||"", message:e.message||String(e)}; }
+}
+// Turns one account's plain PIN (if it has one) into a Firebase sign-in, then erases the PIN from the record.
+async function secureAccount(role, a, branch){
+  var plain = a.isTemp ? (a.tempPin || a.pin || "") : (a.pin || a.tempPin || "");
+  if(!plain) return false;
+  if(!a.email) throw new Error((a.name||"This person")+" has no email address, so a sign-in can't be created");
+  var cu = _auth && _auth.currentUser;
+  if(a.secure && !a.isTemp && a.uid && cu && !cu.isAnonymous && cu.uid===a.uid){
+    await cu.updatePassword(authPw(plain));                       // someone changing their own PIN
+  } else {                                                        // new account, or a manager's reset: a fresh credential
+    var ver = a.secure ? (a.credVer||1)+1 : (a.credVer||1), made = null;
+    for(var tries=0; tries<5 && !made; tries++){
+      var res = await authCreateUser(authAlias(role, branch, a.email, ver), authPw(plain));
+      if(res.ok) made = res;
+      else if(res.code==="auth/email-already-in-use"){ ver++; }
+      else throw new Error((a.name||a.email)+": "+(res.message||res.code));
+    }
+    if(!made) throw new Error("Couldn't create a sign-in for "+(a.name||a.email));
+    await _db.collection("users").doc(made.uid).set({branch:branch, role:role, email:String(a.email).toLowerCase(), name:a.name||"", accountId:a.id||"", credVer:ver, temp:!!a.isTemp, createdAt:new Date().toISOString()});
+    if(a.uid && a.uid!==made.uid){ try { await _db.collection("users").doc(a.uid).delete(); } catch(x){} }   // the old credential loses its access
+    a.uid = made.uid; a.credVer = ver;
+  }
+  S._tmpPins = S._tmpPins || {}; S._tmpPins[a.id||a.email] = plain;
+  a.secure = true; a.pin = ""; a.tempPin = "";
+  return true;
+}
+// An account that fails is still stripped of its PIN (so nothing readable is saved) and marked for a reset.
+async function secureAccounts(mgrs, techs, branch){
+  var errs = [];
+  var one = async function(role, a){
+    try { await secureAccount(role, a, branch); }
+    catch(e){ errs.push(e.message); a.pin = ""; a.tempPin = ""; a.needsReset = true; }
+  };
+  for(var i=0;i<(mgrs||[]).length;i++) await one("manager", mgrs[i]);
+  for(var j=0;j<(techs||[]).length;j++) await one("tech", techs[j]);
+  return errs;
+}
+async function secureSignIn(role, user, pin){
+  await initFirebase();
+  try {
+    var cr = await _auth.signInWithEmailAndPassword(authAlias(role, S.branch, user.email, user.credVer||1), authPw(pin));
+    return {ok:true, uid:cr.user.uid};
+  } catch(e){
+    var c = e.code||"";
+    if(c==="auth/too-many-requests") return {ok:false, reason:"throttled"};
+    if(c==="auth/network-request-failed") return {ok:false, reason:"offline"};
+    return {ok:false, reason:"wrong"};
+  }
+}
+function randHex(n){ var a = new Uint8Array(n), r = ""; (window.crypto||window.msCrypto).getRandomValues(a); for(var i=0;i<n;i++) r += ("0"+a[i].toString(16)).slice(-2); return r; }
+function newSigId(){ return "SIG-"+Date.now()+"-"+randHex(6); }       // the random part makes the link-less address impossible to guess
+
+// Super Admin: a real Firebase sign-in (so the database rules know who you are). The saved-PIN check is only used to create or refresh it.
+async function superLogin(pin){
+  await initFirebase();
+  var fl = await securityFlags(true), ver = fl.superVer||1, email = SUPER_ADMINS[0];
+  try {
+    var cr0 = await _auth.signInWithEmailAndPassword(authAlias("superadmin","all",email,ver), authPw(pin));
+    return {ok:true, uid:cr0.user.uid};
+  } catch(e0){
+    if(e0.code==="auth/too-many-requests") return {ok:false, reason:"throttled"};
+    if(e0.code==="auth/network-request-failed") return {ok:false, reason:"offline"};
+  }
+  var hv; try { hv = await saVerifyPin(pin); } catch(x){ hv = {ok:false, reason:"offline"}; }
+  if(!hv.ok) return hv.reason ? hv : {ok:false, reason:"wrong"};
+  for(var v=ver; v<=ver+8; v++){
+    var alias = authAlias("superadmin","all",email,v), made = await authCreateUser(alias, authPw(pin));
+    if(made.ok){
+      await _auth.signInWithEmailAndPassword(alias, authPw(pin));
+      await _db.collection("users").doc(made.uid).set({branch:"all", role:"superadmin", email:email, name:"Super Admin", credVer:v, temp:false, createdAt:new Date().toISOString()});
+      await fbSet("config","security",{superVer:v}); _secureFlags = null;
+      return {ok:true, uid:made.uid};
+    }
+    if(made.code==="auth/email-already-in-use"){
+      try { var c2 = await _auth.signInWithEmailAndPassword(alias, authPw(pin)); if(v!==ver){ await fbSet("config","security",{superVer:v}); _secureFlags = null; } return {ok:true, uid:c2.user.uid}; }
+      catch(e2){ continue; }
+    }
+    return {ok:false, reason:"error", message:made.message};
+  }
+  return {ok:false, reason:"error"};
+}
+var _pinBusy = false;
+async function securePinAttempt(user){
+  if(_pinBusy) return;
+  _pinBusy = true;
+  var attempt = pin, err = document.getElementById("pin-err");
+  var role = loginRole || (S.managers.find(function(m){ return m.id===user.id; }) ? "manager" : "tech");
+  var r = await secureSignIn(role, user, attempt);
+  _pinBusy = false;
+  if(r.ok){
+    var temp = !!user.isTemp;                                   // the sign-in record says whether this is still a temporary PIN
+    try { var ps = await _db.collection("users").doc(r.uid).get(); if(ps.exists && ps.data().temp!==undefined) temp = !!ps.data().temp; } catch(x){}
+    user.isTemp = temp;
+    if(temp) doLogin(role, true); else login(role);
+    return;
+  }
+  if(err) err.textContent = r.reason==="throttled" ? "Too many tries - wait a few minutes and try again" : r.reason==="offline" ? "Can't check the PIN - check your connection" : "Incorrect PIN";
+  pin = ""; dots();
+}
+
 function initFirebase(){
   if(_fbReady) return Promise.resolve();
   if(_fbInitPromise) return _fbInitPromise;
@@ -4311,6 +4516,12 @@ async function gs(fn, data){
         var trucksToSave = pickList("trucks");
         var catsToSave = pickList("cats");
         var inspFieldsToSave = pickList("inspFields");
+        // In a converted branch no PIN is ever written to the database: new or reset PINs become sign-ins first
+        var secureWarn = "";
+        if(await branchIsSecure(brKeySave)){
+          var secErrs = await secureAccounts(managersToSave, techsToSave, brKeySave);
+          if(secErrs.length){ secureWarn = secErrs.join("; "); try { showToast("Some sign-ins could not be created: "+secureWarn); } catch(x){} }
+        }
         // Safety: never save if branch doesn't match current session
         console.log("saveAccounts: branch="+brKeySave+" managers="+managersToSave.length+" techs="+techsToSave.length);
         await fbSet("config","accounts_"+brKeySave,{
@@ -4326,7 +4537,7 @@ async function gs(fn, data){
         lsSet("hub:trucks", data.trucks||[]);
         lsSet("hub:cats", data.cats||[]);
         lsSet("hub:inspFields", data.inspFields||[]);
-        return {ok:true};
+        return secureWarn ? {ok:true, warning:secureWarn} : {ok:true};
       }
 
       // ── PRODUCTS ────────────────────────────────────────────────────────────
@@ -5570,6 +5781,7 @@ async function checkEmail(){
 }
 
 function pinTap(k){
+  if(_pinBusy) return;
   const err=document.getElementById("pin-err");
   if(k==="del"){pin=pin.slice(0,-1);dots();if(err)err.textContent="";return;}
   if(pin.length>=6)return;
@@ -5577,6 +5789,7 @@ function pinTap(k){
   if(pin.length>=4){
     if(!S.currentUser){ if(err) err.textContent="Please enter your email first."; pin=""; dots(); return; }
     var user = S.currentUser;
+    if(user.secure){ securePinAttempt(user); return; }       // converted account: Firebase checks the PIN
     var correctPin = user.isTemp ? user.tempPin : user.pin;
     if(pin === correctPin){
       var role = loginRole || (S.managers.find(function(m){ return m.id===user.id; }) ? "manager" : "tech");
@@ -5625,12 +5838,28 @@ function showSetPin(){
   if(logo) logo.style.cssText = "height:80px;width:200px;margin-bottom:32px;background-image:url(\""+LOGO_SRC+"\");background-size:contain;background-repeat:no-repeat;background-position:center;";
   // Attach button handler
   var btn = document.getElementById("set-pin-btn");
-  if(btn) btn.onclick = function(){
+  if(btn) btn.onclick = async function(){
     var p1 = document.getElementById("new-pin-1").value.replace(/[^0-9]/g,"");
     var p2 = document.getElementById("new-pin-2").value.replace(/[^0-9]/g,"");
     var errDiv = document.getElementById("set-pin-err");
     if(p1.length !== 4){ errDiv.textContent="Your PIN must be exactly 4 digits."; return; }
     if(p1 !== p2){ errDiv.textContent="PINs do not match."; return; }
+    if(S.currentUser.secure){
+      try {
+        var cu = _auth && _auth.currentUser;
+        if(!cu || cu.isAnonymous) throw new Error("Please go back and sign in again.");
+        await cu.updatePassword(authPw(p1));
+        try { await _db.collection("users").doc(cu.uid).update({temp:false}); } catch(x){}
+      } catch(e){ errDiv.textContent = "Couldn't save the PIN: "+(e.code==="auth/requires-recent-login" ? "please go back and sign in again." : e.message); return; }
+      S.currentUser.isTemp = false; S.currentUser.tempPin = ""; S.currentUser.pin = "";
+      if(S.role==="manager"){ S.managers = S.managers.map(function(m){ return m.id===S.currentUser.id ? S.currentUser : m; }); }
+      else { S.techAccounts = S.techAccounts.map(function(t){ return t.id===S.currentUser.id ? S.currentUser : t; }); }
+      S.managerName = S.currentUser.name;
+      save();
+      if(S.role==="manager"){ try { await saveAccountsToSheet(); } catch(e){} }   // technicians cannot edit the account list
+      login(S.role);
+      return;
+    }
     // Save PIN
     S.currentUser.pin = p1;
     S.currentUser.isTemp = false;
@@ -5721,11 +5950,12 @@ async function adminPinSubmit(){
   if(wait){ say("Too many wrong tries - wait "+wait+" seconds"); _adminPin = ""; updateAdminDots(); return; }
   _adminBusy = true; say("Checking...");
   var res;
-  try { res = await saVerifyPin(_adminPin); } catch(err){ res = {ok:false, reason:"offline"}; }
+  try { res = await superLogin(_adminPin); } catch(err){ res = {ok:false, reason:"offline"}; }
   _adminBusy = false;
   if(res.ok){
     _adminFails = 0;
     // Login as super admin
+    S._saTool = null; S._sec = null; S._cln = null; S._saViewBranch = null;
     S.branch = "all";
     S.branchName = "All Branches";
     S.role = "superadmin";
@@ -5740,7 +5970,18 @@ async function adminPinSubmit(){
     render();
     return;
   }
-  if(res.reason==="offline") say("Can't check the PIN right now - check your connection");
+  if(res.reason==="nopin"){
+    // Nothing is saved yet (a brand-new or test database): the first 6-digit PIN typed here becomes the Super Admin PIN.
+    if(_adminPin.length===6 && !saPinProblem(_adminPin, "") && confirm("No Super Admin PIN is set on this database yet.\n\nUse these 6 digits as the Super Admin PIN?")){
+      var nsalt = saNewSalt(), nhash = await saPbkdf2(_adminPin, nsalt);
+      await fbSet("config", "superAdmin", {hash:nhash, salt:nsalt, algo:"pbkdf2-sha256-150000", changedAt:new Date().toISOString()});
+      say("PIN saved - enter it again to sign in"); _adminPin = ""; updateAdminDots(); return;
+    }
+    say("No Super Admin PIN is set yet. Pick a 6-digit PIN (not 123456 or the same digit) and enter it.");
+  }
+  else if(res.reason==="offline") say("Can't check the PIN right now - check your connection");
+  else if(res.reason==="throttled") say("Too many tries - wait a few minutes and try again");
+  else if(res.reason==="error") say("Couldn't create the Super Admin sign-in"+(res.message?": "+res.message:""));
   else say(saRegisterFail() ? "Too many wrong tries - wait 60 seconds" : "Incorrect PIN - try again");
   _adminPin = "";
   updateAdminDots();
@@ -5754,6 +5995,7 @@ async function loadBranchList(){
   try {
     var res = await gs("getBranches", null);
     var branches = res&&res.branches||[];
+    if(!branches.length) branches = Object.keys(BRANCHES).map(function(k){ return {id:k, name:BRANCHES[k].name}; });   // never show an empty list
     var icons = {willamette:"🌲", spokane:"🏔"};
     listDiv.innerHTML = branches.map(function(b){
       var icon = icons[b.id]||"🏢";
@@ -5772,6 +6014,10 @@ async function loadBranchList(){
 }
 
 function logout(){
+  S._saTool = null; S._sec = null; S._cln = null; S._pin = null;      // the next Super Admin sign-in starts at the console, not inside a tool
+  // end a secure session, then go back to the quiet anonymous sign-in; the branch list is loaded only after that is done
+  var reauth = Promise.resolve();
+  try { if(_auth && _auth.currentUser && !_auth.currentUser.isAnonymous){ reauth = _auth.signOut().then(function(){ return fbSignIn(); }).catch(function(){}); } } catch(e){}
   S._est = null; S._estView = "list";
   S.role=null; S.currentUser=null; S.checkTech=""; pin=""; loginEmail=""; loginRole="";
   S.branch=null; S.branchName=null; S.branchChosen=false; S._saViewBranch=null;
@@ -5780,7 +6026,7 @@ function logout(){
   var loginDiv = document.getElementById("login");
   loginDiv.style.display="flex";
   var pk1 = document.getElementById("pk1");
-  if(!pk1){ location.reload(); return; }
+  if(!pk1){ reauth.then(function(){ location.reload(); }); return; }
   // Always show branch selector on logout
   var bs = document.getElementById("login-step-branch");
   var es = document.getElementById("login-step-email");
@@ -5793,7 +6039,7 @@ function logout(){
   var disp2 = document.getElementById("login-branch-display");
   if(disp2) disp2.textContent = "Fox Pest Control";
   // Load branch list dynamically
-  loadBranchList();
+  reauth.then(function(){ loadBranchList(); });
 }
 
 // ─── Event Delegation ────────────────────────────────────────────────────────
@@ -5906,6 +6152,7 @@ async function handleAction(a,v,el,e){
     S.tab=v; S.inspView="home"; S.invView="list"; S.checkDone=false;
     if(v==="checkout") S._checkView="browse";
     if(v!=="sign"){ S._pendingSignReq=null; S._signView="list"; }
+    if(S.role==="superadmin" && S._saTool && !(S._sec && S._sec.running)){ S._saTool=null; S._cln=null; }   // Home leaves whichever Super Admin tool was open
     render(); return;
   }
   if(a==="nav-back"){
@@ -6228,7 +6475,7 @@ async function handleAction(a,v,el,e){
     if(!wMgr){ showToast("Manager not found"); return; }
     if(!confirm("Send a welcome email to "+wMgr.name+" ("+wMgr.email+")?\n\nIt includes their temporary PIN.")) return;
     var wRes = await saSendWelcome(wMgr, (S._saViewBranch && S._saViewBranch.name) || wParts[0]);
-    showToast(wRes.ok ? "Welcome email sent ✓" : (wRes.error==="already" ? "They have already set their own PIN" : "Email didn't send: "+wRes.error));
+    showToast(wRes.ok ? "Welcome email sent ✓" : (wRes.error==="already" ? "They have already set their own PIN" : wRes.error==="nopin" ? "Their temporary PIN can't be shown again - use Reset PIN, then send the welcome" : "Email didn't send: "+wRes.error));
     return;
   }
   if(a==="sa-main-admin"){
@@ -6298,6 +6545,8 @@ async function handleAction(a,v,el,e){
   }
   if(a==="sa-terms-open"){ await saTermsOpen(); return; }
   if(a==="sa-pin-open"){ await saPinOpen(); return; }
+  if(a==="sa-secure-open"){ await saSecureOpen(); return; }
+  if(a==="sa-secure-run"){ await saSecureRun(); return; }
   if(a==="sa-backups-open"){ await saBackupsOpen(); return; }
   if(a==="sa-estimate-cleanup"){ await estCleanupOpen(); return; }
   if(a==="sa-check-bridge"){
@@ -6782,6 +7031,8 @@ async function handleAction(a,v,el,e){
         }
       }
     });
+    var raEl=document.querySelector("[data-ra-score]");
+    if(raEl){ var raT=raScore(S._raData); raEl.textContent=raT+"%"; raEl.style.color=qaScoreColor(raT); }
     return;
   }
   if(a==="sign-view") { S._signView=v; renderSign(); return; }
@@ -6894,29 +7145,19 @@ async function handleAction(a,v,el,e){
     var field = parts[0], answer = parts[1];
     if(!S._qaData) S._qaData={};
     S._qaData[field] = answer;
-
+    var qit = qaItems().find(function(i){ return i.k===field; })||{};
     // Update buttons in place without re-rendering
-    var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
-    // Update yes button
-    var yesBtn = document.querySelector("[data-a='qa-answer'][data-v='"+field+"|yes']");
-    var noBtn = document.querySelector("[data-a='qa-answer'][data-v='"+field+"|no']");
-    if(yesBtn && noBtn){
-      if(answer==="yes"){
-        yesBtn.className="btn bs"; yesBtn.style.borderColor="#22c55e";
-        noBtn.className="btn bg"; noBtn.style.borderColor="";
-      } else {
-        noBtn.className="btn bd";
-        yesBtn.className="btn bg"; yesBtn.style.borderColor="";
-      }
-    }
-    // Update score display
-    var total=0;
-    Object.keys(scoreMap).forEach(function(k){ if(S._qaData[k]==="yes") total+=scoreMap[k]; });
+    ["yes","no","na"].forEach(function(opt){
+      var btn = document.querySelector("[data-a='qa-answer'][data-v='"+field+"|"+opt+"']");
+      if(!btn) return;
+      var on = (opt===answer);
+      var good = (opt==="no" ? !!qit.onNo : opt==="yes");
+      btn.className = !on ? "btn bg" : opt==="na" ? "btn bp" : good ? "btn bs" : "btn bd";
+      btn.style.borderColor = (on && good && opt!=="na") ? "#22c55e" : "";
+    });
+    var total = qaScore(S._qaData);
     var scoreEl=document.querySelector("[data-score-display]");
-    if(scoreEl){
-      scoreEl.textContent=total;
-      scoreEl.style.color=total>=80?"#22c55e":total>=60?"#f59e0b":"#ef4444";
-    }
+    if(scoreEl){ scoreEl.textContent=total+"%"; scoreEl.style.color=qaScoreColor(total); }
     return;
   }
   if(a==="ms-submit") { submitMultiSign(); return; }
@@ -7084,7 +7325,7 @@ async function handleAction(a,v,el,e){
     var tp=prompt("New temporary PIN (4 digits):","1234");
     if(tp&&tp.length===4&&!isNaN(tp)){
       S.techAccounts[parseInt(v)].pin=""; S.techAccounts[parseInt(v)].tempPin=tp; S.techAccounts[parseInt(v)].isTemp=true;
-      save(); alert("PIN reset. Tech will be prompted to set a new PIN on next login.");
+      save(); await saveAccountsToSheet(); alert("PIN reset. Tech will be prompted to set a new PIN on next login.");
     }
     return;
   }
@@ -7136,7 +7377,7 @@ async function handleAction(a,v,el,e){
     var mp=prompt("New temporary PIN (4 digits):","1234");
     if(mp&&mp.length===4&&!isNaN(mp)){
       S.managers[parseInt(v)].pin=""; S.managers[parseInt(v)].tempPin=mp; S.managers[parseInt(v)].isTemp=true;
-      save(); alert("PIN reset.");
+      save(); await saveAccountsToSheet(); alert("PIN reset.");
     }
     return;
   }
@@ -7340,14 +7581,33 @@ function renderDash(){
     return "<div class='hexw'><div class='hex' "+tileAction+" title='"+esc(t.label)+"' style='background:"+t.accent+"88;'>"
       +"<div class='hexin' style='background:"+t.color+";'><div class='hi'>"+t.icon+"</div><div class='hl'>"+esc(t.label)+"</div></div></div>"+badgeHtml+"</div>";
   };
-  var tilesHtml = "";
-  // rows alternate 2 and 3 hexagons; start with 2 unless that would leave a lone pair in a row of 3 (a pair cannot be centred in it)
-  var hiveRows = function(first){ var out = [], n = 0, slot = first; while(n<tiles.length){ var k = Math.min(slot, tiles.length-n); out.push({slot:slot, tiles:tiles.slice(n, n+k)}); n += k; slot = slot===2 ? 3 : 2; } return out; };
-  var plan = hiveRows(2), lastRow = plan[plan.length-1];
-  if(lastRow.slot===3 && lastRow.tiles.length===2) plan = hiveRows(3);
-  plan.forEach(function(row){
-    tilesHtml += "<div class='hive-row"+(row.slot===2 ? " s2" : "")+(row.tiles.length===1 ? " one" : "")+"'>"+row.tiles.map(hexHtml).join("")+"</div>";
-  });
+  var tilesHtml = "", hiveMax = 420;
+  // tiles build outward in a circle: the first goes in the middle, then a ring of 6, then a ring of 12 - each ring starts on the left and runs clockwise
+  var hiveCells = function(n){
+    var cells = [{q:0,r:0}], k = 1;
+    while(cells.length<n){
+      var ring = [], dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]], q = -k, r = k;
+      for(var i=0;i<6;i++){ for(var j=0;j<k;j++){ ring.push({q:q,r:r}); q += dirs[i][0]; r += dirs[i][1]; } }
+      ring.forEach(function(c){ c.a = ((Math.atan2(0.866*c.r, c.q+c.r/2) - Math.PI + 1e-9) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI); });
+      ring.sort(function(x,y){ return x.a-y.a; });
+      cells = cells.concat(ring); k++;
+    }
+    return cells.slice(0,n);
+  };
+  if(tiles.length){
+    var cells = hiveCells(tiles.length), HH = 1.1547;
+    cells.forEach(function(c){ c.x = c.q + c.r/2; c.y = 0.866*c.r; });
+    var x0 = Math.min.apply(null, cells.map(function(c){return c.x;}))-0.5, x1 = Math.max.apply(null, cells.map(function(c){return c.x;}))+0.5;
+    var y0 = Math.min.apply(null, cells.map(function(c){return c.y;}))-HH/2, y1 = Math.max.apply(null, cells.map(function(c){return c.y;}))+HH/2;
+    var tw = x1-x0, th = y1-y0;
+    hiveMax = Math.round(Math.min(560, Math.max(300, 140*tw)));
+    tilesHtml = "<div class='comb' style='--hw:"+(100/tw).toFixed(2)+";padding-bottom:"+(th/tw*100).toFixed(2)+"%;'>"
+      + tiles.map(function(t,i){
+          var c = cells[i];
+          return hexHtml(t).replace("<div class='hexw'>","<div class='hexw' style='left:"+((c.x-0.5-x0)/tw*100).toFixed(3)+"%;top:"+((c.y-HH/2-y0)/th*100).toFixed(3)+"%;width:"+(100/tw).toFixed(3)+"%;'>");
+        }).join("")
+      + "</div>";
+  }
   if(!tiles.length){
     tilesHtml = "<div style='text-align:center;color:#64748b;padding:30px 10px;font-size:14px;'>Nothing is available on your home screen yet.<br>Ask your manager if you need access to something.</div>";
   }
@@ -7380,7 +7640,7 @@ function renderDash(){
       :"")
 
     // Home Screen honeycomb
-    +"<div class='hive'>"+tilesHtml+"</div>";
+    +"<div class='hive' style='max-width:"+hiveMax+"px'>"+tilesHtml+"</div>";
 }
 
 
@@ -10145,6 +10405,7 @@ function renderSuperAdmin(){
   if(S._saTool==="estimates" && S._cln){ estClnBind(pg); estCleanupRender(); return; }   // the estimate clean-up tool
   if(S._saTool==="terms"){ estTermsBind(pg); renderEstTerms(pg); return; }
   if(S._saTool==="pin"){ renderSaPin(pg); return; }
+  if(S._saTool==="secure"){ renderSaSecure(pg); return; }
   if(S._saTool==="backups"){ bkBind(pg); renderBackups(pg); return; }
 
   // If viewing a branch's settings, show that
@@ -10174,6 +10435,7 @@ function renderSuperAdmin(){
     +"<div style='font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;'>Company Settings &amp; Safety</div>"
     +"<button class='btn bg' data-a='sa-terms-open' style='width:100%;padding:12px;margin-bottom:8px;'>🧾 Estimate wording &amp; options</button>"
     +"<button class='btn bg' data-a='sa-pin-open' style='width:100%;padding:12px;margin-bottom:8px;'>🔑 Change Super Admin PIN</button>"
+    +"<button class='btn bg' data-a='sa-secure-open' style='width:100%;padding:12px;margin-bottom:8px;'>🔐 Secure sign-in for all accounts</button>"
     +"<button class='btn bg' data-a='sa-backups-open' style='width:100%;padding:12px;margin-bottom:4px;'>💾 Backups &amp; restore</button>"
     +"<div id='bk-status' style='font-size:11px;color:#64748b;text-align:center;margin-bottom:6px;'></div>"
     +"</div>"
@@ -12166,6 +12428,7 @@ async function generateQARAPdf(data){
     drawText("Technician: "+(fd.tech||data.techName||""), margin, y, 11, true); y-=16;
     drawText("Date: "+(fd.date||""), margin, y, 11); y-=16;
     drawText("Manager: "+(fd.manager||data.createdBy||""), margin, y, 11); y-=16;
+    if(fd.account||fd.customer) { drawText("Account #: "+(fd.account||"")+"    Customer: "+(fd.customer||""), margin, y, 11); y-=16; }
     if(fd.timein||fd.timeout) { drawText("Time: "+(fd.timein||"")+" — "+(fd.timeout||""), margin, y, 11); y-=16; }
     y -= 8; drawLine(y); y -= 15;
 
@@ -12192,8 +12455,38 @@ async function generateQARAPdf(data){
       y -= 14;
     }
 
-    if(isQA){
-      // QA Form sections
+    if(fd.v===2){
+      // New layout (11/2026 company sheets)
+      var defSecs = isQA ? QA_DEF.sections : RA_DEF.sections;
+      defSecs.forEach(function(sc){
+        drawSection(sc.title.toUpperCase());
+        sc.items.forEach(function(it){
+          var lab = it.t.length>88 ? it.t.substring(0,85)+"..." : it.t;
+          if(isQA){
+            checkY(20);
+            var qv = fd[it.k]||"";
+            var qcol = qv==="yes"?PDFLib.rgb(0.13,0.69,0.3):qv==="no"?PDFLib.rgb(0.87,0.15,0.15):PDFLib.rgb(0.5,0.5,0.5);
+            drawText(lab, margin+4, y, 8, false, PDFLib.rgb(0.1,0.1,0.1));
+            drawText(qv?(qv==="na"?"N/A":qv.toUpperCase()):"\u2014", pageW-margin-40, y, 9, true, qcol);
+            y -= 13;
+          } else {
+            drawItem(lab, it.k);
+          }
+        });
+        if(sc.cm) drawComment("Comments", fd[sc.cm]);
+        y -= 6;
+      });
+      if(!isQA && fd.summary) drawComment("Ride-Along Summary", fd.summary);
+      y -= 6;
+      if(fd.total !== undefined){
+        checkY(30);
+        var sc2 = fd.total>=80?PDFLib.rgb(0.13,0.69,0.3):fd.total>=60?PDFLib.rgb(0.96,0.62,0.04):PDFLib.rgb(0.87,0.15,0.15);
+        drawRect(margin, y-5, pageW-margin*2, 25, PDFLib.rgb(0.94,0.94,0.94));
+        drawText("TOTAL SCORE: "+fd.total+"%", margin+8, y+5, 13, true, sc2);
+        y -= 35;
+      }
+    } else if(isQA){
+      // QA Form sections (older layout)
       drawSection("CUSTOMER INTERVIEW");
       drawItem("Were you home when tech arrived?","D9");
       drawItem("Did you know the tech's name?","D10");
@@ -12967,7 +13260,7 @@ async function pdfSendDocument(){
 
   try {
     var result = await gs("uploadMultiSignRequestServer", {
-      id: "SIG-"+Date.now(),
+      id: newSigId(),
       date: new Date().toISOString(),
       docName: docName, note: note,
       createdBy: S.managerName,
@@ -13110,7 +13403,21 @@ function renderSignTech(pg){
         +pending.map(function(r){
           // Build read-only form summary
         var formPreview = "";
-        if(r.isQA && r.qaData){
+        if(r.isQA && r.qaData && r.qaData.v===2){
+          var qd2 = r.qaData;
+          var qa2 = function(it){ var v=qd2[it.k]; return v==="yes"?"<span style='color:#22c55e;font-weight:700;'>YES</span>":v==="no"?"<span style='color:"+(it.onNo?"#22c55e":"#ef4444")+";font-weight:700;'>NO</span>":v==="na"?"<span style='color:#94a3b8;'>N/A</span>":"<span style='color:#64748b;'>&mdash;</span>"; };
+          formPreview = "<div style='margin-top:10px;padding:10px;background:#0a1628;border-radius:8px;font-size:12px;'>"
+            +"<div style='font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>QA Results (Read Only)</div>"
+            +((qd2.account||qd2.customer)?"<div style='margin-bottom:6px;color:#94a3b8;'>"+esc(qd2.account||"")+(qd2.account&&qd2.customer?" &bull; ":"")+esc(qd2.customer||"")+"</div>":"")
+            +QA_DEF.sections.map(function(sc,si){
+              return "<div style='color:#64748b;margin-top:"+(si?8:0)+"px;margin-bottom:4px;font-weight:600;'>"+esc(sc.title)+"</div>"
+                +sc.items.map(function(it){ return "<div style='margin-bottom:2px;'>"+esc(it.t.length>70?it.t.substring(0,68)+"\u2026":it.t)+": "+qa2(it)+"</div>"; }).join("")
+                +(sc.cm&&qd2[sc.cm]?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd2[sc.cm])+"</div>":"");
+            }).join("")
+            +"<div style='margin-top:8px;padding:6px;background:#1c2d1a;border-radius:6px;text-align:center;'>"
+            +"<span style='font-weight:700;font-size:16px;color:"+qaScoreColor(qd2.total)+";'>Score: "+qd2.total+"%</span></div>"
+            +"</div>";
+        } else if(r.isQA && r.qaData){
           var qd = r.qaData;
           function ql(v){ return v==="yes"?"<span style='color:#22c55e;font-weight:700;'>YES</span>":"<span style='color:#ef4444;'>NO</span>"; }
           formPreview = "<div style='margin-top:10px;padding:10px;background:#0a1628;border-radius:8px;font-size:12px;'>"
@@ -13146,6 +13453,19 @@ function renderSignTech(pg){
             +(qd.comments4?"<div style='color:#94a3b8;margin-top:4px;font-style:italic;'>"+esc(qd.comments4)+"</div>":"")
             +"<div style='margin-top:8px;padding:6px;background:#1c2d1a;border-radius:6px;text-align:center;'>"
             +"<span style='font-weight:700;font-size:16px;color:"+(qd.total>=80?"#22c55e":qd.total>=60?"#f59e0b":"#ef4444")+";'>Score: "+qd.total+"/100</span></div>"
+            +"</div>";
+        } else if(r.isRA && r.raData && r.raData.v===2){
+          var rd2 = r.raData;
+          var ra2 = function(v){ return v==="exceeds"?"<span style='color:#22c55e;font-weight:700;'>EXCEEDS</span>":v==="meets"?"<span style='color:#3b82f6;font-weight:700;'>MEETS</span>":v==="below"?"<span style='color:#ef4444;font-weight:700;'>BELOW</span>":"<span style='color:#64748b;'>&mdash;</span>"; };
+          formPreview = "<div style='margin-top:10px;padding:10px;background:#0a1628;border-radius:8px;font-size:12px;'>"
+            +"<div style='font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Ride Along Results (Read Only)</div>"
+            +RA_DEF.sections.map(function(sc,si){
+              return "<div style='color:#64748b;margin-top:"+(si?8:0)+"px;margin-bottom:4px;font-weight:600;'>"+esc(sc.title)+"</div>"
+                +sc.items.map(function(it){ return "<div style='margin-bottom:2px;'>"+esc(it.t.length>70?it.t.substring(0,68)+"\u2026":it.t)+": "+ra2(rd2[it.k])+"</div>"; }).join("");
+            }).join("")
+            +(rd2.summary?"<div style='color:#94a3b8;margin-top:8px;font-style:italic;'>"+esc(rd2.summary)+"</div>":"")
+            +"<div style='margin-top:8px;padding:6px;background:#1c2d1a;border-radius:6px;text-align:center;'>"
+            +"<span style='font-weight:700;font-size:16px;color:"+qaScoreColor(rd2.total)+";'>Score: "+rd2.total+"%</span></div>"
             +"</div>";
         } else if(r.isRA && r.raData){
           var rd = r.raData;
@@ -13456,7 +13776,7 @@ async function signLoadFile(){
   reader.onload = function(e){
     var b64 = e.target.result.split(",")[1];
     var req = {
-      id: "SIG-"+Date.now(),
+      id: newSigId(),
       date: new Date().toISOString(),
       techName: tech.name,
       techEmail: tech.email||"",
@@ -13753,105 +14073,159 @@ async function signSubmitTech(){
 }
 
 
+
+// ─── QA / Ride Along form definitions (match the company sheets updated 11/2026) ───
+// key = column + sheet row (QA answers are in column D, RA ratings use "R"+row).
+var QA_DEF = {
+  sections:[
+    {title:"Customer Interview", color:"#3b82f6", items:[
+      {k:"D9",  t:"Were you home during your HPP service?", p:0},
+      {k:"D10", t:"Do you know your technician's name?", p:3, na:1},
+      {k:"D11", t:"Was your service completed on time? If not, did you receive notification we were running behind?", p:4},
+      {k:"D12", t:"Did our technician text or call you prior to arrival?", p:3},
+      {k:"D13", t:"Did our technician ask if you had any concerns prior to beginning your service? (if customer not home, mark yes)", p:5, na:1},
+      {k:"D14", t:"Did our technician discuss the treatment prior to beginning service? (if customer not home, mark yes)", p:3, na:1},
+      {k:"D15", t:"Are you aware of your included Target Treatments between regular services?", p:3},
+      {k:"D16", t:"Is there anything we can do to improve your customer experience?", p:2, onNo:1}
+    ]},
+    {title:"Quality Service Inspection", color:"#f59e0b", cm:"comments2", cmCell:"B24", items:[
+      {k:"D18", t:"Was pest activity addressed, not including spider webs? (check notes / product screen)", p:5},
+      {k:"D19", t:"Was a web pass completed? (all visible / accessible webs removed from home, if applicable)", p:5, na:1},
+      {k:"D20", t:"Was a rodent pass completed? (check for entry points, bait station refills/installs, etc.)", p:5},
+      {k:"D21", t:"Was a liquid / dust pass performed? (if applicable) (check notes)", p:5},
+      {k:"D22", t:"Was a granular application performed? (if applicable) (check notes)", p:5, na:1},
+      {k:"D23", t:"“What else” opportunities?", p:5}
+    ]},
+    {title:"Service Wrap Up", color:"#22c55e", cm:"comments3", cmCell:"B36", items:[
+      {k:"D26", t:"Reported back to the customer (curbside call if not home)", p:5},
+      {k:"D27", t:"Do technician notes align with customer concerns? (if customer not home, did they align with prior notes / appt. notes)", p:1},
+      {k:"D28", t:"Did technician notate what they SAW during service?", p:1},
+      {k:"D29", t:"Did technician notate what they DID during service?", p:1},
+      {k:"D30", t:"Did technician note any conducive conditions or recommendation & properly notate what they RECOMMEND during service?", p:1},
+      {k:"D31", t:"Did technician notate what customer can EXPECT after service?", p:1},
+      {k:"D32", t:"Check in/out times correct and aligned with service performed and time on stop expectations.", p:5},
+      {k:"D33", t:"Work order signed by Technician and Customer (if available)?", p:4},
+      {k:"D34", t:"Were photos added to the work order?", p:4},
+      {k:"D35", t:"Placed required Yard Sign and Door Stickers?", p:4}
+    ]},
+    {title:"Required Documentation", color:"#a855f7", cm:"comments4", cmCell:"B40", items:[
+      {k:"D38", t:"Proper Application Method", p:10},
+      {k:"D39", t:"Product Usage recorded accurately", p:10}
+    ]}
+  ]
+};
+var RA_DEF = {
+  max:54,   // the company sheet divides the point total by 54
+  sections:[
+    {title:"Safety, Compliance & Professionalism", color:"#3b82f6", items:[
+      {k:"R9",  t:"Uniform clean / well groomed (hat, belt, tucked in, shoe covers)"},
+      {k:"R10", t:"Truck clean and organized per expectations"},
+      {k:"R11", t:"Properly equipped and supplied, and equipment in good working condition"},
+      {k:"R12", t:"Materials stored properly (locked boxes, not in cab of truck)"},
+      {k:"R13", t:"Safe driving practices: (braking/acceleration, parking, focused driving)"},
+      {k:"R14", t:"On-My-Way button and text/call completed prior to arrival"},
+      {k:"R15", t:"Arrived in proper time frame or else notified customer, confirmed customer received notifications"},
+      {k:"R16", t:"Asked questions, listened, took notes (2 ears / one mouth)"},
+      {k:"R17", t:"Discussed 5-pass service with customer"},
+      {k:"R18", t:"Discussed Welcome Sheet and Billing (if initial)"},
+      {k:"R19", t:"Looked over prior service notes and followed up with customer (if applicable)"}
+    ]},
+    {title:"Quality Service & Service Wrap-Up", color:"#f59e0b", items:[
+      {k:"R21", t:"Completed a thorough inspection, beginning with customer's concerns"},
+      {k:"R22", t:"Showed our value: What Else Initiative, looked for other ways to “WOW!” our customer"},
+      {k:"R23", t:"Focused upon seasonal pests, conducive conditions, and application methods and areas"},
+      {k:"R24", t:"Performed Safety Lap, followed by proper 5-pass procedure"},
+      {k:"R25", t:"Demonstrated the knowledge and skill necessary for World Class Service"},
+      {k:"R26", t:"Proper mixing and application of products and materials"},
+      {k:"R27", t:"Addressed current pest activity / customer concerns"},
+      {k:"R28", t:"Gates and doors closed (close them behind you every time - leave it like you found it - if applicable)"},
+      {k:"R29", t:"Reported back to the customer (curbside call if not home)"},
+      {k:"R30", t:"Explained the details of the inspection, what was found, & did tech set expectations"},
+      {k:"R31", t:"Entered thorough notes into FieldRoutes following 4-part note format with photos"},
+      {k:"R32", t:"Discussed additional service options / recommendations as identified during the inspection"},
+      {k:"R33", t:"Setting expectations (included target treatments, pest reduction, follow-up needed, etc.)"}
+    ]},
+    {title:"Required Documentation", color:"#a855f7", items:[
+      {k:"R35", t:"Equipment"},
+      {k:"R36", t:"Product Safety / Handling / Usage"},
+      {k:"R37", t:"Inspections - Interior / Exterior"}
+    ]}
+  ]
+};
+function qaItems(){ var a=[]; QA_DEF.sections.forEach(function(sc){ sc.items.forEach(function(i){ a.push(i); }); }); return a; }
+function raItems(){ var a=[]; RA_DEF.sections.forEach(function(sc){ sc.items.forEach(function(i){ a.push(i); }); }); return a; }
+// QA score (percent): points earned / 100 possible. "N/A" earns nothing; the last interview question scores on NO.
+function qaScore(d){
+  var earned=0, possible=0;
+  qaItems().forEach(function(i){
+    possible+=i.p;
+    var v=d[i.k];
+    if(i.onNo ? v==="no" : v==="yes") earned+=i.p;
+  });
+  return possible ? Math.round(earned/possible*1000)/10 : 0;
+}
+// RA score (percent): Below 1 / Meets 2 / Exceeds 3 points, divided by 54 (as the company sheet does).
+function raScore(d){
+  var pts=0;
+  raItems().forEach(function(i){ var v=d[i.k]; pts += v==="below"?1 : v==="meets"?2 : v==="exceeds"?3 : 0; });
+  return Math.round(pts/RA_DEF.max*1000)/10;
+}
+function qaScoreColor(t){ return t>=80?"#22c55e":t>=60?"#f59e0b":"#ef4444"; }
+
 function renderQAForm(pg){
   var d = S._qaData||{};
   var techOpts = (S.techAccounts||[]).map(function(t){
     return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
   }).join("");
 
-  function yesno(field, score){
-    var val = d[field];
-    return "<div style='display:flex;gap:8px;'>"
-      +"<button class='btn "+(val==="yes"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;"+(val==="yes"?"border-color:#22c55e;":"")+";' data-a='qa-answer' data-v='"+field+"|yes'>"
-      +"Yes"+(score>0?" (+"+score+")":"")+"</button>"
-      +"<button class='btn "+(val==="no"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='qa-answer' data-v='"+field+"|no'>No</button>"
-      +"</div>";
+  function answerBtns(it){
+    var val = d[it.k];
+    var pts = it.p>0 ? " (+"+it.p+")" : "";
+    var yesLabel = it.onNo ? "Yes" : "Yes"+pts;
+    var noLabel  = it.onNo ? "No"+pts : "No";
+    var h = "<div style='display:flex;gap:8px;'>"
+      +"<button class='btn "+(val==="yes"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;"+(val==="yes"?"border-color:#22c55e;":"")+"' data-a='qa-answer' data-v='"+it.k+"|yes'>"+yesLabel+"</button>"
+      +"<button class='btn "+(val==="no"?(it.onNo?"bs":"bd"):"bg")+"' style='flex:1;padding:8px;font-size:13px;"+(val==="no"&&it.onNo?"border-color:#22c55e;":"")+"' data-a='qa-answer' data-v='"+it.k+"|no'>"+noLabel+"</button>";
+    if(it.na) h += "<button class='btn "+(val==="na"?"bp":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='qa-answer' data-v='"+it.k+"|na'>N/A</button>";
+    return h+"</div>";
   }
-
-  // Calculate score
-  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
-  var total = 0;
-  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
-
   function section(title, color){
     return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
   }
-  function item(label, field, score){
-    return "<div style='margin-bottom:10px;'>"
-      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
-      +yesno(field, score)+"</div>";
-  }
+  function lbl(t){ return "<label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>"+t+"</label>"; }
 
-  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+  var total = qaScore(d);
+  var branchName = (S.branch==="spokane"?"Spokane":"Willamette");
+
+  var body = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
     +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
     +"<h2 style='font-size:18px;font-weight:700;'>QA Inspection Form</h2></div>"
-
     +"<div class='card' style='margin-bottom:14px;'>"
     +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
-    +"<select class='inp' style='margin-top:4px;' id='qa-tech'>"+techOpts+"</select></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
-    +"<input type='date' class='inp' style='margin-top:4px;' id='qa-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Account #</label>"
-    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-account' placeholder='Account number' value='"+esc(d.account||"")+"'></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Customer</label>"
-    +"<input type='text' class='inp' style='margin-top:4px;' id='qa-customer' placeholder='Customer name' value='"+esc(d.customer||"")+"'></div>"
-    +"</div></div>"
+    +"<div>"+lbl("Technician")+"<select class='inp' style='margin-top:4px;' id='qa-tech'>"+techOpts+"</select></div>"
+    +"<div>"+lbl("Date")+"<input type='date' class='inp' style='margin-top:4px;' id='qa-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div>"+lbl("Account #")+"<input type='text' class='inp' style='margin-top:4px;' id='qa-account' placeholder='Account number' value='"+esc(d.account||"")+"'></div>"
+    +"<div>"+lbl("Customer")+"<input type='text' class='inp' style='margin-top:4px;' id='qa-customer' placeholder='Customer name' value='"+esc(d.customer||"")+"'></div>"
+    +"<div style='grid-column:1/3;font-size:12px;color:#64748b;'>Branch: "+esc(branchName)+"</div>"
+    +"</div></div>";
 
-    +section("Customer Interview","#3b82f6")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +item("Were you home during your HPP service?","D9",0)
-    +item("Do you know your technician's name?","D10",2)
-    +item("Was your service completed on time?","D11",5)
-    +item("Did our technician ask if you had any concerns prior to beginning your service?","D12",3)
-    +item("Did our technician discuss the treatment/follow-up expectations after completion?","D13",3)
-    +item("Is there anything we can do to improve your customer experience?","D14",0)
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='qa-comments1' style='margin-top:4px;font-size:13px;' placeholder='Customer interview comments...'>"+esc(d.comments1||"")+"</textarea></div>"
-    +"</div>"
+  QA_DEF.sections.forEach(function(sc){
+    body += section(sc.title, sc.color)+"<div class='card' style='margin-bottom:14px;'>";
+    sc.items.forEach(function(it){
+      body += "<div style='margin-bottom:10px;'><div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+esc(it.t)+"</div>"+answerBtns(it)+"</div>";
+    });
+    if(sc.cm){
+      body += "<div>"+lbl("Comments")+"<textarea class='inp' rows='2' id='qa-"+sc.cm+"' style='margin-top:4px;font-size:13px;' placeholder='Comments...'>"+esc(d[sc.cm]||"")+"</textarea></div>";
+    }
+    body += "</div>";
+  });
 
-    +section("Quality Service Inspection","#f59e0b")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +item("Asked questions, listened, took notes","D16",4)
-    +item("Completed a thorough investigation, beginning with customer concerns","D17",4)
-    +item("Was pest activity addressed not including spider webs?","D18",5)
-    +item("Used webster, removed wasp nest?","D19",5)
-    +item("Were rodent entry points sealed and bait stations serviced?","D20",5)
-    +item("Was a liquid application performed? (check service ticket)","D21",5)
-    +item("Was a granular application performed? (check service ticket)","D22",5)
-    +item("What else opportunities","D23",3)
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='qa-comments2' style='margin-top:4px;font-size:13px;' placeholder='Quality service comments...'>"+esc(d.comments2||"")+"</textarea></div>"
-    +"</div>"
-
-    +section("Service Wrap Up","#22c55e")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +item("Reported back to the customer (Curbside call if not home)","D26",5)
-    +item("Service note: Personalized to the home and includes the 4 Part Notes?","D27",5)
-    +item("Check in/out times correct and aligned with service performed?","D28",4)
-    +item("Discussed additional service options as identified during the inspection","D29",3)
-    +item("Work order signed by Technician and Customer (if available)?","D30",5)
-    +item("Were photos added to the work order?","D31",4)
-    +item("Placed required Yard Sign and Door Stickers?","D32",5)
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='qa-comments3' style='margin-top:4px;font-size:13px;' placeholder='Service wrap up comments...'>"+esc(d.comments3||"")+"</textarea></div>"
-    +"</div>"
-
-    +section("Required Documentation","#a855f7")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +item("Proper Application Method","D35",10)
-    +item("Product Usage recorded accurately","D36",10)
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='qa-comments4' style='margin-top:4px;font-size:13px;' placeholder='Documentation comments...'>"+esc(d.comments4||"")+"</textarea></div>"
-    +"</div>"
-
-    +"<div class='card' style='margin-bottom:16px;padding:16px;text-align:center;'>"
+  body += "<div class='card' style='margin-bottom:16px;padding:16px;text-align:center;'>"
     +"<div style='font-size:13px;color:#64748b;margin-bottom:4px;'>Overall Score</div>"
-    +"<div style='font-size:36px;font-weight:700;color:"+(total>=80?"#22c55e":total>=60?"#f59e0b":"#ef4444")+";' data-score-display>"+total+"</div>"
-    +"<div style='font-size:12px;color:#64748b;'>out of 100</div>"
+    +"<div style='font-size:36px;font-weight:700;color:"+qaScoreColor(total)+";' data-score-display>"+total+"%</div>"
     +"</div>"
-
     +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-qa-submit'>Next: Manager Signature &#x2192;</button>";
+  pg.innerHTML = body;
 }
 
 async function submitQAForm(){
@@ -13863,7 +14237,6 @@ async function submitQAForm(){
   if(dateSel) d.date = dateSel.value;
   d.account = (document.getElementById("qa-account")||{}).value||"";
   d.customer = (document.getElementById("qa-customer")||{}).value||"";
-  d.comments1 = (document.getElementById("qa-comments1")||{}).value||"";
   d.comments2 = (document.getElementById("qa-comments2")||{}).value||"";
   d.comments3 = (document.getElementById("qa-comments3")||{}).value||"";
   d.comments4 = (document.getElementById("qa-comments4")||{}).value||"";
@@ -13871,9 +14244,10 @@ async function submitQAForm(){
 
   if(!d.tech){ alert("Please select a technician."); return; }
 
-  var scoreMap = {D9:0,D10:2,D11:5,D12:3,D13:3,D14:0,D16:4,D17:4,D18:5,D19:5,D20:5,D21:5,D22:5,D23:3,D26:5,D27:5,D28:4,D29:3,D30:5,D31:4,D32:5,D35:10,D36:10};
-  var total = 0;
-  Object.keys(scoreMap).forEach(function(k){ if(d[k]==="yes") total+=scoreMap[k]; });
+  var unanswered = qaItems().filter(function(i){ return !d[i.k]; }).length;
+  if(unanswered>0 && !confirm(unanswered+" question"+(unanswered===1?" is":"s are")+" not answered yet and will score 0. Continue anyway?")) return;
+  d.v = 2;                       // form layout version (11/2026 sheets)
+  var total = qaScore(d);
   d.total = total;
 
   // Show loading overlay
@@ -13905,14 +14279,14 @@ async function submitQAForm(){
     var fileName = d.tech+" QA - "+d.date+".pdf";
     var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
     S._pendingSignReq = {
-      id: "SIG-"+Date.now(),
+      id: newSigId(),
       date: new Date().toISOString(),
       techName: d.tech,
       techEmail: tech?tech.email:"",
       docName: fileName,
       status: "Pending",
       createdBy: S.managerName,
-      note: "QA Score: "+total+"/100",
+      note: "QA Score: "+total+"%",
       isQA: true,
       qaData: d,
       fileId: null
@@ -13933,79 +14307,49 @@ function renderRAForm(pg){
     return "<option value='"+esc(t.name)+"'"+(d.tech===t.name?" selected":"")+">"+esc(t.name)+"</option>";
   }).join("");
 
-  function raItem(label, field){
-    var val = d[field]||"";
+  function raItem(it){
+    var val = d[it.k]||"";
     return "<div style='margin-bottom:12px;'>"
-      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+label+"</div>"
+      +"<div style='font-size:13px;margin-bottom:6px;color:#e2e8f0;'>"+esc(it.t)+"</div>"
       +"<div style='display:flex;gap:8px;'>"
-      +"<button class='btn "+(val==="below"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|below'>Below</button>"
-      +"<button class='btn "+(val==="meets"?"bp":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|meets'>Meets</button>"
-      +"<button class='btn "+(val==="exceeds"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+field+"|exceeds'>Exceeds</button>"
+      +"<button class='btn "+(val==="below"?"bd":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+it.k+"|below'>Below</button>"
+      +"<button class='btn "+(val==="meets"?"bp":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+it.k+"|meets'>Meets</button>"
+      +"<button class='btn "+(val==="exceeds"?"bs":"bg")+"' style='flex:1;padding:8px;font-size:13px;' data-a='ra-answer' data-v='"+it.k+"|exceeds'>Exceeds</button>"
       +"</div></div>";
   }
-
   function section(title, color){
     return "<div style='font-size:13px;font-weight:700;color:"+color+";text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid "+color+"44;'>"+title+"</div>";
   }
+  function lbl(t){ return "<label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>"+t+"</label>"; }
+  var total = raScore(d);
+  var branchName = (S.branch==="spokane"?"Spokane":"Willamette");
 
-  pg.innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
+  var body = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:16px;'>"
     +"<button class='btn bg' data-a='sign-view' data-v='list'>Back</button>"
     +"<h2 style='font-size:18px;font-weight:700;'>Ride Along Form</h2></div>"
-
     +"<div class='card' style='margin-bottom:14px;'>"
     +"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;'>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Technician</label>"
-    +"<select class='inp' style='margin-top:4px;' id='ra-tech'>"+techOpts+"</select></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Date</label>"
-    +"<input type='date' class='inp' style='margin-top:4px;' id='ra-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time In</label>"
-    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timein' value='"+(d.timein||"")+"'></div>"
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Time Out</label>"
-    +"<input type='time' class='inp' style='margin-top:4px;' id='ra-timeout' value='"+(d.timeout||"")+"'></div>"
-    +"</div></div>"
+    +"<div>"+lbl("Technician")+"<select class='inp' style='margin-top:4px;' id='ra-tech'>"+techOpts+"</select></div>"
+    +"<div>"+lbl("Date")+"<input type='date' class='inp' style='margin-top:4px;' id='ra-date' value='"+(d.date||new Date().toISOString().split("T")[0])+"'></div>"
+    +"<div>"+lbl("Time In")+"<input type='time' class='inp' style='margin-top:4px;' id='ra-timein' value='"+(d.timein24||"")+"'></div>"
+    +"<div>"+lbl("Time Out")+"<input type='time' class='inp' style='margin-top:4px;' id='ra-timeout' value='"+(d.timeout24||"")+"'></div>"
+    +"<div style='grid-column:1/3;font-size:12px;color:#64748b;'>Branch: "+esc(branchName)+"</div>"
+    +"</div></div>";
 
-    +section("Professionalism","#3b82f6")
-    +"<div style='background:#0f1f38;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #1e3a5f;font-size:12px;color:#64748b;display:flex;gap:8px;margin-bottom:6px;'>"
-    +"<span style='flex:1;'></span><span style='width:70px;text-align:center;'>Below</span><span style='width:70px;text-align:center;'>Meets</span><span style='width:70px;text-align:center;'>Exceeds</span></div>"
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +raItem("Uniform clean / well groomed","R9")
-    +raItem("Truck clean and organized per expectations","R10")
-    +raItem("Properly equipped and supplied, equipment in good working condition","R11")
-    +raItem("Greeted customer with smile, upbeat attitude, reinforced connection","R12")
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='ra-comments1' style='margin-top:4px;font-size:13px;'>"+esc(d.comments1||"")+"</textarea></div>"
-    +"</div>"
+  RA_DEF.sections.forEach(function(sc){
+    body += section(sc.title, sc.color)+"<div class='card' style='margin-bottom:14px;'>";
+    sc.items.forEach(function(it){ body += raItem(it); });
+    body += "</div>";
+  });
 
-    +section("Quality Service","#f59e0b")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +raItem("Was expected, arrived on time, or else notified customer","R15")
-    +raItem("Asked questions, listened, took notes","R16")
-    +raItem("Completed a thorough investigation, beginning with customer concerns","R17")
-    +raItem("Showed our value: used websters, removed wasp nest, WOW the customer","R18")
-    +raItem("Focused upon seasonal service targets and pests","R19")
-    +raItem("Demonstrated knowledge and skill for World Class Service","R20")
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='ra-comments2' style='margin-top:4px;font-size:13px;'>"+esc(d.comments2||"")+"</textarea></div>"
-    +"</div>"
-
-    +section("Service Wrap Up","#22c55e")
-    +"<div class='card' style='margin-bottom:14px;'>"
-    +raItem("Reported back to the customer (Curbside call if not home)","R23")
-    +raItem("Explained details of Inspection, what was Found, set Expectations","R24")
-    +raItem("Entered details and comments into the iPad","R25")
-    +raItem("Discussed additional service options identified during inspection","R26")
-    +"<div><label style='font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;'>Comments</label>"
-    +"<textarea class='inp' rows='2' id='ra-comments3' style='margin-top:4px;font-size:13px;'>"+esc(d.comments3||"")+"</textarea></div>"
-    +"</div>"
-
-    +section("Required Documentation","#a855f7")
-    +"<div class='card' style='margin-bottom:16px;'>"
-    +raItem("Equipment","R29")
-    +raItem("Product Safety / Handling / Usage","R30")
-    +raItem("Inspections - Interior / Exterior","R31")
-    +"</div>"
-
+  body += "<div class='card' style='margin-bottom:14px;'>"
+    +lbl("Ride-Along Summary (required)")
+    +"<textarea class='inp' rows='4' id='ra-summary' style='margin-top:4px;font-size:13px;' placeholder='Summarize the ride-along...'>"+esc(d.summary||"")+"</textarea></div>"
+    +"<div class='card' style='margin-bottom:16px;padding:16px;text-align:center;'>"
+    +"<div style='font-size:13px;color:#64748b;margin-bottom:4px;'>Score</div>"
+    +"<div style='font-size:36px;font-weight:700;color:"+qaScoreColor(total)+";' data-ra-score>"+total+"%</div></div>"
     +"<button class='btn bp' style='width:100%;padding:14px;font-size:15px;' data-a='sign-ra-submit'>Next: Manager Signature &#x2192;</button>";
+  pg.innerHTML = body;
 }
 
 async function submitRAForm(){
@@ -14022,14 +14366,19 @@ async function submitRAForm(){
     h=h%12||12;
     return h+":"+m+" "+ampm;
   }
-  d.timein = to12hr((document.getElementById("ra-timein")||{}).value||"");
-  d.timeout = to12hr((document.getElementById("ra-timeout")||{}).value||"");
-  d.comments1 = (document.getElementById("ra-comments1")||{}).value||"";
-  d.comments2 = (document.getElementById("ra-comments2")||{}).value||"";
-  d.comments3 = (document.getElementById("ra-comments3")||{}).value||"";
+  d.timein24 = (document.getElementById("ra-timein")||{}).value||"";
+  d.timeout24 = (document.getElementById("ra-timeout")||{}).value||"";
+  d.timein = to12hr(d.timein24);
+  d.timeout = to12hr(d.timeout24);
+  d.summary = ((document.getElementById("ra-summary")||{}).value||"").trim();
   S._raData = d;
 
   if(!d.tech){ alert("Please select a technician."); return; }
+  if(!d.summary){ alert("The Ride-Along Summary is required."); return; }
+  var raUn = raItems().filter(function(i){ return !d[i.k]; }).length;
+  if(raUn>0 && !confirm(raUn+" item"+(raUn===1?" is":"s are")+" not rated yet and will score 0. Continue anyway?")) return;
+  d.v = 2;                       // form layout version (11/2026 sheets)
+  d.total = raScore(d);
 
   var overlay = document.createElement("div");
   overlay.id = "ra-loading";
@@ -14052,14 +14401,14 @@ async function submitRAForm(){
     var fileName = d.tech+" RA - "+d.date+".pdf";
     var tech = S.techAccounts.find(function(t){ return t.name===d.tech; });
     S._pendingSignReq = {
-      id: "SIG-"+Date.now(),
+      id: newSigId(),
       date: new Date().toISOString(),
       techName: d.tech,
       techEmail: tech?tech.email:"",
       docName: fileName,
       status: "Pending",
       createdBy: S.managerName,
-      note: "Ride Along Form",
+      note: "Ride Along Score: "+d.total+"%",
       isRA: true,
       raData: d,
       fileId: null
@@ -14132,7 +14481,7 @@ async function sendLoginEmail(role, idx){
   const acct = role==="manager" ? S.managers[idx] : S.techAccounts[idx];
   if(!acct){ alert("Account not found."); return; }
   if(!acct.email){ alert("No email address set for "+acct.name+". Please add an email first."); return; }
-  const tempPin = acct.isTemp ? acct.tempPin : "";
+  const tempPin = acct.isTemp ? tmpPinOf(acct) : "";
   if(!tempPin){ 
     const reset = confirm(acct.name+" has already set their PIN. Would you like to reset it first so you can send them a new temp PIN?");
     if(!reset) return;
@@ -14140,9 +14489,9 @@ async function sendLoginEmail(role, idx){
     if(!newPin||newPin.length<4){ alert("PIN must be at least 4 digits."); return; }
     acct.pin=""; acct.tempPin=newPin; acct.isTemp=true;
     if(role==="manager") S.managers[idx]=acct; else S.techAccounts[idx]=acct;
-    save(); saveAccountsToSheet();
+    save(); await saveAccountsToSheet();
   }
-  const pin = acct.isTemp ? acct.tempPin : tempPin;
+  const pin = acct.isTemp ? (tmpPinOf(acct) || acct.tempPin) : tempPin;
   const appUrl = window.location.href.split("?")[0];
   const subject = "Fox Pest Control Admin Hub - Your Login Information";
   const body = "Hello "+acct.name+",\n\n"
