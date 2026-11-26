@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.9";
+const APP_VERSION = "6.14.10";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -7291,7 +7291,7 @@ async function handleAction(a,v,el,e){
     showToast("Notification settings saved ✓");
     return;
   }
-  if(a==="save-cats-to-sheet") { saveAccountsToSheet().then(function(){ alert("Inspection settings synced to all devices!"); }); return; }
+  if(a==="save-cats-to-sheet") { clearTimeout(window._catAutoSave); saveAccountsToSheet().then(function(){ alert("Inspection settings saved for all devices."); }); return; }
   if(a==="assign-truck") {
     var techIdx = parseInt(v);
     var sel3 = event.target || document.querySelector("[data-a='assign-truck'][data-v='"+v+"']");
@@ -7423,19 +7423,19 @@ async function handleAction(a,v,el,e){
     var parts2=v.split("_"); var dci=parseInt(parts2[0]); var dii=parseInt(parts2[1]);
     if(confirm("Remove this item?")){
       S.cats[dci].items.splice(dii,1);
-      lsSet("hub:cats",S.cats); renderSettings();
+      inspCatsChanged(); renderSettings();
     }
     return;
   }
   if(a==="cat-up"||a==="cat-down"){
     var mc=parseInt(v), tc=a==="cat-up"?mc-1:mc+1;
-    if(S.cats[mc] && S.cats[tc]){ var tmpc=S.cats[mc]; S.cats[mc]=S.cats[tc]; S.cats[tc]=tmpc; lsSet("hub:cats",S.cats); renderSettings(); }
+    if(S.cats[mc] && S.cats[tc]){ var tmpc=S.cats[mc]; S.cats[mc]=S.cats[tc]; S.cats[tc]=tmpc; inspCatsChanged(); renderSettings(); }
     return;
   }
   if(a==="item-up"||a==="item-down"){
     var ip=String(v).split("_"), mci=parseInt(ip[0]), mii=parseInt(ip[1]), tii=a==="item-up"?mii-1:mii+1;
     var its=S.cats[mci]&&S.cats[mci].items;
-    if(its && its[mii] && its[tii]){ var tmpi=its[mii]; its[mii]=its[tii]; its[tii]=tmpi; lsSet("hub:cats",S.cats); renderSettings(); }
+    if(its && its[mii] && its[tii]){ var tmpi=its[mii]; its[mii]=its[tii]; its[tii]=tmpi; inspCatsChanged(); renderSettings(); }
     return;
   }
   if(a==="add-item") {
@@ -7443,15 +7443,15 @@ async function handleAction(a,v,el,e){
     var newLabel=(document.getElementById("new-item-"+aci)||{}).value||"";
     if(!newLabel.trim()){alert("Enter an item name.");return;}
     S.cats[aci].items.push({id:"item-"+Date.now(),label:newLabel.trim(),entryType:"Score",requiresPhoto:false,maxPhotos:1});
-    lsSet("hub:cats",S.cats); renderSettings();
+    inspCatsChanged(); renderSettings();
     return;
   }
   if(a==="add-insp-field") { S.inspFields.push({id:"custom_"+Date.now(),label:"New Field",type:"text",required:false,enabled:true,placeholder:""}); save(); saveAccountsToSheet(); render(); return; }
   if(a==="del-insp-field") { var fi2=parseInt(v); if(confirm("Remove this field?")){S.inspFields.splice(fi2,1);save();saveAccountsToSheet();render();} return; }
   if(a==="insp-field-up"){ var fu=parseInt(v); if(fu>0){var tmp=S.inspFields[fu-1];S.inspFields[fu-1]=S.inspFields[fu];S.inspFields[fu]=tmp;save();saveAccountsToSheet();S.settingsTab="inspection";renderSettings();} return; }
   if(a==="insp-field-down"){ var fd2=parseInt(v); if(fd2<S.inspFields.length-1){var tmp2=S.inspFields[fd2+1];S.inspFields[fd2+1]=S.inspFields[fd2];S.inspFields[fd2]=tmp2;save();saveAccountsToSheet();S.settingsTab="inspection";renderSettings();} return; }
-  if(a==="add-cat") { var cl=prompt("Category name:"); if(!cl)return; S.cats.push({id:uid(),label:cl.trim(),scale:10,items:[]}); lsSet("hub:cats",S.cats); renderSettings(); return; }
-  if(a==="del-cat") { if(confirm("Remove category?")){S.cats.splice(parseInt(v),1);lsSet("hub:cats",S.cats);renderSettings();} return; }
+  if(a==="add-cat") { var cl=prompt("Category name:"); if(!cl)return; S.cats.push({id:uid(),label:cl.trim(),scale:10,items:[]}); inspCatsChanged(); renderSettings(); return; }
+  if(a==="del-cat") { if(confirm("Remove category?")){S.cats.splice(parseInt(v),1);inspCatsChanged();renderSettings();} return; }
   if(a==="add-cat-item") { const l=prompt("Item label:"); if(!l)return; const hc=confirm("Include comment field?"); const c=S.cats.find(x=>x.id===v); if(c){c.items.push({id:uid(),label:l.trim(),hc});save();render();} return; }
   if(a==="del-cat-item") { const [ci,ii]=v.split("|"); const c=S.cats.find(x=>x.id===ci); if(c){c.items=c.items.filter(i=>i.id!==ii);save();render();} return; }
 }
@@ -7852,6 +7852,15 @@ function inspArrows(act, v, canUp, canDown){
     +(canUp ? "<button style='"+st+"' data-a='"+act+"-up' data-v='"+v+"' title='Move up'>&#9650;</button>" : "<span style='height:15px;'></span>")
     +(canDown ? "<button style='"+st+"' data-a='"+act+"-down' data-v='"+v+"' title='Move down'>&#9660;</button>" : "<span style='height:15px;'></span>")
     +"</div>";
+}
+
+// Inspection settings are saved to the database a moment after every change (no need to remember the Sync button)
+function inspCatsChanged(){
+  lsSet("hub:cats", S.cats);
+  clearTimeout(window._catAutoSave);
+  window._catAutoSave = setTimeout(async function(){
+    try { await saveAccountsToSheet(); showToast("Inspection settings saved"); } catch(e){ console.warn("Auto-save of inspection settings failed:", e); }
+  }, 1200);
 }
 
 function calcPct(){
@@ -10788,7 +10797,7 @@ function renderSettings(){
       +"<button class='btn bp' data-a='save-notif-config' style='width:100%;padding:12px;margin-top:8px;'>💾 Save Notification Settings</button>";
 
   } else if(tab==="inspection"){
-    var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Sync Inspection Settings to All Devices</button>";
+    var syncBtn = "<button class='btn bp' style='width:100%;padding:10px;margin-bottom:14px;' data-a='save-cats-to-sheet'>&#x1F4BE; Save Inspection Settings Now (changes also save by themselves)</button>";
 
     var _tally = inspTallyData();
     var catRows = (S.cats||[]).map(function(c,ci){
@@ -10944,7 +10953,7 @@ function renderSettings(){
           if(field==="label") S.cats[ci].label = el.value;
           else if(field==="scale") S.cats[ci].scale = parseInt(el.value)||10;
         }
-        lsSet("hub:cats", S.cats);
+        inspCatsChanged();
         if(field==="scale" || field==="entryType") inspTallyRefresh();
         if(field==="entryType") renderSettings();   // show or hide the choices box for Select items
       });
