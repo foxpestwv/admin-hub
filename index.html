@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.3";
+const APP_VERSION = "6.14.7";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -4902,6 +4902,10 @@ async function gs(fn, data){
       }
 
       // ── INSPECTIONS ───────────────────────────────────────────────────────────
+      case "saveInspectionPdf": {
+        var pdfResp = await fetch(EMAIL_BRIDGE, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({action:"saveInspectionPdf", data:data})}).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false, error:e.message}; });
+        return pdfResp;
+      }
       case "logInspection": {
         var inspId = "insp_"+Date.now();
         await fbSet("inspections", inspId, Object.assign({}, data, {id:inspId, date:new Date().toISOString(), branch:data.branch||S.branch||"willamette"}));
@@ -6138,10 +6142,13 @@ document.addEventListener("change",function(e){
 
 document.addEventListener("input",function(e){
   const t=e.target;
+  if(t.id && t.id.indexOf("insp-field-")===0) S.inspData[t.id.slice(11)]=t.value;   // every Info-page field (vehicle, mileage, inspector, notes and any you add)
   if(t.id==="insp-mileage") S.inspData.mileage=t.value;
   if(t.id==="insp-inspector") S.inspData.inspector=t.value;
   if(t.id==="insp-notes") S.inspData.notes=t.value;
   if(t.dataset.commentkey) S.inspData.comments[t.dataset.commentkey]=t.value;
+  if(t.dataset.notifyemail){ var sel0 = inspEmailSelected(), em0 = t.dataset.notifyemail, ix0 = sel0.indexOf(em0); if(t.checked && ix0<0) sel0.push(em0); if(!t.checked && ix0>=0) sel0.splice(ix0,1); }
+  if(t.dataset.checkkey){ if(t.checked) S.inspData.comments[t.dataset.checkkey]="Done"; else delete S.inspData.comments[t.dataset.checkkey]; }
   if(t.id==="new-truck-inp"||t.id==="new-tech-inp") {}
 });
 
@@ -7717,6 +7724,8 @@ function inspForm(){
       var btns="";
       if(inputType==="score"){
         btns=Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
+      } else if(inputType==="check"){
+        btns=`<label style="display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer;padding:4px 0;"><input type="checkbox" data-checkkey="${key}" ${inspData.comments[key]==="Done"?"checked":""} style="width:24px;height:24px;accent-color:#22c55e;"> Completed</label>`;
       } else if(inputType==="text"){
         btns=`<input type="text" class="inp" style="font-size:13px;padding:7px 10px;" placeholder="Enter text..." value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`;
       } else if(inputType==="textarea"){
@@ -7725,7 +7734,7 @@ function inspForm(){
         btns=`<input type="number" class="inp" style="font-size:15px;padding:7px 10px;width:120px;" placeholder="0" value="${inspData.scores[key]!==undefined?inspData.scores[key]:""}" data-key="${key}" data-type="score">`;
       } else if(inputType==="select"){
         const selOpts=(item.selectOptions||[]).map(o=>`<option value="${esc(o)}"${inspData.comments[key]===o?" selected":""}>${esc(o)}</option>`).join("");
-        btns=`<select class="inp" style="font-size:13px;" data-commentkey="${key}"><option value="">-- Select --</option>${selOpts}</select>`;
+        btns=`<select class="inp" style="font-size:13px;" data-commentkey="${key}"><option value="">-- Select --</option>${selOpts}</select>${(item.selectOptions||[]).length?"":`<div style="font-size:11px;color:#f59e0b;margin-top:4px;">No choices have been set up for this item yet (Settings &gt; Inspection).</div>`}`;
       }
       const noteType2=item.noteType||"text";
       const comment=item.hc?(noteType2==="textarea"?`<textarea class="inp" rows="2" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" data-commentkey="${key}">${esc(inspData.comments[key]||"")}</textarea>`:`<input type="${noteType2}" class="inp" style="margin-top:8px;font-size:13px;padding:7px 10px;" placeholder="Notes (optional)" value="${esc(inspData.comments[key]||"")}" data-commentkey="${key}">`):"";
@@ -7758,7 +7767,11 @@ function inspForm(){
       <div style="background:#0a1628;border-radius:10px;padding:16px;margin-bottom:16px;text-align:center;border:2px solid ${sc(pct)}30;">${ring(pct,90)}<div style="margin-top:6px;font-size:18px;font-weight:700;color:${sc(pct)}">${sl(pct)}</div><div style="color:#475569;font-size:12px;margin-top:2px;">${esc(inspData.truck)}</div></div>
       <input type="file" id="photo-file" accept="image/*" multiple style="display:none">
       <button class="btn bg" style="width:100%;padding:12px;margin-bottom:12px;" data-a="add-photo">Add Photos</button>
-      <div class="g3">${photos}</div>`;
+      <div class="g3" style="margin-bottom:16px;">${photos}</div>
+      <div class="card" style="padding:14px;"><div style="font-weight:600;font-size:14px;margin-bottom:4px;">Email this inspection to</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:10px;">Tick who should get the PDF link. Untick everyone to send no email.</div>
+        ${(function(){ var sel=inspEmailSelected(), ch=inspEmailChoices().list; if(!ch.length) return "<div style='font-size:12px;color:#f59e0b;'>No manager has an email address saved, so no email will be sent.</div>"; return ch.map(function(x){ return "<label style='display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14px;cursor:pointer;'><input type='checkbox' data-notifyemail='"+esc(x.email)+"' "+(sel.indexOf(x.email)>=0?"checked":"")+" style='width:20px;height:20px;accent-color:#2563eb;'><span>"+esc(x.name)+(x.name!==x.email?" <span style='color:#64748b;font-size:12px;'>"+esc(x.email)+"</span>":"")+"</span></label>"; }).join(""); })()}
+      </div>`;
   }
   const back=`<button class="btn bg" style="flex:1;" data-a="insp-back">Back</button>`;
   const fwd=isPhotos?`<button class="btn bs" style="flex:2;" data-a="insp-save">Save Inspection</button>`:`<button class="btn bp" style="flex:2;" data-a="insp-next">Next</button>`;
@@ -7769,15 +7782,16 @@ function inspDetail(){
   const r=S.detailInsp;
   if(!r) return "";
   const cats=S.cats.map(cat=>{
-    const scored=cat.items.filter(i=>r.scores[cat.id+":"+i.id]!==undefined);
+    const scored=cat.items.filter(i=>r.scores[cat.id+":"+i.id]!==undefined||(r.comments&&r.comments[cat.id+":"+i.id]));
     if(!scored.length) return "";
     const e=scored.reduce((a,i)=>a+(r.scores[cat.id+":"+i.id]||0),0);
     const cp=Math.round((e/(Math.max(1,cat.items.filter(i=>(i.inputType||"score")==="score").length)*cat.scale))*100);
-    return `<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;"><div style="padding:10px 14px;background:#0a1628;display:flex;justify-content:space-between;"><span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span><span style="font-family:monospace;font-size:13px;font-weight:700;color:${sc(cp)}">${cp}%</span></div><div style="padding:14px;">${cat.items.map(item=>{const s=r.scores[cat.id+":"+item.id];const cm=r.comments?.[cat.id+":"+item.id];return `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;"><div><div style="font-size:13px;">${esc(item.label)}</div>${cm?`<div style="font-size:11px;color:#64748b;">"${esc(cm)}"</div>`:""}</div><span style="font-family:monospace;font-size:13px;font-weight:700;white-space:nowrap;color:${s===undefined?"#334155":sc((s/cat.scale)*100)}">${s===undefined?"--":s+"/"+cat.scale}</span></div>`;}).join("")}</div></div>`;
+    return `<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;"><div style="padding:10px 14px;background:#0a1628;display:flex;justify-content:space-between;"><span style="font-weight:600;font-size:14px;">${esc(cat.label)}</span><span style="font-family:monospace;font-size:13px;font-weight:700;color:${sc(cp)}">${cp}%</span></div><div style="padding:14px;">${cat.items.map(item=>{const s=r.scores[cat.id+":"+item.id];const cm=r.comments?.[cat.id+":"+item.id];const it=item.inputType||"score";if(it==="none")return "";if(it!=="score"){const shown=it==="check"?(cm==="Done"?"\u2713 Done":"Not done"):it==="number"?(s===undefined?"--":s):(cm||"--");return `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;"><div style="font-size:13px;">${esc(item.label)}</div><span style="font-size:13px;font-weight:600;color:${it==="check"&&cm!=="Done"?"#64748b":"#e2e8f0"};text-align:right;">${esc(String(shown))}</span></div>`;}return `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;"><div><div style="font-size:13px;">${esc(item.label)}</div>${cm?`<div style="font-size:11px;color:#64748b;">"${esc(cm)}"</div>`:""}</div><span style="font-family:monospace;font-size:13px;font-weight:700;white-space:nowrap;color:${s===undefined?"#334155":sc((s/cat.scale)*100)}">${s===undefined?"--":s+"/"+cat.scale}</span></div>`;}).join("")}</div></div>`;
   }).join("");
   const photos=r.photos?.length?`<div class="card" style="margin-top:8px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:10px;">Photos (${r.photos.length})</div><div class="g3">${r.photos.map(ph=>`<img src="${ph.data}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;">`).join("")}</div></div>`:"";
   return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="insp-view" data-v="list">Back</button><button class="btn bd" data-a="insp-del" data-v="${r.id}">Delete</button></div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:20px;">${ring(r.pct,72)}<div><h2 style="font-size:20px;font-weight:700;">${esc(r.truck)}</h2><div style="color:#475569;font-size:13px;margin-top:3px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div>${r.mileage?`<div style="color:#64748b;font-size:12px;margin-top:2px;">${Number(r.mileage).toLocaleString()} miles</div>`:""}</div></div>
+    ${(S.inspFields||[]).filter(f=>["truck","mileage","inspector","notes"].indexOf(f.id)<0&&r[f.id]).map(f=>`<div class="card" style="margin-bottom:8px;padding:10px 14px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:3px;">${esc(f.label)}</div><div style="font-size:13px;color:#cbd5e1;">${esc(String(r[f.id]))}</div></div>`).join("")}
     ${r.notes?`<div class="card" style="margin-bottom:12px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:5px;">Notes</div><p style="font-size:13px;color:#cbd5e1;">${esc(r.notes)}</p></div>`:""}
     ${cats}${photos}`;
 }
@@ -7802,6 +7816,22 @@ function inspTallyRefresh(){
   var d = inspTallyData();
   d.rows.forEach(function(r,i){ var el = document.getElementById("cat-sum-"+i); if(el) el.innerHTML = inspCatSumHtml(r, d.tot); });
   var t = document.getElementById("insp-tally"); if(t) t.innerHTML = inspTallyHtml(d);
+}
+
+// Who can receive the inspection email, and who is ticked by default (the Notifications setting if set, otherwise every manager with an email)
+function inspEmailChoices(){
+  var nc = (S.notifConfig && S.notifConfig.inspection) || {};
+  var seen = {}, list = [];
+  (S.managers||[]).forEach(function(m){ var e = String(m.email||"").trim(); if(e && !seen[e.toLowerCase()]){ seen[e.toLowerCase()] = 1; list.push({email:e, name:m.name||e}); } });
+  var cfg = String(nc.emails||"").split(/[,;\s]+/).filter(Boolean);
+  cfg.forEach(function(e){ if(!seen[e.toLowerCase()]){ seen[e.toLowerCase()] = 1; list.push({email:e, name:e}); } });
+  var def = nc.enabled===false ? [] : (cfg.length ? cfg : list.map(function(x){ return x.email; }));
+  return {list:list, def:def};
+}
+function inspEmailSelected(){
+  var c = inspEmailChoices();
+  if(!Array.isArray(S.inspData.notifyTo)) S.inspData.notifyTo = c.def.slice();
+  return S.inspData.notifyTo;
 }
 
 function calcPct(){
@@ -7838,27 +7868,39 @@ function captureItemPhoto(input){
 
 async function saveInsp(){
   const pct=calcPct();
+  const notifyTo = inspEmailSelected().slice();
   const rec={id:uid(),date:new Date().toISOString(),...S.inspData,pct};
+  delete rec.notifyTo;
   S.inspections.unshift(rec);
   S.inspView="home"; save(); render();
   const catH=S.cats.flatMap(c=>c.items.map(i=>c.label+": "+i.label+" (/"+c.scale+")"));
   const headers=["Date","Truck","Inspector","Mileage","Overall %",...catH];
   const catS=S.cats.flatMap(c=>c.items.map(item=>{const s=S.inspData.scores[c.id+":"+item.id];return s!==undefined?s:"";}));
   const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
-  try { await gs("logInspectionServer",{headers,row}); } catch(e){}
 
   // Save inspection to Firebase with branch tag
   try {
     await gs("logInspection", Object.assign({}, rec, {branch:S.branch||"willamette"}));
   } catch(e){ console.warn("Firebase inspection save:", e); }
 
-  // Generate PDF of inspection and save to Drive
+  // Generate a PDF of the inspection, save it to Drive, and email the managers a link
+  var pdfUrl = "", pdfOk = false;
   try {
     var pdfData = buildInspectionPdfData(rec);
-    gs("saveInspectionPdfServer", pdfData).then(function(res){
-      if(res&&res.ok) console.log("Inspection PDF saved:", res.fileId);
-    }).catch(function(e){ console.warn("PDF save failed:", e); });
-  } catch(e){ console.warn("PDF build failed:", e); }
+    var pdfRes = await gs("saveInspectionPdfServer", pdfData);
+    if(pdfRes && pdfRes.ok){ pdfOk = true; pdfUrl = pdfRes.url || ""; }
+    else console.warn("Inspection PDF not saved:", pdfRes && pdfRes.error);
+  } catch(e){ console.warn("PDF build/save failed:", e); }
+  try {
+    var toI = notifyTo.join(",");
+    if(toI){
+      var bodyI = "A fleet inspection was submitted.\n\nTruck: "+(rec.truck||"")+"\nInspector: "+(rec.inspector||S.currentTech||S.managerName||"")+"\nMileage: "+(rec.mileage||"-")+"\nOverall score: "+pct+"%\n"
+        +(rec.notes ? "\nNotes: "+rec.notes+"\n" : "")
+        +(pdfUrl ? "\nPDF: "+pdfUrl+"\n" : "\n(The PDF could not be saved this time. The inspection itself is saved in the app.)\n");
+      await sendEmail(toI, "[Fox Pest Control] Fleet Inspection: "+(rec.truck||"")+" ("+pct+"%)", bodyI);
+    }
+  } catch(e){ console.warn("Inspection email failed:", e); }
+  showToast((pdfOk ? "Inspection saved. PDF filed" : "Inspection saved. The PDF could not be filed - see a manager") + (pdfOk ? (notifyTo.length ? " and emailed." : ", no email sent.") : "."));
 }
 
 function buildInspectionPdfData(rec){
@@ -7886,8 +7928,9 @@ function buildInspectionPdfData(rec){
     +"<div style='font-size:11px;color:#666;'>Truck: "+esc(rec.truck||"")+"</div>"
     +"<div style='font-size:11px;color:#666;'>Inspector: "+esc(rec.inspector||"")+"</div>"
     +(rec.mileage?"<div style='font-size:11px;color:#666;'>Mileage: "+esc(rec.mileage)+"</div>":"")
+    +(S.inspFields||[]).filter(function(f){ return ["truck","mileage","inspector","notes"].indexOf(f.id)<0 && f.enabled!==false && rec[f.id]; }).map(function(f){ return "<div style='font-size:11px;color:#666;'>"+esc(f.label)+": "+esc(String(rec[f.id]))+"</div>"; }).join("")
     +"</div></div>"
-    +"<div class='overall'><div class='overall-pct'>"+pct+"%</div><div style='color:#666;'>Overall Score</div></div>";
+    +"<div class='overall'><div class='overall-pct'>"+(rec.pct!==undefined?rec.pct:calcPct())+"%</div><div style='color:#666;'>Overall Score</div></div>";
 
   S.cats.forEach(function(c){
     html += "<h2>"+esc(c.label)+"</h2>";
@@ -7895,9 +7938,15 @@ function buildInspectionPdfData(rec){
       var key = c.id+":"+item.id;
       var score = rec.scores&&rec.scores[key]!==undefined ? rec.scores[key] : "—";
       var comment = rec.comments&&rec.comments[key] ? rec.comments[key] : "";
-      html += "<div class='score-row'><span>"+esc(item.label)+"</span>"
-        +"<span class='score-val'>"+score+" <span class='cat-score'>/ "+c.scale+"</span></span></div>";
-      if(comment) html += "<div class='comment'>"+esc(comment)+"</div>";
+      var itype = item.inputType||"score";
+      if(itype==="score"){
+        html += "<div class='score-row'><span>"+esc(item.label)+"</span>"
+          +"<span class='score-val'> - "+score+" <span class='cat-score'>/ "+c.scale+"</span></span></div>";
+        if(comment) html += "<div class='comment'>"+esc(comment)+"</div>";
+      } else if(itype!=="none"){
+        var shown = itype==="check" ? (comment==="Done" ? "Done" : "Not done") : itype==="number" ? (score==="—" ? "—" : score) : (comment||"—");
+        html += "<div class='score-row'><span>"+esc(item.label)+"</span><span class='score-val'> - "+esc(String(shown))+"</span></div>";
+      }
     });
   });
 
@@ -10688,6 +10737,7 @@ function renderSettings(){
       {key:"restock_received",  label:"✅ Restock Received",         desc:"When a restock is marked as received"},
       {key:"tech_request",      label:"🛒 Tech Product Request",     desc:"When a tech submits a product checkout request"},
       {key:"order_decision",    label:"📋 Order Approved/Denied",    desc:"Manager copy when tech order is decided"},
+      {key:"inspection",        label:"🚛 Fleet Inspection",         desc:"When a truck inspection is submitted (PDF link included)"},
       {key:"low_stock",         label:"⚠️ Low Stock Alert",          desc:"When inventory drops below threshold"},
       {key:"sign_request",      label:"✍️ Sign Request",             desc:"When a document needs signing"},
       {key:"ooo_form",          label:"📝 OOO/1-on-1 Form",         desc:"When a tech submits a 1-on-1 form"},
@@ -10723,7 +10773,7 @@ function renderSettings(){
     var _tally = inspTallyData();
     var catRows = (S.cats||[]).map(function(c,ci){
       var items = (c.items||[]).map(function(it,ii){
-        var typeOpts = ["Score","Text","Textarea","Number","Select","No Entry"].map(function(t){
+        var typeOpts = ["Score","Checkbox","Text","Textarea","Number","Select","No Entry"].map(function(t){
           return "<option value='"+t+"'"+(it.entryType===t?" selected":"")+">"+t+"</option>";
         }).join("");
         return "<div style='margin-bottom:8px;padding-left:12px;border-left:2px solid #1e3a5f;'>"
@@ -10739,7 +10789,7 @@ function renderSettings(){
           +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;'>Max: "
           +"<input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+(it.maxPhotos||1)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='maxPhotos'>"
           +"</label></div>"
-          +(it.entryType==="Select"?"<div style='margin-top:4px;'><textarea class='inp' style='font-size:11px;padding:4px;width:100%;height:50px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Options, one per line'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
+          +(it.entryType==="Select"?"<div style='margin-top:4px;'><div style='font-size:11px;color:#94a3b8;margin-bottom:3px;'>Choices the tech can pick from (type one per line):</div><textarea class='inp' style='font-size:12px;padding:6px;width:100%;height:90px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Good&#10;Needs service&#10;N/A'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
           +"</div>";
       }).join("");
 
@@ -10789,6 +10839,8 @@ function renderSettings(){
       +"<button class='btn bg' data-a='add-insp-field' style='width:100%;padding:8px;margin-bottom:16px;font-size:12px;'>+ Add Field</button>"
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Inspection Categories</div>"
       +"<div id='insp-tally' class='card' style='margin-bottom:10px;padding:12px 14px;'>"+inspTallyHtml(_tally)+"</div>"
+      +"<div style='font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:12px;'><b style='color:#e2e8f0;'>Item types.</b> Only <b>Score</b> items earn points.<br>"
+      +"<b>Score</b> - tech taps a number from 1 to the category's points.<br><b>Checkbox</b> - tech just checks \"Completed\". No points.<br><b>Text</b> / <b>Textarea</b> - a typed answer or notes. No points.<br><b>Number</b> - tech types a number, such as mileage. No points.<br><b>Select</b> - tech picks one answer from a list you type below the item, one option per line. No points.<br><b>No Entry</b> - the item is hidden from the form.</div>"
       +catRows
       +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
   }
@@ -10864,7 +10916,7 @@ function renderSettings(){
           if(field==="requiresPhoto") S.cats[ci].items[ii].requiresPhoto = el.checked;
           else if(field==="maxPhotos") S.cats[ci].items[ii].maxPhotos = parseInt(el.value)||1;
           else if(field==="itemlabel") S.cats[ci].items[ii].label = el.value;
-          else if(field==="entryType"){ S.cats[ci].items[ii].entryType = el.value; S.cats[ci].items[ii].inputType = ({"Score":"score","Text":"text","Textarea":"textarea","Number":"number","Select":"select","No Entry":"none"})[el.value]||"score"; }
+          else if(field==="entryType"){ S.cats[ci].items[ii].entryType = el.value; S.cats[ci].items[ii].inputType = ({"Score":"score","Checkbox":"check","Text":"text","Textarea":"textarea","Number":"number","Select":"select","No Entry":"none"})[el.value]||"score"; }
           else if(field==="selectOptions") S.cats[ci].items[ii].selectOptions = el.value.split("\n").filter(Boolean);
         } else {
           if(field==="label") S.cats[ci].label = el.value;
@@ -10872,6 +10924,7 @@ function renderSettings(){
         }
         lsSet("hub:cats", S.cats);
         if(field==="scale" || field==="entryType") inspTallyRefresh();
+        if(field==="entryType") renderSettings();   // show or hide the choices box for Select items
       });
     });
   }, 50);
