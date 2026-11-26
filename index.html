@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.8";
+const APP_VERSION = "6.14.9";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -10810,7 +10810,7 @@ function renderSettings(){
           +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;'>Max: "
           +"<input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+(it.maxPhotos||1)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='maxPhotos'>"
           +"</label></div>"
-          +(it.entryType==="Select"?"<div style='margin-top:4px;'><div style='font-size:11px;color:#94a3b8;margin-bottom:3px;'>Choices the tech can pick from (type one per line):</div><textarea class='inp' style='font-size:12px;padding:6px;width:100%;height:90px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Good&#10;Needs service&#10;N/A'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
+          +(it.entryType==="Select"?"<div style='margin-top:4px;'><div style='font-size:11px;color:#94a3b8;margin-bottom:3px;'>Choices the inspector can pick from (type one per line):</div><textarea class='inp' style='font-size:12px;padding:6px;width:100%;height:90px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Good&#10;Needs service&#10;N/A'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
           +"</div>";
       }).join("");
 
@@ -10862,7 +10862,7 @@ function renderSettings(){
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Inspection Categories</div>"
       +"<div id='insp-tally' class='card' style='margin-bottom:10px;padding:12px 14px;'>"+inspTallyHtml(_tally)+"</div>"
       +"<div style='font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:12px;'><b style='color:#e2e8f0;'>Item types.</b> Only <b>Score</b> items earn points.<br>"
-      +"<b>Score</b> - tech taps a number from 1 to the category's points.<br><b>Checkbox</b> - tech just checks \"Completed\". No points.<br><b>Text</b> / <b>Textarea</b> - a typed answer or notes. No points.<br><b>Number</b> - tech types a number, such as mileage. No points.<br><b>Select</b> - tech picks one answer from a list you type below the item, one option per line. No points.<br><b>No Entry</b> - the item is hidden from the form.</div>"
+      +"<b>Score</b> - the inspector taps a number from 1 to the category's points.<br><b>Checkbox</b> - the inspector just checks \"Completed\". No points.<br><b>Text</b> / <b>Textarea</b> - a typed answer or notes. No points.<br><b>Number</b> - the inspector types a number, such as mileage. No points.<br><b>Select</b> - the inspector picks one answer from a list you type below the item, one option per line. No points.<br><b>No Entry</b> - the item is hidden from the form.</div>"
       +catRows
       +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
   }
