@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.7";
+const APP_VERSION = "6.14.8";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -7427,6 +7427,17 @@ async function handleAction(a,v,el,e){
     }
     return;
   }
+  if(a==="cat-up"||a==="cat-down"){
+    var mc=parseInt(v), tc=a==="cat-up"?mc-1:mc+1;
+    if(S.cats[mc] && S.cats[tc]){ var tmpc=S.cats[mc]; S.cats[mc]=S.cats[tc]; S.cats[tc]=tmpc; lsSet("hub:cats",S.cats); renderSettings(); }
+    return;
+  }
+  if(a==="item-up"||a==="item-down"){
+    var ip=String(v).split("_"), mci=parseInt(ip[0]), mii=parseInt(ip[1]), tii=a==="item-up"?mii-1:mii+1;
+    var its=S.cats[mci]&&S.cats[mci].items;
+    if(its && its[mii] && its[tii]){ var tmpi=its[mii]; its[mii]=its[tii]; its[tii]=tmpi; lsSet("hub:cats",S.cats); renderSettings(); }
+    return;
+  }
   if(a==="add-item") {
     var aci=parseInt(v);
     var newLabel=(document.getElementById("new-item-"+aci)||{}).value||"";
@@ -7832,6 +7843,15 @@ function inspEmailSelected(){
   var c = inspEmailChoices();
   if(!Array.isArray(S.inspData.notifyTo)) S.inspData.notifyTo = c.def.slice();
   return S.inspData.notifyTo;
+}
+
+// small up/down arrows used to reorder categories and items in Settings
+function inspArrows(act, v, canUp, canDown){
+  var st = "background:transparent;border:none;color:#64748b;cursor:pointer;font-size:13px;padding:0 5px;line-height:1.1;";
+  return "<div style='display:flex;flex-direction:column;'>"
+    +(canUp ? "<button style='"+st+"' data-a='"+act+"-up' data-v='"+v+"' title='Move up'>&#9650;</button>" : "<span style='height:15px;'></span>")
+    +(canDown ? "<button style='"+st+"' data-a='"+act+"-down' data-v='"+v+"' title='Move down'>&#9660;</button>" : "<span style='height:15px;'></span>")
+    +"</div>";
 }
 
 function calcPct(){
@@ -10778,6 +10798,7 @@ function renderSettings(){
         }).join("");
         return "<div style='margin-bottom:8px;padding-left:12px;border-left:2px solid #1e3a5f;'>"
           +"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
+          +inspArrows("item", ci+"_"+ii, ii>0, ii<(c.items||[]).length-1)
           +"<input class='inp' style='flex:1;padding:5px 8px;font-size:12px;' value='"+esc(it.label)+"' data-ci='"+ci+"' data-ii='"+ii+"' data-field='itemlabel'>"
           +"<select class='inp' style='width:90px;padding:5px;font-size:11px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='entryType'>"+typeOpts+"</select>"
           +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-item' data-v='"+ci+"_"+ii+"'>X</button>"
@@ -10795,6 +10816,7 @@ function renderSettings(){
 
       return "<div class='card' style='margin-bottom:10px;'>"
         +"<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>"
+        +inspArrows("cat", ci, ci>0, ci<(S.cats||[]).length-1)
         +"<input class='inp' style='flex:1;padding:6px 8px;font-size:13px;' value='"+esc(c.label)+"' data-ci='"+ci+"' data-field='label'>"
         +"<input type='number' min='1' class='inp' style='width:60px;padding:6px 8px;font-size:13px;' value='"+(c.scale||10)+"' data-ci='"+ci+"' data-field='scale' title='Points each scored item in this category is worth'>"
         +"<span style='font-size:11px;color:#94a3b8;line-height:1.1;'>points<br>each item</span>"
