@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.10";
+const APP_VERSION = "6.14.11";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -7913,23 +7913,23 @@ async function saveInsp(){
   } catch(e){ console.warn("Firebase inspection save:", e); }
 
   // Generate a PDF of the inspection, save it to Drive, and email the managers a link
-  var pdfUrl = "", pdfOk = false;
+  var pdfUrl = "", pdfOk = false, pdfErr = "";
   try {
     var pdfData = buildInspectionPdfData(rec);
     var pdfRes = await gs("saveInspectionPdfServer", pdfData);
     if(pdfRes && pdfRes.ok){ pdfOk = true; pdfUrl = pdfRes.url || ""; }
-    else console.warn("Inspection PDF not saved:", pdfRes && pdfRes.error);
-  } catch(e){ console.warn("PDF build/save failed:", e); }
+    else { pdfErr = (pdfRes && pdfRes.error) || "no answer from the Google script"; console.warn("Inspection PDF not saved:", pdfErr); }
+  } catch(e){ pdfErr = e.message; console.warn("PDF build/save failed:", e); }
   try {
     var toI = notifyTo.join(",");
     if(toI){
       var bodyI = "A fleet inspection was submitted.\n\nTruck: "+(rec.truck||"")+"\nInspector: "+(rec.inspector||S.currentTech||S.managerName||"")+"\nMileage: "+(rec.mileage||"-")+"\nOverall score: "+pct+"%\n"
         +(rec.notes ? "\nNotes: "+rec.notes+"\n" : "")
-        +(pdfUrl ? "\nPDF: "+pdfUrl+"\n" : "\n(The PDF could not be saved this time. The inspection itself is saved in the app.)\n");
+        +(pdfUrl ? "\nPDF: "+pdfUrl+"\n" : pdfOk ? "\n(This is the test copy, so no PDF was filed to Drive.)\n" : "\n(The PDF could not be saved: "+pdfErr+". The inspection itself is saved in the app.)\n");
       await sendEmail(toI, "[Fox Pest Control] Fleet Inspection: "+(rec.truck||"")+" ("+pct+"%)", bodyI);
     }
   } catch(e){ console.warn("Inspection email failed:", e); }
-  showToast((pdfOk ? "Inspection saved. PDF filed" : "Inspection saved. The PDF could not be filed - see a manager") + (pdfOk ? (notifyTo.length ? " and emailed." : ", no email sent.") : "."));
+  showToast((pdfOk ? (pdfUrl ? "Inspection saved. PDF filed" : "Inspection saved. Test copy: PDF not filed") : "Inspection saved. The PDF could not be filed ("+pdfErr+")") + (notifyTo.length ? ", managers emailed." : ", no email sent."));
 }
 
 function buildInspectionPdfData(rec){
