@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.11";
+const APP_VERSION = "6.14.12";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -7719,6 +7719,12 @@ function inspForm(){
       var input = "";
       if(f.id==="truck"){
         input = "<select class='inp' id='insp-field-"+f.id+"'>"+S.trucks.map(function(t){return "<option value='"+esc(t)+"'"+(inspData.truck===t?" selected":"")+">"+esc(t)+"</option>";}).join("")+"</select>";
+      } else if(f.type==="select" || f.type==="people"){
+        var optList = f.type==="people" ? inspPeopleNames() : (f.options||[]);
+        if(f.type==="people" && !val && f.id==="inspector"){ val = S.currentTech || S.managerName || ""; if(val) inspData[f.id] = val; }   // the inspector is normally whoever is signed in
+        if(val && optList.indexOf(val)<0) optList = optList.concat([val]);
+        input = "<select class='inp' id='insp-field-"+f.id+"'><option value=''>-- Select --</option>"+optList.map(function(o){ return "<option value='"+esc(o)+"'"+(val===o?" selected":"")+">"+esc(o)+"</option>"; }).join("")+"</select>"
+          +((f.type==="select" && !optList.length) ? "<div style='font-size:11px;color:#f59e0b;margin-top:4px;'>No choices have been set up for this field yet (Settings &gt; Inspection).</div>" : "");
       } else if(f.type==="textarea"){
         input = "<textarea class='inp' rows='3' id='insp-field-"+f.id+"' placeholder='"+esc(f.placeholder||"")+"'>"+esc(val)+"</textarea>";
       } else {
@@ -7861,6 +7867,13 @@ function inspCatsChanged(){
   window._catAutoSave = setTimeout(async function(){
     try { await saveAccountsToSheet(); showToast("Inspection settings saved"); } catch(e){ console.warn("Auto-save of inspection settings failed:", e); }
   }, 1200);
+}
+
+// Everyone in the system (managers and technicians), for fields set to "pick from people"
+function inspPeopleNames(){
+  var seen = {}, out = [];
+  (S.managers||[]).concat(S.techAccounts||[]).forEach(function(p){ var n = String((p&&p.name)||"").trim(); if(n && !seen[n.toLowerCase()]){ seen[n.toLowerCase()] = 1; out.push(n); } });
+  return out.sort(function(a,b){ return a.localeCompare(b); });
 }
 
 function calcPct(){
@@ -10849,9 +10862,13 @@ function renderSettings(){
         +"</div>"
         +"<div style='flex:1;'>"
         +"<input class='inp' style='font-size:12px;padding:5px 8px;margin-bottom:4px;' data-insp-fi='"+fi+"' data-insp-field='label' value='"+esc(f.label)+"' placeholder='Field label'>"
-        +"<select class='inp' style='font-size:11px;padding:4px;' data-insp-fi='"+fi+"' data-insp-field='type'>"
-        +["text","number","textarea","select"].map(function(t){ return "<option value='"+t+"'"+(f.type===t?" selected":"")+">"+t+"</option>"; }).join("")
-        +"</select>"
+        +(f.id==="truck"
+          ? "<div style='font-size:11px;color:#94a3b8;line-height:1.4;'>Vehicle list: always shows the trucks you have set up, so there is nothing to choose here.</div>"
+          : "<select class='inp' style='font-size:11px;padding:4px;' data-insp-fi='"+fi+"' data-insp-field='type'>"
+            +[["text","Short text"],["number","Number"],["textarea","Long text (notes)"],["select","Pick from my own list"],["people","Pick from people in the system"]].map(function(t){ return "<option value='"+t[0]+"'"+(f.type===t[0]?" selected":"")+">"+t[1]+"</option>"; }).join("")
+            +"</select>"
+            +(f.type==="select" ? "<div style='font-size:11px;color:#94a3b8;margin:6px 0 3px;'>Choices (type one per line):</div><textarea class='inp' style='font-size:12px;padding:6px;width:100%;height:80px;' data-insp-fi='"+fi+"' data-insp-field='optionsText' placeholder='Choice one&#10;Choice two'>"+esc((f.options||[]).join("\n"))+"</textarea>" : "")
+            +(f.type==="people" ? "<div style='font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.4;'>Lists every manager and technician in the system"+(f.id==="inspector"?", and starts on whoever is signed in":"")+".</div>" : ""))
         +"</div>"
         +"<label style='display:flex;align-items:center;gap:4px;font-size:11px;color:#94a3b8;'>"
         +"<input type='checkbox' "+(f.required?"checked":"")+" data-insp-fi='"+fi+"' data-insp-field='required'> Required"
@@ -10904,14 +10921,16 @@ function renderSettings(){
   });
   // Wire up inspection field changes
   if(S.settingsTab==="inspection"){
-    pg.querySelectorAll("input[data-insp-fi], select[data-insp-fi]").forEach(function(inp){
+    pg.querySelectorAll("input[data-insp-fi], select[data-insp-fi], textarea[data-insp-fi]").forEach(function(inp){
       inp.addEventListener("change", function(){
         var fi = parseInt(inp.getAttribute("data-insp-fi"));
         var field = inp.getAttribute("data-insp-field");
         if(!S.inspFields[fi]) return;
         if(field==="required"||field==="enabled") S.inspFields[fi][field] = inp.checked;
+        else if(field==="optionsText") S.inspFields[fi].options = inp.value.split("\n").map(function(x){ return x.trim(); }).filter(Boolean);
         else S.inspFields[fi][field] = inp.value;
         save(); saveAccountsToSheet();
+        if(field==="type") renderSettings();   // show or hide the choices box
       });
     });
   }
