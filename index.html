@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.12";
+const APP_VERSION = "6.14.13";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -6171,9 +6171,17 @@ async function handleAction(a,v,el,e){
   }
   if(a==="insp-view") { S.inspView=v; render(); return; }
   if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
-  if(a==="insp-next") { S.inspStep++; render(); return; }
+  if(a==="insp-next") {
+    var cur = S.inspStep-1, miss = (cur>=0 && cur<(S.cats||[]).length) ? inspMissingPhotos(cur) : [];
+    if(miss.length){ alert(inspPhotoBlockMessage(miss)); return; }
+    S.inspStep++; render(); return;
+  }
   if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
-  if(a==="insp-save") { saveInsp(); return; }
+  if(a==="insp-save") {
+    var missAll = inspMissingPhotos(null);
+    if(missAll.length){ alert(inspPhotoBlockMessage(missAll)+"\n\nGo back to the section and add them."); S.inspStep = missAll[0].ci+1; render(); return; }
+    saveInsp(); return;
+  }
   if(a==="insp-detail") { S.detailInsp=S.inspections.find(r=>r.id===v); S.inspView="detail"; render(); return; }
   if(a==="insp-del") { if(confirm("Delete this inspection?")){S.inspections=S.inspections.filter(r=>r.id!==v);save();} S.inspView="list"; render(); return; }
   if(a==="score") { const [ci,ii,n]=v.split("|"); const k=ci+":"+ii; const cur=S.inspData.scores[k]; if(cur===parseInt(n))delete S.inspData.scores[k]; else S.inspData.scores[k]=parseInt(n); render(); return; }
@@ -7758,8 +7766,10 @@ function inspForm(){
       // Per-item photo
       var itemPhotos2=(inspData.itemPhotos&&inspData.itemPhotos[key])||[];
       var maxP2=item.maxPhotos||1;
-      var reqP2=item.requiresPhoto||false;
-      var showPhoto2=reqP2||(item.maxPhotos&&item.maxPhotos>0);
+      var pMode=itemPhotoMode(item), minP2=itemMinPhotos(item);
+      var reqP2=pMode==="recommended"||pMode==="required";
+      var showPhoto2=pMode!=="none";
+      var needPhoto2=(pMode==="required"&&itemPhotos2.length<minP2)?"req":(pMode==="recommended"&&itemPhotos2.length===0)?"rec":"";
       var photoHTML2="";
       if(showPhoto2){
         var thumbHTML="";
@@ -7768,13 +7778,13 @@ function inspForm(){
         }
         var addBtn2="";
         if(itemPhotos2.length<maxP2){
-          addBtn2="<label style='display:inline-flex;align-items:center;gap:5px;background:#0f1f38;border:1px solid "+(reqP2&&itemPhotos2.length===0?"#f59e0b":"#1e3a5f")+";border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px;color:"+(reqP2&&itemPhotos2.length===0?"#f59e0b":"#94a3b8")+";margin-top:6px;'>"+(reqP2&&itemPhotos2.length===0?"&#x1F4F7; Recommended":"&#x1F4F7; Add Photo")+" ("+itemPhotos2.length+"/"+maxP2+")<input type='file' accept='image/*' capture='environment' style='display:none;' data-itemkey='"+key+"' onchange='captureItemPhoto(this)'></label>";
+          addBtn2="<label style='display:inline-flex;align-items:center;gap:5px;background:#0f1f38;border:1px solid "+(needPhoto2==="req"?"#ef4444":needPhoto2==="rec"?"#f59e0b":"#1e3a5f")+";border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px;color:"+(needPhoto2==="req"?"#ef4444":needPhoto2==="rec"?"#f59e0b":"#94a3b8")+";margin-top:6px;'>"+(needPhoto2==="req"?"&#x1F4F7; Photo required":needPhoto2==="rec"?"&#x1F4F7; Recommended":"&#x1F4F7; Add Photo")+" ("+itemPhotos2.length+"/"+(pMode==="required"?minP2+" needed, "+maxP2+" max":maxP2)+")<input type='file' accept='image/*' capture='environment' style='display:none;' data-itemkey='"+key+"' onchange='captureItemPhoto(this)'></label>";
         } else {
           addBtn2="<div style='font-size:12px;color:#22c55e;margin-top:6px;'>&#x2713; "+itemPhotos2.length+"/"+maxP2+" photos</div>";
         }
         photoHTML2="<div style='margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;'>"+thumbHTML+addBtn2+"</div>";
       }
-      return `<div style="background:#0a1628;border-radius:9px;padding:14px;border:1px solid #1e3a5f;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:500;font-size:14px;">${esc(item.label)}${reqP2?" &#x1F4F7;":""}</span><span style="font-family:monospace;font-size:15px;font-weight:700;color:${val===undefined?"#334155":sc((val/cat.scale)*100)}">${val===undefined?"--":val+"/"+cat.scale}</span></div><div style="display:flex;gap:5px;flex-wrap:wrap;">${btns}</div>${comment}${photoHTML2}</div>`;
+      return `<div style="background:#0a1628;border-radius:9px;padding:14px;border:1px solid #1e3a5f;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:500;font-size:14px;">${esc(item.label)}${reqP2?" &#x1F4F7;":""}${pMode==="required"?" <span style='color:#ef4444;font-size:11px;'>(photo required)</span>":""}</span><span style="font-family:monospace;font-size:15px;font-weight:700;color:${val===undefined?"#334155":sc((val/cat.scale)*100)}">${val===undefined?"--":val+"/"+cat.scale}</span></div><div style="display:flex;gap:5px;flex-wrap:wrap;">${btns}</div>${comment}${photoHTML2}</div>`;
     }).join("");
     body=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;"><h2 style="font-size:17px;font-weight:700;">${esc(cat.label)}</h2><span style="background:#0d1f3c;color:#93c5fd;padding:3px 10px;border-radius:6px;font-size:12px;">Out of ${cat.scale}</span></div><div style="display:flex;flex-direction:column;gap:14px;">${items}</div>`;
   } else {
@@ -7874,6 +7884,31 @@ function inspPeopleNames(){
   var seen = {}, out = [];
   (S.managers||[]).concat(S.techAccounts||[]).forEach(function(p){ var n = String((p&&p.name)||"").trim(); if(n && !seen[n.toLowerCase()]){ seen[n.toLowerCase()] = 1; out.push(n); } });
   return out.sort(function(a,b){ return a.localeCompare(b); });
+}
+
+// ── Photo rules for inspection items: none / allowed / recommended / required ──
+function itemPhotoMode(it){
+  if(it.photoMode) return it.photoMode;
+  if(it.requiresPhoto) return "recommended";              // older items: the box meant "recommended"
+  if(it.maxPhotos && it.maxPhotos>0) return "allowed";
+  return "none";
+}
+function itemMinPhotos(it){ return itemPhotoMode(it)==="required" ? Math.max(1, Math.min(parseInt(it.minPhotos)||1, parseInt(it.maxPhotos)||1)) : 0; }
+// items (in one category, or in all when catIdx is null) that still need required photos
+function inspMissingPhotos(catIdx){
+  var out = [];
+  (S.cats||[]).forEach(function(c, ci){
+    if(catIdx!==null && catIdx!==ci) return;
+    (c.items||[]).forEach(function(it){
+      var need = itemMinPhotos(it); if(!need || (it.inputType||"score")==="none") return;
+      var have = ((S.inspData.itemPhotos||{})[c.id+":"+it.id]||[]).length;
+      if(have<need) out.push({ci:ci, cat:c.label, label:it.label, need:need, have:have});
+    });
+  });
+  return out;
+}
+function inspPhotoBlockMessage(list){
+  return "Photos are required before you can continue:\n\n"+list.map(function(m){ return "- "+m.label+" ("+m.have+" of "+m.need+")"; }).join("\n");
 }
 
 function calcPct(){
@@ -10825,13 +10860,13 @@ function renderSettings(){
           +"<select class='inp' style='width:90px;padding:5px;font-size:11px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='entryType'>"+typeOpts+"</select>"
           +"<button class='btn bd' style='padding:4px 8px;font-size:11px;' data-a='del-item' data-v='"+ci+"_"+ii+"'>X</button>"
           +"</div>"
-          +"<div style='display:flex;align-items:center;gap:10px;padding:4px 0;'>"
-          +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;cursor:pointer;'>"
-          +"<input type='checkbox' "+(it.requiresPhoto?"checked":"")+" data-ci='"+ci+"' data-ii='"+ii+"' data-field='requiresPhoto' style='width:14px;height:14px;accent-color:#2563eb;'>"
-          +"&#x1F4F7; Photo</label>"
-          +"<label style='display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;'>Max: "
-          +"<input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+(it.maxPhotos||1)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='maxPhotos'>"
-          +"</label></div>"
+          +"<div style='display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:4px 0;font-size:12px;color:#94a3b8;'>"
+          +"&#x1F4F7; <select class='inp' style='width:auto;padding:3px 6px;font-size:12px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='photoMode'>"
+          +[["none","No photos"],["allowed","Photos allowed"],["recommended","Photo recommended"],["required","Photo required"]].map(function(o){ return "<option value='"+o[0]+"'"+(itemPhotoMode(it)===o[0]?" selected":"")+">"+o[1]+"</option>"; }).join("")
+          +"</select>"
+          +(itemPhotoMode(it)!=="none" ? "<label style='display:flex;align-items:center;gap:5px;'>Max: <input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+(it.maxPhotos||1)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='maxPhotos'></label>" : "")
+          +(itemPhotoMode(it)==="required" ? "<label style='display:flex;align-items:center;gap:5px;'>Needed: <input type='number' class='inp' style='width:50px;padding:3px 6px;font-size:12px;' value='"+itemMinPhotos(it)+"' min='1' max='10' data-ci='"+ci+"' data-ii='"+ii+"' data-field='minPhotos'></label>" : "")
+          +"</div>"
           +(it.entryType==="Select"?"<div style='margin-top:4px;'><div style='font-size:11px;color:#94a3b8;margin-bottom:3px;'>Choices the inspector can pick from (type one per line):</div><textarea class='inp' style='font-size:12px;padding:6px;width:100%;height:90px;' data-ci='"+ci+"' data-ii='"+ii+"' data-field='selectOptions' placeholder='Good&#10;Needs service&#10;N/A'>"+esc((it.selectOptions||[]).join("\n"))+"</textarea></div>":"")
           +"</div>";
       }).join("");
@@ -10963,8 +10998,10 @@ function renderSettings(){
         if(!S.cats[ci]) return;
         if(ii>=0){
           if(!S.cats[ci].items[ii]) return;
-          if(field==="requiresPhoto") S.cats[ci].items[ii].requiresPhoto = el.checked;
-          else if(field==="maxPhotos") S.cats[ci].items[ii].maxPhotos = parseInt(el.value)||1;
+          if(field==="photoMode"){ var itm=S.cats[ci].items[ii]; itm.photoMode = el.value; itm.requiresPhoto = (el.value==="recommended"||el.value==="required"); if(el.value!=="none" && !itm.maxPhotos) itm.maxPhotos = 1; if(el.value==="none") itm.maxPhotos = 0; }
+          else if(field==="requiresPhoto") S.cats[ci].items[ii].requiresPhoto = el.checked;
+          else if(field==="minPhotos"){ var it2=S.cats[ci].items[ii]; it2.minPhotos = Math.max(1, parseInt(el.value)||1); if((it2.maxPhotos||1)<it2.minPhotos) it2.maxPhotos = it2.minPhotos; }
+          else if(field==="maxPhotos"){ var it3=S.cats[ci].items[ii]; it3.maxPhotos = Math.max(1, parseInt(el.value)||1); if(it3.minPhotos && it3.minPhotos>it3.maxPhotos) it3.minPhotos = it3.maxPhotos; }
           else if(field==="itemlabel") S.cats[ci].items[ii].label = el.value;
           else if(field==="entryType"){ S.cats[ci].items[ii].entryType = el.value; S.cats[ci].items[ii].inputType = ({"Score":"score","Checkbox":"check","Text":"text","Textarea":"textarea","Number":"number","Select":"select","No Entry":"none"})[el.value]||"score"; }
           else if(field==="selectOptions") S.cats[ci].items[ii].selectOptions = el.value.split("\n").filter(Boolean);
@@ -10974,7 +11011,7 @@ function renderSettings(){
         }
         inspCatsChanged();
         if(field==="scale" || field==="entryType") inspTallyRefresh();
-        if(field==="entryType") renderSettings();   // show or hide the choices box for Select items
+        if(field==="entryType" || field==="photoMode" || field==="minPhotos" || field==="maxPhotos") renderSettings();   // show or hide the choices / photo boxes
       });
     });
   }, 50);
