@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.16";
+const APP_VERSION = "6.14.17";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -6175,16 +6175,16 @@ async function handleAction(a,v,el,e){
     return;
   }
   if(a==="insp-view") { S.inspView=v; render(); return; }
-  if(a==="insp-start") { S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
+  if(a==="insp-start") { inspScrollTop(); S.inspView="form"; S.inspStep=0; S.inspData={truck:S.trucks[0]||"",mileage:"",inspector:"",notes:"",scores:{},comments:{},photos:[],itemPhotos:{}}; render(); return; }
   if(a==="insp-next") {
     var cur = S.inspStep-1, miss = (cur>=0 && cur<(S.cats||[]).length) ? inspMissingPhotos(cur) : [];
     if(miss.length){ alert(inspPhotoBlockMessage(miss)); return; }
-    S.inspStep++; render(); return;
+    S.inspStep++; render(); inspScrollTop(); return;
   }
-  if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); return; }
+  if(a==="insp-back") { if(S.inspStep===0){S.inspView="home";}else{S.inspStep--;} render(); inspScrollTop(); return; }
   if(a==="insp-save") {
     var missAll = inspMissingPhotos(null);
-    if(missAll.length){ alert(inspPhotoBlockMessage(missAll)+"\n\nGo back to the section and add them."); S.inspStep = missAll[0].ci+1; render(); return; }
+    if(missAll.length){ alert(inspPhotoBlockMessage(missAll)+"\n\nGo back to the section and add them."); S.inspStep = missAll[0].ci+1; render(); inspScrollTop(); return; }
     saveInsp(); return;
   }
   if(a==="insp-detail") { S.detailInsp=S.inspections.find(r=>r.id===v); S.inspView="detail"; render(); return; }
@@ -7915,6 +7915,11 @@ function inspMissingPhotos(catIdx){
 }
 function inspPhotoBlockMessage(list){
   return "Photos are required before you can continue:\n\n"+list.map(function(m){ return "- "+m.label+" ("+m.have+" of "+m.need+")"; }).join("\n");
+}
+
+// each section of the inspection form starts at the top of the page
+function inspScrollTop(){
+  try { window.scrollTo(0,0); document.documentElement.scrollTop=0; document.body.scrollTop=0; var w=document.getElementById("wrap"); if(w) w.scrollTop=0; var pgI=document.getElementById("pg-inspect"); if(pgI) pgI.scrollTop=0; } catch(e){}
 }
 
 function calcPct(){
