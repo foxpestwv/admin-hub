@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.15";
+const APP_VERSION = "6.14.16";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -8039,7 +8039,11 @@ function buildInspectionPdfData(rec){
       if(itype==="score"){
         catP += c.scale; if(hasScore) catE += score;
         right = hasScore ? score+" / "+c.scale : "not scored";
-      } else if(itype==="none"){ return; }
+      } else if(itype==="none"){
+        // "No Entry" items (photo-only items, such as the four corners of the truck) still print their name and photos
+        if(!(rec.itemPhotos && rec.itemPhotos[key] && rec.itemPhotos[key].length)) return;
+        right = "";
+      }
       else if(itype==="check"){ right = comment==="Done" ? "Done" : "Not done"; comment = ""; }
       else if(itype==="number"){ right = hasScore ? String(score) : "\u2014"; }
       else { right = comment || "\u2014"; comment = ""; }
