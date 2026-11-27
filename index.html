@@ -466,7 +466,7 @@ function load(){
 }
 
 // ─── App Version ─────────────────────────────────────────────────────────────
-const APP_VERSION = "6.14.13";
+const APP_VERSION = "6.14.15";
 
 function normProdName(s){ return String(s||"").replace(/\s+/g," ").trim().toLowerCase(); }
 
@@ -4906,6 +4906,11 @@ async function gs(fn, data){
         var pdfResp = await fetch(EMAIL_BRIDGE, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({action:"saveInspectionPdf", data:data})}).then(function(r){ return r.json(); }).catch(function(e){ return {ok:false, error:e.message}; });
         return pdfResp;
       }
+      case "setInspectionPdf": {
+        if(!data||!data.id) return {ok:false, error:"no inspection id"};
+        await fbSet("inspections", data.id, {pdfUrl:data.pdfUrl||"", pdfFileId:data.pdfFileId||""});
+        return {ok:true};
+      }
       case "logInspection": {
         var inspId = "insp_"+Date.now();
         await fbSet("inspections", inspId, Object.assign({}, data, {id:inspId, date:new Date().toISOString(), branch:data.branch||S.branch||"willamette"}));
@@ -7708,7 +7713,7 @@ function inspList(){
     <option value="all">All Trucks</option>${trucks.map(t=>`<option value="${esc(t)}"${filter===t?" selected":""}>${esc(t)}</option>`).join("")}
   </select>
   ${filtered.length===0?`<div style="text-align:center;color:#475569;padding:40px;">No records found.</div>`:
-    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,52)}<div style="flex:1"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span><button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
+    filtered.map(r=>`<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;" data-a="insp-detail" data-v="${r.id}">${ring(r.pct,52)}<div style="flex:1"><div style="font-weight:600;font-size:15px;">${esc(r.truck)}</div><div style="color:#475569;font-size:12px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;"><span class="sbdg" style="background:${sc(r.pct)}22;color:${sc(r.pct)}">${sl(r.pct)}</span>${r.pdfUrl?`<a href="${esc(r.pdfUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none;padding:3px 0;">&#128196; Open PDF</a>`:""}<button class="btn bd" style="font-size:11px;padding:3px 8px;" data-a="insp-del" data-v="${r.id}">Delete</button></div></div>`).join("")}`;
 }
 
 function inspForm(){
@@ -7748,7 +7753,7 @@ function inspForm(){
       const inputType=item.inputType||"score";
       var btns="";
       if(inputType==="score"){
-        btns=Array.from({length:cat.scale},(_,i)=>i+1).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
+        btns=Array.from({length:cat.scale+1},(_,i)=>i).map(n=>`<button class="skb${val===n?" on":""}" style="${val===n?"background:"+sc((n/cat.scale)*100)+";border-color:"+sc((n/cat.scale)*100)+";":""}" data-a="score" data-v="${cat.id}|${item.id}|${n}">${n}</button>`).join("");
       } else if(inputType==="check"){
         btns=`<label style="display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer;padding:4px 0;"><input type="checkbox" data-checkkey="${key}" ${inspData.comments[key]==="Done"?"checked":""} style="width:24px;height:24px;accent-color:#22c55e;"> Completed</label>`;
       } else if(inputType==="text"){
@@ -7818,6 +7823,7 @@ function inspDetail(){
   const photos=r.photos?.length?`<div class="card" style="margin-top:8px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:10px;">Photos (${r.photos.length})</div><div class="g3">${r.photos.map(ph=>`<img src="${ph.data}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;">`).join("")}</div></div>`:"";
   return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;"><button class="btn bg" data-a="insp-view" data-v="list">Back</button><button class="btn bd" data-a="insp-del" data-v="${r.id}">Delete</button></div>
     <div style="display:flex;gap:14px;align-items:center;margin-bottom:20px;">${ring(r.pct,72)}<div><h2 style="font-size:20px;font-weight:700;">${esc(r.truck)}</h2><div style="color:#475569;font-size:13px;margin-top:3px;">${fd(r.date)}${r.inspector?" - "+esc(r.inspector):""}</div>${r.mileage?`<div style="color:#64748b;font-size:12px;margin-top:2px;">${Number(r.mileage).toLocaleString()} miles</div>`:""}</div></div>
+    ${r.pdfUrl?`<a href="${esc(r.pdfUrl)}" target="_blank" rel="noopener" class="btn bp" style="display:block;text-align:center;text-decoration:none;margin-bottom:12px;">&#128196; Open PDF</a>`:""}
     ${(S.inspFields||[]).filter(f=>["truck","mileage","inspector","notes"].indexOf(f.id)<0&&r[f.id]).map(f=>`<div class="card" style="margin-bottom:8px;padding:10px 14px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:3px;">${esc(f.label)}</div><div style="font-size:13px;color:#cbd5e1;">${esc(String(r[f.id]))}</div></div>`).join("")}
     ${r.notes?`<div class="card" style="margin-bottom:12px;"><div style="font-size:11px;color:#475569;text-transform:uppercase;margin-bottom:5px;">Notes</div><p style="font-size:13px;color:#cbd5e1;">${esc(r.notes)}</p></div>`:""}
     ${cats}${photos}`;
@@ -7956,8 +7962,13 @@ async function saveInsp(){
   const row=[new Date(rec.date).toLocaleDateString("en-US"),rec.truck,rec.inspector||"",rec.mileage||"",pct,...catS];
 
   // Save inspection to Firebase with branch tag
+  var inspDbId = "";
   try {
-    await gs("logInspection", Object.assign({}, rec, {branch:S.branch||"willamette"}));
+    var dbRec = Object.assign({}, rec, {branch:S.branch||"willamette"});
+    // The database holds about 1 MB per record: if the photos would not fit, keep them in the PDF only
+    if(JSON.stringify(dbRec).length > 900000){ delete dbRec.itemPhotos; delete dbRec.photos; dbRec.photosInPdfOnly = true; }
+    var logRes = await gs("logInspection", dbRec);
+    inspDbId = (logRes && logRes.id) || "";
   } catch(e){ console.warn("Firebase inspection save:", e); }
 
   // Generate a PDF of the inspection, save it to Drive, and email the managers a link
@@ -7965,7 +7976,13 @@ async function saveInsp(){
   try {
     var pdfData = buildInspectionPdfData(rec);
     var pdfRes = await gs("saveInspectionPdfServer", pdfData);
-    if(pdfRes && pdfRes.ok){ pdfOk = true; pdfUrl = pdfRes.url || ""; }
+    if(pdfRes && pdfRes.ok){
+      pdfOk = true; pdfUrl = pdfRes.url || "";
+      if(pdfUrl){
+        rec.pdfUrl = pdfUrl; rec.pdfFileId = pdfRes.fileId || ""; save();   // so the Records list can open it
+        if(inspDbId){ try { await gs("setInspectionPdf", {id:inspDbId, pdfUrl:pdfUrl, pdfFileId:rec.pdfFileId}); } catch(e){ console.warn("Could not attach the PDF link:", e); } }
+      }
+    }
     else { pdfErr = (pdfRes && pdfRes.error) || "no answer from the Google script"; console.warn("Inspection PDF not saved:", pdfErr); }
   } catch(e){ pdfErr = e.message; console.warn("PDF build/save failed:", e); }
   try {
@@ -7990,7 +8007,7 @@ function buildInspectionPdfData(rec){
     +".header{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px;}"
     +".meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;font-size:12px;}"
     +".meta-item{padding:4px 0;}.meta-label{color:#666;font-size:11px;}"
-    +".score-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}"
+    +".score-row{border-bottom:1px solid #eee;padding:5px 0;}.score-row td{padding:5px 0;}"
     +".score-val{font-weight:bold;min-width:60px;text-align:right;}"
     +".cat-score{color:#666;font-size:11px;}"
     +".overall{background:#f5f5f5;padding:10px;border-radius:4px;text-align:center;margin-bottom:14px;}"
@@ -8009,23 +8026,35 @@ function buildInspectionPdfData(rec){
     +"</div></div>"
     +"<div class='overall'><div class='overall-pct'>"+(rec.pct!==undefined?rec.pct:calcPct())+"%</div><div style='color:#666;'>Overall Score</div></div>";
 
+  var totE = 0, totP = 0;
   S.cats.forEach(function(c){
-    html += "<h2>"+esc(c.label)+"</h2>";
+    var catE = 0, catP = 0, rowsHtml = "";
     c.items.forEach(function(item){
       var key = c.id+":"+item.id;
-      var score = rec.scores&&rec.scores[key]!==undefined ? rec.scores[key] : "—";
+      var hasScore = rec.scores && rec.scores[key]!==undefined;
+      var score = hasScore ? rec.scores[key] : null;
       var comment = rec.comments&&rec.comments[key] ? rec.comments[key] : "";
       var itype = item.inputType||"score";
+      var right = "";
       if(itype==="score"){
-        html += "<div class='score-row'><span>"+esc(item.label)+"</span>"
-          +"<span class='score-val'> - "+score+" <span class='cat-score'>/ "+c.scale+"</span></span></div>";
-        if(comment) html += "<div class='comment'>"+esc(comment)+"</div>";
-      } else if(itype!=="none"){
-        var shown = itype==="check" ? (comment==="Done" ? "Done" : "Not done") : itype==="number" ? (score==="—" ? "—" : score) : (comment||"—");
-        html += "<div class='score-row'><span>"+esc(item.label)+"</span><span class='score-val'> - "+esc(String(shown))+"</span></div>";
-      }
+        catP += c.scale; if(hasScore) catE += score;
+        right = hasScore ? score+" / "+c.scale : "not scored";
+      } else if(itype==="none"){ return; }
+      else if(itype==="check"){ right = comment==="Done" ? "Done" : "Not done"; comment = ""; }
+      else if(itype==="number"){ right = hasScore ? String(score) : "\u2014"; }
+      else { right = comment || "\u2014"; comment = ""; }
+      rowsHtml += "<table class='score-row' width='100%' cellpadding='0' cellspacing='0'><tr><td>"+esc(item.label)+"</td><td align='right' class='score-val'>"+esc(String(right))+"</td></tr></table>";
+      if(comment) rowsHtml += "<div class='comment'>"+esc(comment)+"</div>";
+      var ph = rec.itemPhotos && rec.itemPhotos[key];
+      if(ph && ph.length) rowsHtml += "<div class='photos'>"+ph.map(function(src){ return "<img src='"+src+"' width='170' style='margin:4px 6px 4px 0;border:1px solid #ccc;'>"; }).join("")+"</div>";
     });
+    totE += catE; totP += catP;
+    html += "<h2>"+esc(c.label)+(catP ? " <span style='font-weight:normal;color:#444;'>("+catE+" / "+catP+" points)</span>" : "")+"</h2>"+rowsHtml;
   });
+  html = html.replace("Overall Score</div>", "Overall Score</div><div style='color:#444;margin-top:2px;'>"+totE+" / "+totP+" points</div>");
+  if(rec.photos && rec.photos.length){
+    html += "<h2>Additional Photos</h2><div class='photos'>"+rec.photos.map(function(ph){ return "<img src='"+(ph.data||"")+"' width='230' style='margin:4px 6px 4px 0;border:1px solid #ccc;'>"; }).join("")+"</div>";
+  }
 
   if(rec.notes){
     html += "<h2>Additional Notes</h2><p style='font-size:12px;'>"+esc(rec.notes)+"</p>";
@@ -10923,7 +10952,7 @@ function renderSettings(){
       +"<div style='font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:8px;'>Inspection Categories</div>"
       +"<div id='insp-tally' class='card' style='margin-bottom:10px;padding:12px 14px;'>"+inspTallyHtml(_tally)+"</div>"
       +"<div style='font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:12px;'><b style='color:#e2e8f0;'>Item types.</b> Only <b>Score</b> items earn points.<br>"
-      +"<b>Score</b> - the inspector taps a number from 1 to the category's points.<br><b>Checkbox</b> - the inspector just checks \"Completed\". No points.<br><b>Text</b> / <b>Textarea</b> - a typed answer or notes. No points.<br><b>Number</b> - the inspector types a number, such as mileage. No points.<br><b>Select</b> - the inspector picks one answer from a list you type below the item, one option per line. No points.<br><b>No Entry</b> - the item is hidden from the form.</div>"
+      +"<b>Score</b> - the inspector taps a number from 0 to the category's points.<br><b>Checkbox</b> - the inspector just checks \"Completed\". No points.<br><b>Text</b> / <b>Textarea</b> - a typed answer or notes. No points.<br><b>Number</b> - the inspector types a number, such as mileage. No points.<br><b>Select</b> - the inspector picks one answer from a list you type below the item, one option per line. No points.<br><b>No Entry</b> - the item is hidden from the form.</div>"
       +catRows
       +"<button class='btn bp' data-a='add-cat' style='width:100%;padding:10px;margin-top:8px;'>+ Add Category</button>";
   }
